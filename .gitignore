@@ -22,3 +22,8 @@ logs/
 
 # Local logs
 logs/
+
+# macOS / Python
+.DS_Store
+__pycache__/
+*.pyc
