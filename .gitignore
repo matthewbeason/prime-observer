@@ -27,3 +27,16 @@ logs/
 .DS_Store
 __pycache__/
 *.pyc
+
+# --- Prime Observer local/generated ---
+logs/
+viz/latest.csv
+viz/*.csv
+
+# macOS noise
+.DS_Store
+
+# Python noise
+__pycache__/
+*.pyc
+.venv/
