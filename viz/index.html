@@ -1,0 +1,660 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prime Observer</title>
+  <style>
+    :root{
+      --bg:#fafafa; --card:#fff; --border:#e6e6e6; --muted:#666; --ink:#111;
+      --fiber:#1f77b4; --tmobile:#d33;
+      --radius:14px;
+    }
+    body{font-family:system-ui,-apple-system,sans-serif;margin:24px;background:var(--bg);color:var(--ink);}
+    h2{margin:0 0 10px;}
+    #status{color:var(--muted);margin:6px 0 16px;}
+    .row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;}
+    .card{background:var(--card);padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);min-width:210px;}
+    .card h4{margin:0 0 8px;font-size:13px;font-weight:750;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;}
+    .pill{font-size:11px;color:#333;background:#f2f2f2;border:1px solid var(--border);padding:2px 8px;border-radius:999px;}
+    .small{font-size:12px;color:var(--muted);line-height:1.35;}
+    .value{font-size:22px;font-weight:800;margin-top:2px;}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
+    svg{background:#fff;border:1px solid var(--border);border-radius:var(--radius);margin-top:10px;}
+    .section-title{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;}
+    .section-title h3{margin:0;}
+    .legend{font-size:12px;color:var(--muted);}
+    .subtitle{
+      font-size:13px;
+      color:#8aa0b3;
+      margin-top:-6px;
+      margin-bottom:14px;
+      letter-spacing:0.35px;
+     }
+    .header {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-bottom:6px;
+}
+
+.titleblock { display:flex; flex-direction:column; gap:4px; }
+.subtitle { font-size:13px; color:var(--muted); margin:0; }
+
+.badges { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.badge {
+  font-size:11px;
+  color:#222;
+  background:#f2f2f2;
+  border:1px solid var(--border);
+  padding:3px 9px;
+  border-radius:999px;
+  white-space:nowrap;
+}
+.badge strong { font-weight:800; }
+
+.badge.phase.fiber { border-color: rgba(31,119,180,.35); background: rgba(31,119,180,.08); }
+.badge.phase.tmobile { border-color: rgba(221,51,51,.35); background: rgba(221,51,51,.08); }
+
+#status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
+
+.footer {
+  margin-top:18px;
+  font-size:11px;
+  color:var(--muted);
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.footer .mono { opacity:.9; }
+
+    /* Tooltip */
+    .tip{
+      position:fixed; pointer-events:none; z-index:10;
+      background:#fff; border:1px solid var(--border); border-radius:12px;
+      padding:8px 10px; box-shadow:0 8px 18px rgba(0,0,0,0.08);
+      font-size:12px; color:#111; line-height:1.35; max-width:280px;
+      opacity:0; transform:translateY(6px);
+      transition:opacity 80ms linear, transform 80ms linear;
+    }
+    .tip.on{opacity:1; transform:translateY(0);}
+    .tip .t{color:var(--muted);font-size:11px;margin-bottom:4px;}
+
+    /* Comparison table */
+    table{border-collapse:collapse;width:100%;font-size:12px;}
+    th,td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top;}
+    th{color:#333;font-weight:800;background:#fbfbfb;}
+    .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#fff;}
+    .tag.fiber{border-color:rgba(31,119,180,.35);}
+    .tag.tmobile{border-color:rgba(221,51,51,.35);}
+  </style>
+</head>
+
+<body>
+    <div class="header">
+  <div class="titleblock">
+    <h2>Prime Observer</h2>
+    <div class="subtitle">Network Observability &amp; Experience Engine</div>
+  </div>
+
+  <div class="badges">
+    <span class="badge">Build <strong id="buildTag">v0.3</strong></span>
+    <span class="badge phase" id="phaseBadge">Phase: <strong id="phaseTag">—</strong></span>
+    <span class="badge">Last: <strong class="mono" id="lastUpdate">—</strong></span>
+  </div>
+</div>
+
+<div id="status">Loading…</div>
+
+  <div class="row">
+    <div class="card" style="min-width:240px;">
+      <h4><span>Phase</span><span class="pill" id="phasePill">—</span></h4>
+      <div><b>Current:</b> <span id="phase">—</span></div>
+      <div><b>Last sample:</b> <span id="lastTs">—</span></div>
+      <div class="small">Window: <span id="windowHours">—</span>h • Gateway: <span class="mono" id="gwLabel">—</span></div>
+    </div>
+
+    <div class="card" style="min-width:240px;">
+      <h4><span>Telemetry</span><span class="pill">live</span></h4>
+      <div class="small">Rows (window)</div>
+      <div class="value" id="rowsInWindow">—</div>
+      <div class="small" style="margin-top:6px;">Ingest (rows/min)</div>
+      <div class="value" style="font-size:18px;" id="ingestRate">—</div>
+      <div class="small">Last refresh: <span id="lastRefresh">—</span></div>
+    </div>
+
+    <div class="card" style="min-width:520px;flex:1;">
+      <h4><span>Provider comparison (WAN targets aggregated)</span><span class="small">last 24h</span></h4>
+      <div class="small" style="margin-bottom:8px;">
+        This view is deliberately simple: compare <b>WAN experience</b> by upstream provider, while also watching how <b>LAN/Wi‑Fi</b> shifts when you swap upstream.
+      </div>
+      <div id="compareWrap"></div>
+    </div>
+  </div>
+
+  <div class="section-title">
+    <h3>WAN “bad moments” heatmap (by provider)</h3>
+    <div class="legend">15‑minute buckets • darker = more bad moments • hover for details</div>
+  </div>
+  <svg id="heatmap" width="1100" height="180"></svg>
+
+  <div class="section-title">
+    <h3>WAN (Internet) — p95 latency (ms)</h3>
+    <div class="legend">FIBER = solid • TMOBILE = dashed</div>
+  </div>
+  <svg id="wan" width="1100" height="300"></svg>
+
+  <div class="section-title">
+    <h3>LAN (Gateway) — p95 latency (ms)</h3>
+    <div class="legend">Same colors as provider (LAN samples are tagged with phase_label)</div>
+  </div>
+  <svg id="lan" width="1100" height="250"></svg>
+
+  <div class="small" style="margin-top:10px;">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
+
+  <div id="tip" class="tip" role="tooltip" aria-hidden="true"></div>
+
+  <script src="./d3.min.js"></script>
+  <script>
+    const REFRESH_MS = 5000;
+    const WINDOW_HOURS = 24;
+    const HEAT_BIN_MINUTES = 15;
+
+    // Environment
+    const CSV_URL = "./latest.csv";
+    const GATEWAY_HOST = "192.168.1.1";
+
+    // WAN targets you actually care about (from you): 1.1.1.1 and 9.9.9.9
+    const WAN_HOSTS = new Set(["1.1.1.1","9.9.9.9"]);
+
+    // "Bad" thresholds (WAN focused)
+    // NOTE: these are heuristics for *experience*, not performance benchmarking.
+    const WAN_BAD = { p95: 80, jitter: 15, loss: 0.0 };
+
+    // UI
+    const tip = document.getElementById("tip");
+    function tipShow(html, x, y){
+      tip.innerHTML = html;
+      const pad = 12;
+      const w = tip.offsetWidth || 240;
+      const h = tip.offsetHeight || 80;
+      let left = x + 14;
+      let top = y + 14;
+      if (left + w + pad > window.innerWidth) left = x - w - 14;
+      if (top + h + pad > window.innerHeight) top = y - h - 14;
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+      tip.classList.add("on");
+      tip.setAttribute("aria-hidden","false");
+    }
+    function tipHide(){
+      tip.classList.remove("on");
+      tip.setAttribute("aria-hidden","true");
+    }
+
+    function parseFloatSafe(x, fallback=null) {
+      const v = Number.parseFloat(x);
+      return Number.isFinite(v) ? v : fallback;
+    }
+    function fmt1(x) { return (x==null || !Number.isFinite(x)) ? "—" : x.toFixed(1); }
+    function fmt2(x) { return (x==null || !Number.isFinite(x)) ? "—" : x.toFixed(2); }
+    function parseTs(s) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function minuteBucket(t) {
+      const ms = t.getTime();
+      return Math.floor(ms / 60000) * 60000;
+    }
+    function to12h(d){
+      return d.toLocaleString(undefined, { hour12:true, year:"numeric", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit" });
+    }
+
+    function isGateway(host){ return host === GATEWAY_HOST; }
+    function isWanTarget(host){ return WAN_HOSTS.has(host); }
+
+    function isWanBadRow(r){
+      return (r.p95 > WAN_BAD.p95) || (r.jitter > WAN_BAD.jitter) || (r.loss > WAN_BAD.loss);
+    }
+
+    async function loadData() {
+      const res = await fetch(CSV_URL, { cache: "no-store" });
+      const text = await res.text();
+      const rows = d3.csvParse(text);
+
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - WINDOW_HOURS * 3600 * 1000);
+
+      const clean = [];
+      for (const r of rows) {
+        const t = parseTs((r.ts || "").trim());
+        if (!t) continue;
+        if (t < cutoff) continue;
+
+        const host = (r.host || "").trim();
+        const phase = ((r.phase_label || "FIBER").trim().toUpperCase());
+
+        const p95 = parseFloatSafe((r.p95_ms || "").trim(), null);
+        const jitter = parseFloatSafe((r.jitter_ms || "").trim(), 0);
+        const loss = parseFloatSafe((r.loss_pct || "").trim(), 0);
+
+        if (!host) continue;
+        if (p95 === null) continue;
+
+        // Only keep gateway + your chosen WAN targets (reduces noise + prevents "wrong host" bugs)
+        if (!isGateway(host) && !isWanTarget(host)) continue;
+
+        clean.push({ t, host, phase, p95, jitter, loss });
+      }
+
+      clean.sort((a,b)=>a.t-b.t);
+      return clean;
+    }
+
+    // Aggregate series:
+    // - WAN: for each (phase, timestamp) collapse across WAN targets to max p95 (worst target)
+    // - LAN: for each (phase, timestamp) collapse to gateway sample (max p95 if duplicates)
+    function toSeries(data){
+      const lan = new Map(); // phase|ts -> point
+      const wan = new Map(); // phase|ts -> point (max across targets)
+
+      for (const r of data){
+        const ts = r.t.getTime();
+        const key = r.phase + "|" + ts;
+
+        if (isGateway(r.host)){
+          const prev = lan.get(key);
+          if (!prev || r.p95 > prev.p95) lan.set(key, r);
+        } else {
+          const prev = wan.get(key);
+          if (!prev || r.p95 > prev.p95) wan.set(key, r);
+        }
+      }
+
+      return {
+        lanSeries: Array.from(lan.values()).sort((a,b)=>a.t-b.t),
+        wanSeries: Array.from(wan.values()).sort((a,b)=>a.t-b.t),
+      };
+    }
+
+    function updateHeader(data) {
+      const status = document.getElementById("status");
+      const phaseEl = document.getElementById("phase");
+      const pill = document.getElementById("phasePill");
+      const lastTsEl = document.getElementById("lastTs");
+      const gwLabel = document.getElementById("gwLabel");
+
+      gwLabel.textContent = GATEWAY_HOST;
+      document.getElementById("windowHours").textContent = WINDOW_HOURS;
+
+      if (!data.length) {
+        status.textContent = "Waiting for data…";
+        return;
+      }
+
+      status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
+      const last = data[data.length - 1];
+      phaseEl.textContent = last.phase;
+      pill.textContent = last.phase;
+      lastTsEl.textContent = to12h(last.t);
+    }
+
+    function computeTelemetry(data) {
+      const rowsInWindow = data.length;
+
+      const now = new Date();
+      const tenMinCut = new Date(now.getTime() - 10 * 60000);
+      const recent = data.filter(d => d.t >= tenMinCut);
+      const ingestRate = (recent.length / 10.0);
+
+      document.getElementById("rowsInWindow").textContent = rowsInWindow.toString();
+      document.getElementById("ingestRate").textContent = fmt2(ingestRate);
+      document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString(undefined, {hour12:true, hour:"numeric", minute:"2-digit", second:"2-digit"});
+    }
+
+    function quantile(arr, q){
+      if (!arr.length) return null;
+      const sorted = arr.slice().sort((a,b)=>a-b);
+      return d3.quantile(sorted, q);
+    }
+
+    function computeProviderStats(seriesArr){
+      // seriesArr is already per-point (collapsed across targets)
+      if (!seriesArr.length) return null;
+
+      const bad = seriesArr.filter(isWanBadRow).length;
+      const badRate = bad / seriesArr.length;
+
+      const p95s = seriesArr.map(d=>d.p95);
+      const jit  = seriesArr.map(d=>d.jitter);
+
+      const medianP95 = quantile(p95s, 0.50);
+      const p95ofP95  = quantile(p95s, 0.95);
+      const jitter95  = quantile(jit, 0.95);
+
+      // Convert bad rate into something humans feel: bad minutes per hour (based on 1-minute buckets)
+      const buckets = new Map(); // minute -> worst row in that minute
+      for (const d of seriesArr){
+        const b = minuteBucket(d.t);
+        const prev = buckets.get(b);
+        if (!prev || d.p95 > prev.p95) buckets.set(b, d);
+      }
+      const badMinutes = Array.from(buckets.values()).filter(isWanBadRow).length;
+      const totalMinutes = buckets.size || 1;
+      const badMinPerHour = 60 * (badMinutes / totalMinutes);
+
+      return {
+        n: seriesArr.length,
+        badRate,
+        badMinPerHour,
+        medianP95,
+        p95ofP95,
+        jitter95,
+      };
+    }
+
+    function renderComparisonTable(wanSeries){
+      const wrap = document.getElementById("compareWrap");
+      wrap.innerHTML = "";
+
+      const byPhase = d3.group(wanSeries, d=>d.phase || "FIBER");
+      const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
+
+      if (!phases.length){
+        wrap.innerHTML = "<div class='small'>No WAN data in window for configured targets.</div>";
+        return;
+      }
+
+      const rows = phases.map(p=>{
+        const stats = computeProviderStats(byPhase.get(p) || []);
+        return { phase:p, stats };
+      });
+
+      // Delta (if both present)
+      let deltaHtml = "";
+      if (rows.length === 2 && rows[0].stats && rows[1].stats){
+        const a = rows[0].phase === "FIBER" ? rows[0].stats : rows[1].stats;
+        const b = rows[0].phase === "TMOBILE" ? rows[0].stats : rows[1].stats;
+        const dp95 = (b.p95ofP95 != null && a.p95ofP95 != null) ? (b.p95ofP95 - a.p95ofP95) : null;
+        const dbad = (b.badMinPerHour != null && a.badMinPerHour != null) ? (b.badMinPerHour - a.badMinPerHour) : null;
+        deltaHtml = `
+          <div class="small" style="margin-top:10px;">
+            <b>Delta (TMOBILE − FIBER):</b>
+            p95 ≈ <span class="mono">${fmt1(dp95)}</span> ms • bad‑min/hr ≈ <span class="mono">${fmt1(dbad)}</span>
+          </div>
+        `;
+      }
+
+      const table = document.createElement("table");
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>WAN p95 (median)</th>
+            <th>WAN p95 (95th)</th>
+            <th>Jitter (95th)</th>
+            <th>Bad rate</th>
+            <th>Bad‑min/hr</th>
+            <th>Samples</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r=>{
+            const s = r.stats;
+            const cls = r.phase === "TMOBILE" ? "tmobile" : "fiber";
+            if (!s) return `<tr><td><span class="tag ${cls}">${r.phase}</span></td><td colspan="6" class="small">No data.</td></tr>`;
+            return `
+              <tr>
+                <td><span class="tag ${cls}">${r.phase}</span></td>
+                <td>${fmt1(s.medianP95)} ms</td>
+                <td>${fmt1(s.p95ofP95)} ms</td>
+                <td>${fmt1(s.jitter95)} ms</td>
+                <td>${fmt1(100*s.badRate)}%</td>
+                <td>${fmt1(s.badMinPerHour)}</td>
+                <td class="mono">${s.n}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      `;
+      wrap.appendChild(table);
+      wrap.insertAdjacentHTML("beforeend", deltaHtml);
+    }
+
+    function renderHeatmap(svgSel, wanSeries) {
+      const svg = d3.select(svgSel);
+      svg.selectAll("*").remove();
+
+      const w = +svg.attr("width");
+      const h = +svg.attr("height");
+      const pad = { l: 16, r: 16, t: 18, b: 30 };
+
+      const innerW = w - pad.l - pad.r;
+      const innerH = h - pad.t - pad.b;
+
+      const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
+
+      if (!wanSeries.length) {
+        g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No WAN data in window for configured targets.");
+        return;
+      }
+
+      const byPhase = d3.group(wanSeries, d=>d.phase || "FIBER");
+      const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
+      const rows = phases.length || 1;
+
+      const rowH = innerH / rows;
+      const binMs = HEAT_BIN_MINUTES * 60000;
+
+      // shared x domain across all phases
+      const allTimes = wanSeries.map(d=>d.t.getTime());
+      const minT = Math.min(...allTimes);
+      const maxT = Math.max(...allTimes) + binMs;
+
+      const x = d3.scaleTime()
+        .domain([new Date(minT), new Date(maxT)])
+        .range([0, innerW]);
+
+      const axis = d3.axisBottom(x)
+        .ticks(8)
+        .tickFormat(d => d.toLocaleTimeString(undefined, {hour12:true, hour:"numeric"}))
+        .tickSizeOuter(0);
+
+      function drawRow(phase, idx){
+        const series = byPhase.get(phase) || [];
+        const y0 = idx * rowH;
+
+        // bins -> bad rate
+        const bins = new Map();
+        for (const d of series) {
+          const b = Math.floor(d.t.getTime() / binMs) * binMs;
+          const prev = bins.get(b) || { bad: 0, total: 0 };
+          prev.total += 1;
+          if (isWanBadRow(d)) prev.bad += 1;
+          bins.set(b, prev);
+        }
+        const keys = Array.from(bins.keys()).sort((a,b)=>a-b);
+        const values = keys.map(k => {
+          const v = bins.get(k);
+          const rate = v.total ? (v.bad / v.total) : 0;
+          return { phase, t: new Date(k), t2: new Date(k + binMs), rate, bad:v.bad, total:v.total };
+        });
+
+        if (!values.length){
+          g.append("text").attr("x", 6).attr("y", y0 + 18).attr("fill", "#666").text(`${phase}: no data`);
+          return;
+        }
+
+        const maxRate = d3.max(values, d=>d.rate) || 1;
+        // dark == more bad, light == calm
+        const shade = d3.scaleLinear().domain([0, maxRate]).range([92, 25]);
+
+        const rectW = Math.max(1, innerW / values.length);
+
+        g.selectAll(`rect.bin-${phase}`)
+          .data(values)
+          .enter()
+          .append("rect")
+          .attr("x", d => x(d.t))
+          .attr("y", y0)
+          .attr("width", rectW)
+          .attr("height", rowH - 8)
+          .attr("fill", d => `hsl(0 0% ${shade(d.rate)}%)`)
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 0.3)
+          .on("mousemove", (ev, d) => {
+            const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+                          <div>Bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
+                          <div class="small">Bad if p95>${WAN_BAD.p95}ms or jitter>${WAN_BAD.jitter}ms or loss>0%</div>`;
+            tipShow(html, ev.clientX, ev.clientY);
+          })
+          .on("mouseleave", () => tipHide());
+
+        // row label
+        const color = phase === "TMOBILE" ? "var(--tmobile)" : "var(--fiber)";
+        g.append("text")
+          .attr("x", 0)
+          .attr("y", y0 - 4)
+          .attr("fill", "#333")
+          .attr("font-size", 12)
+          .attr("font-weight", 800)
+          .text(phase);
+
+        g.append("line")
+          .attr("x1", 0).attr("x2", innerW)
+          .attr("y1", y0 + rowH - 8).attr("y2", y0 + rowH - 8)
+          .attr("stroke", "#eee");
+      }
+
+      phases.forEach((p,i)=>drawRow(p,i));
+
+      g.append("g")
+        .attr("transform", `translate(0,${innerH})`)
+        .call(axis)
+        .selectAll("text").attr("fill","#666");
+
+      g.selectAll(".domain, .tick line").attr("stroke","#ddd");
+    }
+
+    function renderLine(svgSel, seriesArr, opts={}) {
+      const svg = d3.select(svgSel);
+      svg.selectAll("*").remove();
+
+      const w = +svg.attr("width");
+      const h = +svg.attr("height");
+      const pad = { l: 52, r: 18, t: 16, b: 34 };
+
+      const innerW = w - pad.l - pad.r;
+      const innerH = h - pad.t - pad.b;
+
+      const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
+
+      if (!seriesArr.length) {
+        g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No data in window.");
+        return;
+      }
+
+      const x = d3.scaleTime().domain(d3.extent(seriesArr, d=>d.t)).range([0, innerW]);
+      const ymin = d3.min(seriesArr, d=>d.p95);
+      const ymax = d3.max(seriesArr, d=>d.p95);
+      const spread = Math.max(5, (ymax - ymin) || 0);
+      const padY = spread * 0.2;
+      const y = d3.scaleLinear().domain([Math.max(0, ymin - padY), ymax + padY]).range([innerH, 0]);
+
+      g.append("g")
+        .attr("transform", `translate(0,${innerH})`)
+        .call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0))
+        .selectAll("text").attr("fill","#666");
+      g.append("g")
+        .call(d3.axisLeft(y).ticks(6).tickSizeOuter(0))
+        .selectAll("text").attr("fill","#666");
+      g.selectAll(".domain, .tick line").attr("stroke", "#ddd");
+
+      const byPhase = d3.group(seriesArr, d=>d.phase || "FIBER");
+      const phases = ["FIBER","TMOBILE"];
+
+      const line = d3.line()
+        .x(d=>x(d.t))
+        .y(d=>y(d.p95))
+        .curve(d3.curveMonotoneX);
+
+      for (const phase of phases){
+        const pts = byPhase.get(phase);
+        if (!pts || !pts.length) continue;
+        const stroke = (phase === "TMOBILE") ? "var(--tmobile)" : "var(--fiber)";
+        g.append("path")
+          .datum(pts)
+          .attr("fill","none")
+          .attr("stroke", stroke)
+          .attr("stroke-width", 2)
+          .attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null)
+          .attr("d", line);
+      }
+
+      // hover: nearest point across all phases
+      const allPts = seriesArr.slice().sort((a,b)=>a.t-b.t);
+      const bisect = d3.bisector(d => d.t).left;
+
+      const focus = g.append("g").style("display","none");
+      focus.append("line").attr("y1",0).attr("y2",innerH).attr("stroke","#bbb").attr("stroke-dasharray","3 4");
+      focus.append("circle").attr("r",3).attr("fill","#111").attr("opacity",0.8);
+
+      svg.append("rect")
+        .attr("transform", `translate(${pad.l},${pad.t})`)
+        .attr("width", innerW)
+        .attr("height", innerH)
+        .attr("fill","transparent")
+        .on("mousemove", (ev) => {
+          const [mx] = d3.pointer(ev, svg.node());
+          const t = x.invert(mx - pad.l);
+          const i = bisect(allPts, t, 1);
+          const a = allPts[i-1];
+          const b = allPts[i] || a;
+          const d = (b && a) ? ((b.t - t) < (t - a.t) ? b : a) : (a || b);
+          if (!d) return;
+
+          const cx = x(d.t);
+          const cy = y(d.p95);
+          focus.style("display", null);
+          focus.select("line").attr("x1",cx).attr("x2",cx);
+          focus.select("circle").attr("cx",cx).attr("cy",cy);
+
+          const label = opts.label || "p95";
+          const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+                        <div><b>${label}:</b> ${fmt1(d.p95)} ms</div>
+                        <div class="small">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>`;
+          tipShow(html, ev.clientX, ev.clientY);
+        })
+        .on("mouseleave", () => {
+          focus.style("display","none");
+          tipHide();
+        });
+    }
+
+    async function tick() {
+      try {
+        const raw = await loadData();
+        updateHeader(raw);
+        computeTelemetry(raw);
+
+        const { lanSeries, wanSeries } = toSeries(raw);
+
+        renderComparisonTable(wanSeries);
+        renderHeatmap("#heatmap", wanSeries);
+        renderLine("#wan", wanSeries, { label: "WAN p95" });
+        renderLine("#lan", lanSeries, { label: "LAN p95" });
+
+      } catch (e) {
+        console.error(e);
+        document.getElementById("status").textContent = "Error loading data (check console).";
+      }
+    }
+
+    tick();
+    setInterval(tick, REFRESH_MS);
+  </script>
+</body>
+</html>

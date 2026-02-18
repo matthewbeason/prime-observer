@@ -1,0 +1,701 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#fafafa" />
+  <title>Prime Observer</title>
+
+  <style>
+    :root{
+      --bg:#fafafa; --card:#fff; --border:#e6e6e6; --muted:#666; --ink:#111;
+      --blue:#1f77b4; --red:#d33;
+      --radius:14px;
+    }
+    body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.35;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+.container{max-width:1200px;margin:24px auto;padding:0 16px;}
+h2{margin:0;font-size:22px;letter-spacing:-0.2px;}
+    .subtitle{font-size:13px;color:var(--muted);margin:2px 0 14px;}
+#status{color:var(--muted);margin:10px 0 16px;font-size:12px;}
+    .row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;}
+    .card{background:var(--card);padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);min-width:210px;}
+    .card h4{margin:0 0 8px;font-size:13px;font-weight:750;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;}
+    .pill{font-size:11px;color:#333;background:#f2f2f2;border:1px solid var(--border);padding:2px 8px;border-radius:999px;}
+    .small{font-size:12px;color:var(--muted);line-height:1.35;}
+    .value{font-size:22px;font-weight:800;margin-top:2px;}
+    details{margin-top:8px;}
+    details summary{cursor:pointer;color:#1f6feb;font-size:12px;}
+    svg{background:#fff;border:1px solid var(--border);border-radius:var(--radius);margin-top:10px;width:100%;height:auto;display:block;}
+    .section-title{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;}
+    .section-title h3{margin:0;}
+    .legend{font-size:12px;color:var(--muted);}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
+
+    /* Blame meter */
+    .meter-wrap{margin-top:8px;}
+    .meter{height:10px;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:#f6f6f6;display:flex;}
+    .meter .wan{background:var(--blue);height:100%;transition:width 450ms ease;}
+    .meter .lan{background:var(--red);height:100%;transition:width 450ms ease;}
+    .meter-labels{display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--ink);font-weight:750;}
+    .meter-labels span{user-select:none;}
+    .help{font-size:12px;color:#1f6feb;cursor:pointer;user-select:none;margin-top:6px;display:inline-block;}
+
+    /* Tooltip */
+    .tip{
+      position:fixed; pointer-events:none; z-index:10;
+      background:#fff; border:1px solid var(--border); border-radius:12px;
+      padding:8px 10px; box-shadow:0 8px 18px rgba(0,0,0,0.08);
+      font-size:12px; color:#111; line-height:1.35; max-width:260px;
+      opacity:0; transform:translateY(6px);
+      transition:opacity 80ms linear, transform 80ms linear;
+    }
+    .tip.on{opacity:1; transform:translateY(0);}
+    .tip .t{color:var(--muted);font-size:11px;margin-bottom:4px;}
+    .tip .k{font-weight:750;}
+  
+.muted{color:var(--muted);} .spacer{flex:1;}
+</style>
+</head>
+
+<body>
+  <div class="container">
+  <h2>Prime Observer</h2>
+  <div class="subtitle">Network Observability &amp; Experience Engine</div>
+  <div id="status">Loading…</div>
+
+  <div class="row">
+    <div class="card" style="min-width:220px;">
+      <h4><span>Phase</span><span class="pill" id="phasePill">—</span></h4>
+      <div><b>Phase:</b> <span id="phase">—</span></div>
+      <div><b>Last sample:</b> <span id="lastTs">—</span></div>
+      <div class="small">Window: <span id="windowHours">—</span>h</div>
+    </div>
+
+    <div class="card" style="min-width:220px;">
+      <h4><span>Telemetry</span><span class="pill">live</span></h4>
+      <div class="small">Rows (window)</div>
+      <div class="value" id="rowsInWindow">—</div>
+      <div class="small" style="margin-top:6px;">Ingest (rows/min)</div>
+      <div class="value" style="font-size:18px;" id="ingestRate">—</div>
+      <div class="small">Last refresh: <span id="lastRefresh">—</span></div>
+    </div>
+
+    <div class="card" style="min-width:320px;">
+      <h4><span>LAN ↔ WAN Correlation</span><span class="small">last 24h</span></h4>
+      <div class="value"><span id="corrVal">—</span></div>
+      <div class="small" id="corrBlurb">—</div>
+      <details>
+        <summary>How to read this</summary>
+        <div class="small" style="margin-top:6px;">
+          Pearson r in [-1, +1], computed on 1‑minute buckets using <b>LAN p95</b> vs <b>WAN p95</b> (max across WAN targets).
+          <ul style="margin:6px 0 0 18px; padding:0;">
+            <li><b>High positive</b> (e.g., +0.6): LAN spikes often coincide with WAN spikes → Wi‑Fi/LAN likely contributes.</li>
+            <li><b>Near zero</b>: mostly independent → WAN issues not explained by LAN spikes.</li>
+            <li><b>Negative</b>: uncommon; often timing/aliasing.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+
+    <div class="card" style="min-width:320px;">
+      <h4><span>Blame Meter</span><span class="pill">LAN vs WAN</span></h4>
+      <div class="value" id="blameTitle">—</div>
+      <div class="small" id="blameBlurb">—</div>
+      <div class="meter-wrap">
+        <div class="meter" aria-label="Blame split">
+          <div class="wan" id="blameWan" style="width:50%"></div>
+          <div class="lan" id="blameLan" style="width:50%"></div>
+        </div>
+        <div class="meter-labels"><span>WAN</span><span>LAN</span></div>
+      </div>
+      <details>
+        <summary>How this is computed</summary>
+        <div class="small" style="margin-top:6px;">
+          This is a <b>hint</b>, not a verdict. It blends:
+          <ul style="margin:6px 0 0 18px; padding:0;">
+            <li><b>LAN bad‑rate</b> vs <b>WAN bad‑rate</b> (using their respective thresholds)</li>
+            <li><b>LAN↔WAN correlation</b> (higher means “spikes travel together”)</li>
+          </ul>
+          If WAN is bad while LAN is fine, blame skews WAN. If LAN spikes strongly correlate with WAN spikes, blame shifts LAN.
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="section-title">
+    <h3>Spike Heatmap</h3>
+    <div class="legend">15‑minute buckets • lighter = more “bad moments” • hover for time</div>
+  </div>
+  <svg id="heatmap" width="1100" height="140"></svg>
+
+  <div class="section-title">
+    <h3>LAN (Gateway) — p95 latency (ms)</h3>
+    <div class="legend">Host: <span class="mono" id="gwLabel">—</span></div>
+  </div>
+  <svg id="lan" width="1100" height="250"></svg>
+
+  <div class="section-title">
+    <h3>WAN (Internet) — p95 latency (ms)</h3>
+    <div class="legend">Solid = FIBER • Dashed = TMOBILE (when present)</div>
+  </div>
+  <svg id="wan" width="1100" height="300"></svg>
+
+  <div class="small" style="margin-top:10px;">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
+
+
+  <div class="footer">
+    <div><b>Prime Observer</b> <span class="muted">• Network Observability</span></div>
+    <div class="spacer"></div>
+    <div class="mono">Build <span id="buildTagFooter">v0.3</span> • Phase <span id="phaseTagFooter">—</span> • Last <span id="lastUpdateFooter">—</span></div>
+  </div>
+
+
+  <div id="tip" class="tip" role="tooltip" aria-hidden="true"></div>
+
+  <script src="./d3.min.js"></script>
+  <script>
+    const REFRESH_MS = 5000;
+    const WINDOW_HOURS = 24;
+    const HEAT_BIN_MINUTES = 15;
+
+    // Your environment
+    const CSV_URL = "./latest.csv";
+    const GATEWAY_HOST = "192.168.1.1";
+
+    // Thresholds (used for “bad moments” + stability)
+    const LAN_BAD = { p95: 30, jitter: 8, loss: 0.0 };   // LAN/Wi‑Fi is “bad” quicker
+    const WAN_BAD = { p95: 80, jitter: 15, loss: 0.0 };  // WAN tolerates more
+    // Selected heatmap bucket (click) for chart linking
+    let selectedBin = null;
+    // Cache of last loaded rows so interactions don't require re-fetch
+    let lastData = null;
+
+
+    // --------- tiny utils ----------
+    const tip = document.getElementById("tip");
+    function tipShow(html, x, y){
+      tip.innerHTML = html;
+      const pad = 12;
+      const w = tip.offsetWidth || 220;
+      const h = tip.offsetHeight || 80;
+      let left = x + 14;
+      let top = y + 14;
+      if (left + w + pad > window.innerWidth) left = x - w - 14;
+      if (top + h + pad > window.innerHeight) top = y - h - 14;
+      tip.style.left = left + "px";
+      tip.style.top = top + "px";
+      tip.classList.add("on");
+      tip.setAttribute("aria-hidden","false");
+    }
+    function tipHide(){
+      tip.classList.remove("on");
+      tip.setAttribute("aria-hidden","true");
+    }
+
+    function parseFloatSafe(x, fallback=null) {
+      const v = Number.parseFloat(x);
+      return Number.isFinite(v) ? v : fallback;
+    }
+    function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+    function fmt1(x) { return (x==null || !Number.isFinite(x)) ? "—" : x.toFixed(1); }
+    function fmt2(x) { return (x==null || !Number.isFinite(x)) ? "—" : x.toFixed(2); }
+    function to12h(d){
+      return d.toLocaleString(undefined, { hour12:true, year:"numeric", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit", second:undefined });
+    }
+    function parseTs(s) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function minuteBucket(t) {
+      const ms = t.getTime();
+      return Math.floor(ms / 60000) * 60000;
+    }
+    function isLanHost(host){ return host === GATEWAY_HOST; }
+    function isWanHost(host){ return host !== GATEWAY_HOST; }
+
+    function isBadRow(row){
+      const th = isLanHost(row.host) ? LAN_BAD : WAN_BAD;
+      return (row.p95 > th.p95) || (row.jitter > th.jitter) || (row.loss > th.loss);
+    }
+
+    function scoreToGrade(s){
+      if (s == null) return "—";
+      if (s >= 90) return "A";
+      if (s >= 80) return "B";
+      if (s >= 70) return "C";
+      if (s >= 60) return "D";
+      return "F";
+    }
+
+    async function loadData() {
+      const res = await fetch(CSV_URL, { cache: "no-store" });
+      const text = await res.text();
+      const rows = d3.csvParse(text);
+
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - WINDOW_HOURS * 3600 * 1000);
+
+      const clean = [];
+      for (const r of rows) {
+        const t = parseTs((r.ts || "").trim());
+        if (!t) continue;
+        if (t < cutoff) continue;
+
+        const host = (r.host || "").trim();
+        const phase = ((r.phase_label || "FIBER").trim().toUpperCase());
+
+        const p95 = parseFloatSafe((r.p95_ms || "").trim(), null);
+        const jitter = parseFloatSafe((r.jitter_ms || "").trim(), 0);
+        const loss = parseFloatSafe((r.loss_pct || "").trim(), 0);
+
+        if (!host) continue;
+        if (p95 === null) continue;
+
+        clean.push({ t, host, phase, p95, jitter, loss });
+      }
+
+      clean.sort((a,b)=>a.t-b.t);
+      return clean;
+    }
+
+    // Aggregate: collapse multiple WAN targets per timestamp into a single series point (max p95).
+    function toSeries(data){
+      // Key by phase + timestamp for WAN; LAN is host+timestamp.
+      const lan = new Map(); // ts -> point
+      const wan = new Map(); // phase|ts -> point (max across targets)
+
+      for (const r of data){
+        const ts = r.t.getTime();
+        if (isLanHost(r.host)){
+          const prev = lan.get(ts);
+          if (!prev || r.p95 > prev.p95) lan.set(ts, r);
+        } else {
+          const key = r.phase + "|" + ts;
+          const prev = wan.get(key);
+          if (!prev || r.p95 > prev.p95) wan.set(key, r);
+        }
+      }
+
+      const lanSeries = Array.from(lan.values()).sort((a,b)=>a.t-b.t);
+      const wanSeries = Array.from(wan.values()).sort((a,b)=>a.t-b.t);
+
+      return { lanSeries, wanSeries };
+    }
+    // mirror header badges into footer (cosmetic)
+    function syncFooterBadges(){
+      const bf = document.getElementById("buildTagFooter");
+      const pf = document.getElementById("phaseTagFooter");
+      const lf = document.getElementById("lastUpdateFooter");
+
+      const phasePill = document.getElementById("phasePill");
+      const lastTs = document.getElementById("lastTs");
+
+      if (bf) bf.textContent = (bf.textContent || "Build v0.3");
+      if (pf) pf.textContent = (phasePill && phasePill.textContent.trim()) ? phasePill.textContent.trim() : "—";
+
+      if (lf) {
+        const t = (lastTs && lastTs.textContent) ? lastTs.textContent : "";
+        lf.textContent = t.replace(/^Last\s+sample:\s*/i, "").trim() || "—";
+      }
+    }
+
+    function updateHeader(data) {
+      const status = document.getElementById("status");
+      const phaseEl = document.getElementById("phase");
+      const pill = document.getElementById("phasePill");
+      const lastTsEl = document.getElementById("lastTs");
+      const gwLabel = document.getElementById("gwLabel");
+
+      gwLabel.textContent = GATEWAY_HOST;
+      document.getElementById("windowHours").textContent = WINDOW_HOURS;
+
+      if (!data.length) {
+        status.textContent = "Waiting for data…";
+        return;
+      }
+
+      status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
+      const last = data[data.length - 1];
+      phaseEl.textContent = last.phase;
+      pill.textContent = last.phase;
+      lastTsEl.textContent = to12h(last.t);
+    }
+
+    function computeTelemetry(data) {
+      const rowsInWindow = data.length;
+
+      // Ingest rate: estimate rows/min from last 10 minutes
+      const now = new Date();
+      const tenMinCut = new Date(now.getTime() - 10 * 60000);
+      const recent = data.filter(d => d.t >= tenMinCut);
+      const ingestRate = (recent.length / 10.0);
+
+      document.getElementById("rowsInWindow").textContent = rowsInWindow.toString();
+      document.getElementById("ingestRate").textContent = fmt2(ingestRate);
+      document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString(undefined, {hour12:true, hour:"numeric", minute:"2-digit", second:"2-digit"});
+    }
+
+    // Correlation between LAN p95 and WAN p95 in 1-minute buckets
+    function computeLanWanCorrelation(series) {
+      const lan = series.lanSeries;
+      const wan = series.wanSeries;
+      if (!lan.length || !wan.length) return { r: null, n: 0 };
+
+      const lanMap = new Map();
+      for (const d of lan) {
+        const b = minuteBucket(d.t);
+        const prev = lanMap.get(b);
+        lanMap.set(b, prev == null ? d.p95 : Math.max(prev, d.p95));
+      }
+
+      const wanMap = new Map();
+      for (const d of wan) {
+        const b = minuteBucket(d.t);
+        const prev = wanMap.get(b);
+        wanMap.set(b, prev == null ? d.p95 : Math.max(prev, d.p95));
+      }
+
+      const xs = [];
+      const ys = [];
+      for (const [b, lp] of lanMap.entries()) {
+        const wp = wanMap.get(b);
+        if (wp == null) continue;
+        xs.push(lp);
+        ys.push(wp);
+      }
+
+      const n = xs.length;
+      if (n < 5) return { r: null, n };
+
+      const mean = arr => arr.reduce((a,c)=>a+c,0)/arr.length;
+      const mx = mean(xs), my = mean(ys);
+      let num = 0, dx = 0, dy = 0;
+      for (let i=0;i<n;i++) {
+        const a = xs[i]-mx;
+        const b = ys[i]-my;
+        num += a*b;
+        dx += a*a;
+        dy += b*b;
+      }
+      const den = Math.sqrt(dx*dy);
+      const r = den === 0 ? 0 : (num/den);
+      return { r, n };
+    }
+
+    function updateCorrelationCard(series) {
+      const { r, n } = computeLanWanCorrelation(series);
+      const corrEl = document.getElementById("corrVal");
+      const blurb = document.getElementById("corrBlurb");
+
+      if (r == null) {
+        corrEl.textContent = "—";
+        blurb.textContent = (n < 5) ? "Not enough aligned LAN/WAN samples yet." : "Correlation not available.";
+        return { r:null, n };
+      }
+
+      corrEl.textContent = fmt2(r);
+      const ar = Math.abs(r);
+
+      if (ar >= 0.6) {
+        blurb.textContent = (r > 0)
+          ? `High coupling (${n} min‑buckets). LAN spikes often coincide with WAN spikes → Wi‑Fi/LAN likely contributes.`
+          : `Strong negative (${n} min‑buckets). Unusual; may indicate sampling/timing artifacts.`;
+      } else if (ar >= 0.3) {
+        blurb.textContent = `Moderate coupling (${n} min‑buckets). Some shared spikiness between LAN and WAN.`;
+      } else {
+        blurb.textContent = `Low coupling (${n} min‑buckets). WAN behavior mostly independent of LAN spikes.`;
+      }
+      return { r, n };
+    }
+
+    function badRateFor(seriesArr, kind){
+      if (!seriesArr.length) return 0;
+      const th = (kind === "LAN") ? LAN_BAD : WAN_BAD;
+      const bad = seriesArr.filter(d => (d.p95 > th.p95) || (d.jitter > th.jitter) || (d.loss > th.loss)).length;
+      return bad / seriesArr.length;
+    }
+
+    function updateBlameMeter(series, corr){
+      const lanBad = badRateFor(series.lanSeries, "LAN");
+      const wanBad = badRateFor(series.wanSeries, "WAN");
+      const r = corr?.r;
+
+      // Heuristic: start from relative bad-rate; then shift toward LAN when correlation is strong.
+      let lanShare = 0.5;
+      if ((lanBad + wanBad) > 0){
+        lanShare = lanBad / (lanBad + wanBad);
+      }
+      if (r != null){
+        // Strong coupling pushes blame toward LAN; weak coupling pushes toward WAN.
+        const coupling = clamp((r - 0.2) / 0.6, 0, 1); // r≈0.2 => 0, r≈0.8 => 1
+        // If coupling high, blend toward lanBad share; if low, blend toward WAN (invert).
+        lanShare = (0.6 * lanShare) + (0.4 * coupling);
+      }
+      lanShare = clamp(lanShare, 0, 1);
+      const wanShare = 1 - lanShare;
+
+      document.getElementById("blameWan").style.width = (wanShare * 100).toFixed(1) + "%";
+      document.getElementById("blameLan").style.width = (lanShare * 100).toFixed(1) + "%";
+
+      const title = lanShare > 0.7 ? "Mostly LAN" : (lanShare < 0.3 ? "Mostly WAN (ISP)" : "Mixed");
+      document.getElementById("blameTitle").textContent = title;
+
+      const blurb = `LAN bad‑rate ${(lanBad*100).toFixed(1)}% • WAN bad‑rate ${(wanBad*100).toFixed(1)}%` +
+        (r==null ? "" : ` • corr ${fmt2(r)}`) +
+        ` → blame ≈ ${(wanShare*100).toFixed(0)}% WAN / ${(lanShare*100).toFixed(0)}% LAN`;
+      document.getElementById("blameBlurb").textContent = blurb;
+    }
+
+    function renderHeatmap(svgSel, wanSeries) {
+      const svg = d3.select(svgSel);
+      svg.selectAll("*").remove();
+
+      const w = +svg.attr("width");
+      const h = +svg.attr("height");
+      const pad = { l: 16, r: 16, t: 16, b: 30 };
+
+      const innerW = w - pad.l - pad.r;
+      const innerH = h - pad.t - pad.b;
+
+      const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
+
+      if (!wanSeries.length) {
+        g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No WAN data in window.");
+        return;
+      }
+
+      const binMs = HEAT_BIN_MINUTES * 60000;
+      const bins = new Map();
+      for (const d of wanSeries) {
+        const b = Math.floor(d.t.getTime() / binMs) * binMs;
+        const prev = bins.get(b) || { bad: 0, total: 0 };
+        prev.total += 1;
+        if ((d.p95 > WAN_BAD.p95) || (d.jitter > WAN_BAD.jitter) || (d.loss > WAN_BAD.loss)) prev.bad += 1;
+        bins.set(b, prev);
+      }
+
+      const keys = Array.from(bins.keys()).sort((a,b)=>a-b);
+      const values = keys.map(k => {
+        const v = bins.get(k);
+        const rate = v.total ? (v.bad / v.total) : 0;
+        return { t: new Date(k), t2: new Date(k + binMs), rate, bad:v.bad, total:v.total };
+      });
+
+      const x = d3.scaleTime()
+        .domain([new Date(keys[0]), new Date(keys[keys.length - 1] + binMs)])
+        .range([0, innerW]);
+
+      const maxRate = d3.max(values, d=>d.rate) || 1;
+      const shade = d3.scaleLinear().domain([0, maxRate]).range([85, 20]); // light calmer
+
+      const rectW = Math.max(1, innerW / values.length);
+
+      g.selectAll("rect.bin")
+        .data(values)
+        .enter()
+        .append("rect")
+        .attr("class","bin")
+        .attr("x", d => x(d.t))
+        .attr("y", 0)
+        .attr("width", rectW)
+        .attr("height", innerH)
+        .attr("fill", d => `hsl(0 0% ${shade(d.rate)}%)`)
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 0.3)
+        .on("mousemove", (ev, d) => {
+          const html = `<div class="t">${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+                        <div><span class="k">Bad rate:</span> ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>`;
+          tipShow(html, ev.clientX, ev.clientY);
+        })
+        .on("click", (ev, d) => {
+          // Toggle selection
+          if (selectedBin && selectedBin.start.getTime() === d.t.getTime()) {
+            selectedBin = null;
+          } else {
+            selectedBin = { start: d.t, end: d.t2 };
+          }
+
+          // Re-render linked charts without re-fetch
+          if (lastData) {
+            const series = toSeries(lastData);
+            renderLine("#lan", series.lanSeries, { label:"LAN p95", selectedBin });
+            renderLine("#wan", series.wanSeries, { label:"WAN p95", phases:["FIBER","TMOBILE"], selectedBin });
+            const msg = selectedBin
+              ? `Selected heatmap bin: ${selectedBin.start.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${selectedBin.end.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}`
+              : `Selection cleared.`;
+            document.getElementById("status").textContent = msg;
+          }
+        })
+
+        .on("mouseleave", () => tipHide());
+
+      // Border
+      g.append("rect")
+        .attr("x", 0).attr("y", 0)
+        .attr("width", innerW).attr("height", innerH)
+        .attr("fill", "none")
+        .attr("stroke", "#e6e6e6")
+        .attr("rx", 12).attr("ry", 12);
+
+      // X axis (12-hour)
+      const axis = d3.axisBottom(x)
+        .ticks(8)
+        .tickFormat(d => d.toLocaleTimeString(undefined, {hour12:true, hour:"numeric"}))
+        .tickSizeOuter(0);
+
+      g.append("g")
+        .attr("transform", `translate(0,${innerH})`)
+        .call(axis)
+        .selectAll("text").attr("fill","#666");
+
+      g.selectAll(".domain, .tick line").attr("stroke","#ddd");
+    }
+
+    function renderLine(svgSel, seriesArr, opts={}) {
+      const svg = d3.select(svgSel);
+      svg.selectAll("*").remove();
+
+      const w = +svg.attr("width");
+      const h = +svg.attr("height");
+      const pad = { l: 52, r: 18, t: 16, b: 34 };
+
+      const innerW = w - pad.l - pad.r;
+      const innerH = h - pad.t - pad.b;
+
+      const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
+
+      if (!seriesArr.length) {
+        g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No data in window.");
+        return;
+      }
+
+      const x = d3.scaleTime().domain(d3.extent(seriesArr, d=>d.t)).range([0, innerW]);
+      const ymin = d3.min(seriesArr, d=>d.p95);
+      const ymax = d3.max(seriesArr, d=>d.p95);
+      const spread = Math.max(5, (ymax - ymin) || 0);
+      const padY = spread * 0.2;
+      const y = d3.scaleLinear().domain([Math.max(0, ymin - padY), ymax + padY]).range([innerH, 0]);
+
+
+      // Selection band (linked from heatmap click)
+      if (opts.selectedBin) {
+        const s = opts.selectedBin.start;
+        const e = opts.selectedBin.end;
+        const x0 = x(s), x1 = x(e);
+        if (Number.isFinite(x0) && Number.isFinite(x1) && x1 >= 0 && x0 <= innerW) {
+          g.append("rect")
+            .attr("x", Math.max(0, Math.min(innerW, x0)))
+            .attr("y", 0)
+            .attr("width", Math.max(0, Math.min(innerW, x1) - Math.max(0, Math.min(innerW, x0))))
+            .attr("height", innerH)
+            .attr("fill", "rgba(0,0,0,0.04)");
+        }
+      }
+
+      const inSel = (d) => {
+        if (!opts.selectedBin) return false;
+        const t = d.t.getTime();
+        return t >= opts.selectedBin.start.getTime() && t < opts.selectedBin.end.getTime();
+      };
+
+      g.append("g")
+        .attr("transform", `translate(0,${innerH})`)
+        .call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0))
+        .selectAll("text").attr("fill","#666");
+      g.append("g")
+        .call(d3.axisLeft(y).ticks(6).tickSizeOuter(0))
+        .selectAll("text").attr("fill","#666");
+      g.selectAll(".domain, .tick line").attr("stroke", "#ddd");
+
+      // For WAN, we may have multiple phases; for LAN it's single.
+      const byPhase = d3.group(seriesArr, d=>d.phase || "FIBER");
+      const phases = opts.phases || ["FIBER","TMOBILE"];
+
+      const line = d3.line()
+        .x(d=>x(d.t))
+        .y(d=>y(d.p95))
+        .curve(d3.curveMonotoneX);
+
+      for (const phase of phases){
+        const pts = byPhase.get(phase);
+        if (!pts || !pts.length) continue;
+        const stroke = (phase === "TMOBILE") ? "#d33" : "#1f77b4";
+        g.append("path")
+          .datum(pts)
+          .attr("fill","none")
+          .attr("stroke", stroke)
+          .attr("stroke-width", 2)
+          .attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null)
+          .attr("d", line);
+      }
+
+      // Hover interaction: nearest point (all phases)
+      const allPts = seriesArr.slice().sort((a,b)=>a.t-b.t);
+      const bisect = d3.bisector(d => d.t).left;
+
+      const focus = g.append("g").style("display","none");
+      focus.append("line").attr("y1",0).attr("y2",innerH).attr("stroke","#bbb").attr("stroke-dasharray","3 4");
+      focus.append("circle").attr("r",3).attr("fill","#111").attr("opacity",0.8);
+
+      svg.append("rect")
+        .attr("transform", `translate(${pad.l},${pad.t})`)
+        .attr("width", innerW)
+        .attr("height", innerH)
+        .attr("fill","transparent")
+        .on("mousemove", (ev) => {
+          const [mx] = d3.pointer(ev, svg.node());
+          const t = x.invert(mx - pad.l);
+          const i = bisect(allPts, t, 1);
+          const a = allPts[i-1];
+          const b = allPts[i] || a;
+          const d = (b.t - t) < (t - a.t) ? b : a;
+          if (!d) return;
+
+          const cx = x(d.t);
+          const cy = y(d.p95);
+          focus.style("display", null);
+          focus.select("line").attr("x1",cx).attr("x2",cx);
+          focus.select("circle").attr("cx",cx).attr("cy",cy);
+
+          const label = opts.label || "p95";
+          const html = `<div class="t">${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+                        <div><span class="k">${label}:</span> ${fmt1(d.p95)} ms</div>`;
+          tipShow(html, ev.clientX, ev.clientY);
+        })
+        .on("mouseleave", () => {
+          focus.style("display","none");
+          tipHide();
+        });
+    }
+
+    async function tick() {
+      try {
+        const raw = await loadData();
+        lastData = raw;
+
+        updateHeader(raw);
+        computeTelemetry(raw);
+
+        const series = toSeries(raw);
+
+            const corr = updateCorrelationCard(series);
+        updateBlameMeter(series, corr);
+
+        renderHeatmap("#heatmap", series.wanSeries);
+
+        // Linked selection (from heatmap click)
+        renderLine("#lan", series.lanSeries, { label: "LAN p95", selectedBin });
+        renderLine("#wan", series.wanSeries, { label: "WAN p95", phases:["FIBER","TMOBILE"], selectedBin });
+
+      } catch (e) {
+        console.error(e);
+        document.getElementById("status").textContent = "Error loading data (check console).";
+      }
+    }
+
+    tick();
+    setInterval(tick, REFRESH_MS);
+  </script>
+  </div>
+</body>
+</html>

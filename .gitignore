@@ -1,0 +1,18 @@
+# Data
+data/
+viz/latest.csv
+*.csv
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Python / runtime
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+secrets.json
