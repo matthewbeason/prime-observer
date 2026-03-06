@@ -3,7 +3,7 @@ from pathlib import Path
 import csv
 import datetime as dt
 
-BASE = Path("/Users/mbeason/net-bakeoff")
+BASE = Path("/Users/mbeason/prime-observer")
 DATA_DIR = BASE / "data"
 VIZ_DIR  = BASE / "viz"
 OUT      = VIZ_DIR / "latest.csv"

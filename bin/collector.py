@@ -15,7 +15,7 @@ TRACEROUTE_EVERY_MIN = 15
 SPEEDTEST_EVERY_MIN = 30
 MAX_HOPS = 20
 
-BASE = Path("/Users/mbeason/net-bakeoff")
+BASE = Path("/Users/mbeason/prime-observer")
 OUTDIR = BASE / "data"
 PHASE_FILE = BASE / "phase.txt"
 

@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-BASE="/Users/mbeason/net-bakeoff"
+BASE="/Users/mbeason/prime-observer"
 PHASE_FILE="$BASE/phase.txt"
 
 PHASE="UNKNOWN"
