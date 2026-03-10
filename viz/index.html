@@ -101,9 +101,7 @@
   </div>
 
   <div class="badges">
-    <span class="badge">Build <strong id="buildTag">v0.3</strong></span>
-    <span class="badge phase" id="phaseBadge">Phase: <strong id="phaseTag">—</strong></span>
-    <span class="badge">Last: <strong class="mono" id="lastUpdate">—</strong></span>
+    <span class="badge">Build <strong id="buildTag">v0.3.1</strong></span>
   </div>
 </div>
 
@@ -123,7 +121,16 @@
       <div class="value" id="rowsInWindow">—</div>
       <div class="small" style="margin-top:6px;">Ingest (rows/min)</div>
       <div class="value" style="font-size:18px;" id="ingestRate">—</div>
+      <div class="small" style="margin-top:6px;">WAN spike streak</div>
+      <div class="value" style="font-size:18px;" id="wanSpikeStreak">—</div>
       <div class="small">Last refresh: <span id="lastRefresh">—</span></div>
+    </div>
+
+    <div class="card" style="min-width:240px;">
+      <h4><span>User Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
+      <div class="value" id="noticeScore">—</div>
+      <div><b>State:</b> <span id="noticeLabel">—</span></div>
+      <div class="small">Conservative signal based mostly on sustained WAN latency, not spiky “bad moments”.</div>
     </div>
 
     <div class="card" style="min-width:520px;flex:1;">
@@ -313,6 +320,89 @@
       document.getElementById("rowsInWindow").textContent = rowsInWindow.toString();
       document.getElementById("ingestRate").textContent = fmt2(ingestRate);
       document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString(undefined, {hour12:true, hour:"numeric", minute:"2-digit", second:"2-digit"});
+    }
+
+    function computeSpikeStreak(wanSeries){
+      const el = document.getElementById("wanSpikeStreak");
+      if (!el) return;
+      if (!wanSeries.length){
+        el.textContent = "—";
+        return;
+      }
+
+      const THRESHOLD = 120; // ms
+      const SAMPLE_INTERVAL_MIN = 2; // approximate collector cadence
+
+      let streak = 0;
+      for (let i = wanSeries.length - 1; i >= 0; i--) {
+        if ((wanSeries[i].p95 ?? 0) > THRESHOLD) streak++;
+        else break;
+      }
+
+      if (streak === 0) {
+        el.textContent = "0";
+        return;
+      }
+
+      const minutes = streak * SAMPLE_INTERVAL_MIN;
+      el.textContent = `${streak} samples (~${minutes} min)`;
+    }
+
+    function computeUserNoticeability(wanSeries){
+      const scoreEl = document.getElementById("noticeScore");
+      const labelEl = document.getElementById("noticeLabel");
+
+      if (!scoreEl || !labelEl) return;
+      if (!wanSeries.length) {
+        scoreEl.textContent = "—";
+        labelEl.textContent = "No data";
+        return;
+      }
+
+      const now = new Date();
+      const recentCut = new Date(now.getTime() - 15 * 60000);
+      const recent = wanSeries.filter(d => d.t >= recentCut);
+
+      if (!recent.length) {
+        scoreEl.textContent = "—";
+        labelEl.textContent = "No recent WAN data";
+        return;
+      }
+
+      const p95s = recent.map(d => d.p95).filter(Number.isFinite);
+      const medianP95 = quantile(p95s, 0.50) ?? 0;
+      const p95ofP95 = quantile(p95s, 0.95) ?? 0;
+
+      const elevated = recent.filter(d => d.p95 > 120).length;
+      const severe = recent.filter(d => d.p95 > 180).length;
+      const elevatedFrac = recent.length ? (elevated / recent.length) : 0;
+
+      let consecutiveElevated = 0;
+      for (let i = recent.length - 1; i >= 0; i--) {
+        if ((recent[i].p95 ?? 0) > 120) consecutiveElevated++;
+        else break;
+      }
+
+      let penalty = 0;
+
+      if (medianP95 > 80)  penalty += Math.min(10, (medianP95 - 80) * 0.25);
+      if (medianP95 > 120) penalty += Math.min(20, (medianP95 - 120) * 0.20);
+
+      if (p95ofP95 > 180) penalty += Math.min(15, (p95ofP95 - 180) * 0.08);
+
+      penalty += elevatedFrac * 25;
+      penalty += Math.min(20, consecutiveElevated * 5);
+      penalty += Math.min(10, severe * 2);
+
+      const score = Math.max(0, Math.min(100, Math.round(100 - penalty)));
+
+      let label = "Probably masked";
+      if (score < 60) label = "Likely noticeable";
+      else if (score < 75) label = "Possibly noticeable";
+      else if (score < 90) label = "Low risk";
+
+      scoreEl.textContent = String(score);
+      labelEl.textContent = label;
     }
 
     function quantile(arr, q){
@@ -642,6 +732,8 @@
 
         const { lanSeries, wanSeries } = toSeries(raw);
 
+        computeSpikeStreak(wanSeries);
+        computeUserNoticeability(wanSeries);
         renderComparisonTable(wanSeries);
         renderHeatmap("#heatmap", wanSeries);
         renderLine("#wan", wanSeries, { label: "WAN p95" });
