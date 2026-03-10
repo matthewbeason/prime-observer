@@ -101,7 +101,7 @@
   </div>
 
   <div class="badges">
-    <span class="badge">Build <strong id="buildTag">v0.3.1</strong></span>
+    <span class="badge">Build <strong id="buildTag">v0.3.2</strong></span>
   </div>
 </div>
 
@@ -130,6 +130,7 @@
       <h4><span>User Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
       <div class="value" id="noticeScore">—</div>
       <div><b>State:</b> <span id="noticeLabel">—</span></div>
+      <div><b>Forecast:</b> <span id="noticeForecast">—</span></div>
       <div class="small">Conservative signal based mostly on sustained WAN latency, not spiky “bad moments”.</div>
     </div>
 
@@ -409,6 +410,74 @@
       if (!arr.length) return null;
       const sorted = arr.slice().sort((a,b)=>a-b);
       return d3.quantile(sorted, q);
+    }
+
+
+    function computeNoticeabilityForecast(wanSeries){
+      const el = document.getElementById("noticeForecast");
+      if (!el) return;
+      if (!wanSeries.length){
+        el.textContent = "No data";
+        return;
+      }
+
+      const now = new Date();
+      const recentCut = new Date(now.getTime() - 15 * 60000);
+      const priorCut = new Date(now.getTime() - 30 * 60000);
+
+      const recent = wanSeries.filter(d => d.t >= recentCut);
+      const prior = wanSeries.filter(d => d.t >= priorCut && d.t < recentCut);
+
+      if (!recent.length){
+        el.textContent = "No recent WAN data";
+        return;
+      }
+
+      const recentP95s = recent.map(d => d.p95).filter(Number.isFinite);
+      const priorP95s = prior.map(d => d.p95).filter(Number.isFinite);
+
+      const recentMedian = quantile(recentP95s, 0.50) ?? 0;
+      const priorMedian = priorP95s.length ? (quantile(priorP95s, 0.50) ?? 0) : recentMedian;
+
+      const elevatedRecent = recent.filter(d => (d.p95 ?? 0) > 120).length;
+      const elevatedPrior = prior.filter(d => (d.p95 ?? 0) > 120).length;
+
+      let currentStreak = 0;
+      for (let i = recent.length - 1; i >= 0; i--) {
+        if ((recent[i].p95 ?? 0) > 120) currentStreak++;
+        else break;
+      }
+
+      let priorEndStreak = 0;
+      for (let i = prior.length - 1; i >= 0; i--) {
+        if ((prior[i].p95 ?? 0) > 120) priorEndStreak++;
+        else break;
+      }
+
+      const medianDelta = recentMedian - priorMedian;
+      const elevatedDensity = recent.length ? (elevatedRecent / recent.length) : 0;
+      const densityRising = elevatedRecent > elevatedPrior;
+      const streakGrowing = currentStreak > priorEndStreak;
+
+      let forecast = "Stable";
+
+      if (
+        currentStreak >= 4 ||
+        elevatedDensity >= 0.50 ||
+        (streakGrowing && currentStreak >= 2 && medianDelta > 20) ||
+        (densityRising && medianDelta > 25)
+      ) {
+        forecast = "Rising risk";
+      } else if (
+        currentStreak >= 2 ||
+        elevatedDensity >= 0.25 ||
+        medianDelta > 15 ||
+        densityRising
+      ) {
+        forecast = "Watch";
+      }
+
+      el.textContent = forecast;
     }
 
     function computeProviderStats(seriesArr){
