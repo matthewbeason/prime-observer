@@ -803,6 +803,7 @@
 
         computeSpikeStreak(wanSeries);
         computeUserNoticeability(wanSeries);
+        computeNoticeabilityForecast(wanSeries);
         renderComparisonTable(wanSeries);
         renderHeatmap("#heatmap", wanSeries);
         renderLine("#wan", wanSeries, { label: "WAN p95" });
