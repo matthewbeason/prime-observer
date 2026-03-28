@@ -101,7 +101,7 @@
   </div>
 
   <div class="badges">
-    <span class="badge">Build <strong id="buildTag">v0.3.2</strong></span>
+    <span class="badge">Build <strong id="buildTag">v0.3.7</strong></span>
   </div>
 </div>
 
@@ -131,7 +131,8 @@
       <div class="value" id="noticeScore">—</div>
       <div><b>State:</b> <span id="noticeLabel">—</span></div>
       <div><b>Forecast:</b> <span id="noticeForecast">—</span></div>
-      <div class="small">Conservative signal based mostly on sustained WAN latency, not spiky “bad moments”.</div>
+      <div class="small" id="noticeWhy">Why: —</div>
+      <div class="small">Forecast uses the same sustained “bad moment” logic shown in the heatmap.</div>
     </div>
 
     <div class="card" style="min-width:520px;flex:1;">
@@ -151,7 +152,7 @@
 
   <div class="section-title">
     <h3>WAN (Internet) — p95 latency (ms)</h3>
-    <div class="legend">FIBER = solid • TMOBILE = dashed</div>
+    <div class="legend">FIBER = solid • TMOBILE = dashed • gray bands = sustained bad buckets • amber ticks = isolated raw spikes</div>
   </div>
   <svg id="wan" width="1100" height="300"></svg>
 
@@ -180,7 +181,8 @@
 
     // "Bad" thresholds (WAN focused)
     // NOTE: these are heuristics for *experience*, not performance benchmarking.
-    const WAN_BAD = { p95: 80, jitter: 15, loss: 0.0 };
+    const WAN_BAD = { p95: 140, jitter: 50, loss: 1.0 };
+    const WAN_BAD_PERSISTENCE = 2;
 
     // UI
     const tip = document.getElementById("tip");
@@ -226,6 +228,15 @@
 
     function isWanBadRow(r){
       return (r.p95 > WAN_BAD.p95) || (r.jitter > WAN_BAD.jitter) || (r.loss > WAN_BAD.loss);
+    }
+
+    function markPersistentWanBad(series, minStreak = WAN_BAD_PERSISTENCE){
+      let streak = 0;
+      return series.map(r => {
+        const rawBad = isWanBadRow(r);
+        streak = rawBad ? streak + 1 : 0;
+        return { ...r, rawBad, isBad: streak >= minStreak };
+      });
     }
 
     async function loadData() {
@@ -349,25 +360,41 @@
       el.textContent = `${streak} samples (~${minutes} min)`;
     }
 
-    function computeUserNoticeability(wanSeries){
+    function computeUserNoticeability(summary){
       const scoreEl = document.getElementById("noticeScore");
       const labelEl = document.getElementById("noticeLabel");
 
       if (!scoreEl || !labelEl) return;
-      if (!wanSeries.length) {
+      if (!summary || summary.score == null) {
         scoreEl.textContent = "—";
-        labelEl.textContent = "No data";
+        labelEl.textContent = summary?.label || "No data";
         return;
       }
 
+      scoreEl.textContent = String(summary.score);
+      labelEl.textContent = summary.label;
+    }
+
+    function quantile(arr, q){
+      if (!arr.length) return null;
+      const sorted = arr.slice().sort((a,b)=>a-b);
+      return d3.quantile(sorted, q);
+    }
+
+    function getNoticeabilitySummary(wanSeries){
+      if (!wanSeries.length) {
+        return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
+      }
+
       const now = new Date();
-      const recentCut = new Date(now.getTime() - 15 * 60000);
-      const recent = wanSeries.filter(d => d.t >= recentCut);
+      const scoreCut = new Date(now.getTime() - 15 * 60000);
+      const forecastCut = new Date(now.getTime() - 60 * 60000);
+
+      const recent = wanSeries.filter(d => d.t >= scoreCut);
+      const recentHour = wanSeries.filter(d => d.t >= forecastCut);
 
       if (!recent.length) {
-        scoreEl.textContent = "—";
-        labelEl.textContent = "No recent WAN data";
-        return;
+        return { score: null, label: "No recent WAN data", forecast: "No recent WAN data", why: "No WAN samples in the last 15 minutes." };
       }
 
       const p95s = recent.map(d => d.p95).filter(Number.isFinite);
@@ -385,12 +412,9 @@
       }
 
       let penalty = 0;
-
       if (medianP95 > 80)  penalty += Math.min(10, (medianP95 - 80) * 0.25);
       if (medianP95 > 120) penalty += Math.min(20, (medianP95 - 120) * 0.20);
-
       if (p95ofP95 > 180) penalty += Math.min(15, (p95ofP95 - 180) * 0.08);
-
       penalty += elevatedFrac * 25;
       penalty += Math.min(20, consecutiveElevated * 5);
       penalty += Math.min(10, severe * 2);
@@ -402,89 +426,61 @@
       else if (score < 75) label = "Possibly noticeable";
       else if (score < 90) label = "Low risk";
 
-      scoreEl.textContent = String(score);
-      labelEl.textContent = label;
-    }
+      const badCount60 = recentHour.filter(d => d.isBad).length;
+      const total60 = recentHour.length;
+      const recentBadRate = total60 ? (badCount60 / total60) : 0;
+      const recentBadPct = total60 ? Math.round(recentBadRate * 100) : 0;
 
-    function quantile(arr, q){
-      if (!arr.length) return null;
-      const sorted = arr.slice().sort((a,b)=>a-b);
-      return d3.quantile(sorted, q);
-    }
-
-
-    function computeNoticeabilityForecast(wanSeries){
-      const el = document.getElementById("noticeForecast");
-      if (!el) return;
-      if (!wanSeries.length){
-        el.textContent = "No data";
-        return;
-      }
-
-      const now = new Date();
-      const recentCut = new Date(now.getTime() - 15 * 60000);
-      const priorCut = new Date(now.getTime() - 30 * 60000);
-
-      const recent = wanSeries.filter(d => d.t >= recentCut);
-      const prior = wanSeries.filter(d => d.t >= priorCut && d.t < recentCut);
-
-      if (!recent.length){
-        el.textContent = "No recent WAN data";
-        return;
-      }
-
-      const recentP95s = recent.map(d => d.p95).filter(Number.isFinite);
-      const priorP95s = prior.map(d => d.p95).filter(Number.isFinite);
-
-      const recentMedian = quantile(recentP95s, 0.50) ?? 0;
-      const priorMedian = priorP95s.length ? (quantile(priorP95s, 0.50) ?? 0) : recentMedian;
-
-      const elevatedRecent = recent.filter(d => (d.p95 ?? 0) > 120).length;
-      const elevatedPrior = prior.filter(d => (d.p95 ?? 0) > 120).length;
-
-      let currentStreak = 0;
-      for (let i = recent.length - 1; i >= 0; i--) {
-        if ((recent[i].p95 ?? 0) > 120) currentStreak++;
+      let wanSpikeStreak = 0;
+      for (let i = wanSeries.length - 1; i >= 0; i--) {
+        if ((wanSeries[i].p95 ?? 0) > 120) wanSpikeStreak++;
         else break;
       }
 
-      let priorEndStreak = 0;
-      for (let i = prior.length - 1; i >= 0; i--) {
-        if ((prior[i].p95 ?? 0) > 120) priorEndStreak++;
-        else break;
-      }
-
-      const medianDelta = recentMedian - priorMedian;
-      const elevatedDensity = recent.length ? (elevatedRecent / recent.length) : 0;
-      const densityRising = elevatedRecent > elevatedPrior;
-      const streakGrowing = currentStreak > priorEndStreak;
+      const recentJitter95 = recentHour.length ? (quantile(recentHour.map(d => d.jitter).filter(Number.isFinite), 0.95) ?? 0) : 0;
+      const recentMedian60 = recentHour.length ? (quantile(recentHour.map(d => d.p95).filter(Number.isFinite), 0.50) ?? 0) : 0;
 
       let forecast = "Stable";
+      if (recentBadRate >= 0.20 || wanSpikeStreak >= 3) forecast = "Risk";
+      else if (recentBadRate > 0 || wanSpikeStreak >= 1) forecast = "Watch";
 
-      if (
-        currentStreak >= 4 ||
-        elevatedDensity >= 0.50 ||
-        (streakGrowing && currentStreak >= 2 && medianDelta > 20) ||
-        (densityRising && medianDelta > 25)
-      ) {
-        forecast = "Rising risk";
-      } else if (
-        currentStreak >= 2 ||
-        elevatedDensity >= 0.25 ||
-        medianDelta > 15 ||
-        densityRising
-      ) {
-        forecast = "Watch";
+      let why = `Stable because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) and no sustained WAN spike streak.`;
+      if (forecast === "Watch") {
+        why = `Watch because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a short WAN spike streak of ${wanSpikeStreak}.`;
+      } else if (forecast === "Risk") {
+        why = `Risk because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a sustained WAN spike streak of ${wanSpikeStreak}.`;
       }
 
-      el.textContent = forecast;
+      return {
+        score,
+        label,
+        forecast,
+        why,
+        metrics: { badCount60, total60, recentBadRate, recentBadPct, wanSpikeStreak, recentJitter95, recentMedian60 }
+      };
+    }
+
+
+    function computeNoticeabilityForecast(summary){
+      const el = document.getElementById("noticeForecast");
+      const whyEl = document.getElementById("noticeWhy");
+      if (!el) return;
+
+      if (!summary){
+        el.textContent = "No data";
+        if (whyEl) whyEl.textContent = "Why: No WAN data.";
+        return;
+      }
+
+      el.textContent = summary.forecast || "No data";
+      if (whyEl) whyEl.textContent = "Why: " + (summary.why || "—");
     }
 
     function computeProviderStats(seriesArr){
       // seriesArr is already per-point (collapsed across targets)
       if (!seriesArr.length) return null;
 
-      const bad = seriesArr.filter(isWanBadRow).length;
+      const bad = seriesArr.filter(d => d.isBad).length;
       const badRate = bad / seriesArr.length;
 
       const p95s = seriesArr.map(d=>d.p95);
@@ -501,7 +497,7 @@
         const prev = buckets.get(b);
         if (!prev || d.p95 > prev.p95) buckets.set(b, d);
       }
-      const badMinutes = Array.from(buckets.values()).filter(isWanBadRow).length;
+      const badMinutes = Array.from(buckets.values()).filter(d => d.isBad).length;
       const totalMinutes = buckets.size || 1;
       const badMinPerHour = 60 * (badMinutes / totalMinutes);
 
@@ -632,7 +628,7 @@
           const b = Math.floor(d.t.getTime() / binMs) * binMs;
           const prev = bins.get(b) || { bad: 0, total: 0 };
           prev.total += 1;
-          if (isWanBadRow(d)) prev.bad += 1;
+          if (d.isBad) prev.bad += 1;
           bins.set(b, prev);
         }
         const keys = Array.from(bins.keys()).sort((a,b)=>a-b);
@@ -667,7 +663,7 @@
           .on("mousemove", (ev, d) => {
             const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                           <div>Bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
-                          <div class="small">Bad if p95>${WAN_BAD.p95}ms or jitter>${WAN_BAD.jitter}ms or loss>0%</div>`;
+                          <div class="small">Bad if p95>${WAN_BAD.p95}ms or jitter>${WAN_BAD.jitter}ms or loss>${WAN_BAD.loss}%</div>`;
             tipShow(html, ev.clientX, ev.clientY);
           })
           .on("mouseleave", () => tipHide());
@@ -698,6 +694,40 @@
       g.selectAll(".domain, .tick line").attr("stroke","#ddd");
     }
 
+
+    function computeBadBuckets(wanSeries){
+      const binMs = HEAT_BIN_MINUTES * 60000;
+      const buckets = new Map();
+      for (const d of wanSeries){
+        const b = Math.floor(d.t.getTime() / binMs) * binMs;
+        const prev = buckets.get(b) || { bad: 0, total: 0 };
+        prev.total += 1;
+        if (d.isBad) prev.bad += 1;
+        buckets.set(b, prev);
+      }
+
+      const now = new Date();
+      const recentCut = new Date(now.getTime() - 60 * 60000);
+
+      return Array.from(buckets.entries())
+        .map(([k, v]) => ({
+          t1: new Date(Number(k)),
+          t2: new Date(Number(k) + binMs),
+          bad: v.bad,
+          total: v.total,
+          rate: v.total ? (v.bad / v.total) : 0,
+          recent: (new Date(Number(k) + binMs)) >= recentCut
+        }))
+        .filter(d => d.bad > 0)
+        .sort((a,b)=>a.t1-b.t1);
+    }
+
+    function computeRawSpikeMarkers(wanSeries){
+      return wanSeries
+        .filter(d => d.rawBad && !d.isBad)
+        .map(d => ({ ...d }));
+    }
+
     function renderLine(svgSel, seriesArr, opts={}) {
       const svg = d3.select(svgSel);
       svg.selectAll("*").remove();
@@ -722,6 +752,20 @@
       const spread = Math.max(5, (ymax - ymin) || 0);
       const padY = spread * 0.2;
       const y = d3.scaleLinear().domain([Math.max(0, ymin - padY), ymax + padY]).range([innerH, 0]);
+
+      if (opts.badBuckets && opts.badBuckets.length){
+        g.selectAll(".bad-band")
+          .data(opts.badBuckets)
+          .enter()
+          .append("rect")
+          .attr("class", "bad-band")
+          .attr("x", d => x(d.t1))
+          .attr("y", 0)
+          .attr("width", d => Math.max(2, x(d.t2) - x(d.t1)))
+          .attr("height", innerH)
+          .attr("fill", d => d.recent ? "rgba(0,0,0,0.16)" : "rgba(0,0,0,0.10)")
+          .attr("pointer-events", "none");
+      }
 
       g.append("g")
         .attr("transform", `translate(0,${innerH})`)
@@ -751,6 +795,33 @@
           .attr("stroke-width", 2)
           .attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null)
           .attr("d", line);
+      }
+
+      if (opts.rawSpikeMarkers && opts.rawSpikeMarkers.length){
+        g.selectAll(".raw-spike-marker")
+          .data(opts.rawSpikeMarkers)
+          .enter()
+          .append("line")
+          .attr("class", "raw-spike-marker")
+          .attr("x1", d => x(d.t))
+          .attr("x2", d => x(d.t))
+          .attr("y1", d => Math.max(0, y(d.p95) - 16))
+          .attr("y2", d => Math.min(innerH, y(d.p95) + 16))
+          .attr("stroke", "rgba(214, 144, 0, 0.95)")
+          .attr("stroke-width", 3)
+          .attr("stroke-linecap", "round")
+          .attr("pointer-events", "none");
+
+        g.selectAll(".raw-spike-dot")
+          .data(opts.rawSpikeMarkers)
+          .enter()
+          .append("circle")
+          .attr("class", "raw-spike-dot")
+          .attr("cx", d => x(d.t))
+          .attr("cy", d => y(d.p95))
+          .attr("r", 2.5)
+          .attr("fill", "rgba(214, 144, 0, 0.95)")
+          .attr("pointer-events", "none");
       }
 
       // hover: nearest point across all phases
@@ -800,13 +871,17 @@
         computeTelemetry(raw);
 
         const { lanSeries, wanSeries } = toSeries(raw);
+        const wanSeriesMarked = markPersistentWanBad(wanSeries);
+        const noticeSummary = getNoticeabilitySummary(wanSeriesMarked);
+        const badBuckets = computeBadBuckets(wanSeriesMarked);
+        const rawSpikeMarkers = computeRawSpikeMarkers(wanSeriesMarked);
 
-        computeSpikeStreak(wanSeries);
-        computeUserNoticeability(wanSeries);
-        computeNoticeabilityForecast(wanSeries);
-        renderComparisonTable(wanSeries);
-        renderHeatmap("#heatmap", wanSeries);
-        renderLine("#wan", wanSeries, { label: "WAN p95" });
+        computeSpikeStreak(wanSeriesMarked);
+        computeUserNoticeability(noticeSummary);
+        computeNoticeabilityForecast(noticeSummary);
+        renderComparisonTable(wanSeriesMarked);
+        renderHeatmap("#heatmap", wanSeriesMarked);
+        renderLine("#wan", wanSeriesMarked, { label: "WAN p95", badBuckets, rawSpikeMarkers });
         renderLine("#lan", lanSeries, { label: "LAN p95" });
 
       } catch (e) {
