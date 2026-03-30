@@ -24,66 +24,29 @@
     .section-title{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;}
     .section-title h3{margin:0;}
     .legend{font-size:12px;color:var(--muted);}
-    .subtitle{
-      font-size:13px;
-      color:#8aa0b3;
-      margin-top:-6px;
-      margin-bottom:14px;
-      letter-spacing:0.35px;
-     }
-    .header {
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:16px;
-  flex-wrap:wrap;
-  margin-bottom:6px;
-}
+    .subtitle{font-size:13px;color:#8aa0b3;margin-top:-6px;margin-bottom:14px;letter-spacing:0.35px;}
+    .header {display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px;}
+    .titleblock { display:flex; flex-direction:column; gap:4px; }
+    .subtitle { font-size:13px; color:var(--muted); margin:0; }
+    .badges { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .badge {
+      font-size:11px;color:#222;background:#f2f2f2;border:1px solid var(--border);
+      padding:3px 9px;border-radius:999px;white-space:nowrap;
+    }
+    .badge strong { font-weight:800; }
+    #status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
 
-.titleblock { display:flex; flex-direction:column; gap:4px; }
-.subtitle { font-size:13px; color:var(--muted); margin:0; }
-
-.badges { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.badge {
-  font-size:11px;
-  color:#222;
-  background:#f2f2f2;
-  border:1px solid var(--border);
-  padding:3px 9px;
-  border-radius:999px;
-  white-space:nowrap;
-}
-.badge strong { font-weight:800; }
-
-.badge.phase.fiber { border-color: rgba(31,119,180,.35); background: rgba(31,119,180,.08); }
-.badge.phase.tmobile { border-color: rgba(221,51,51,.35); background: rgba(221,51,51,.08); }
-
-#status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
-
-.footer {
-  margin-top:18px;
-  font-size:11px;
-  color:var(--muted);
-  display:flex;
-  justify-content:space-between;
-  gap:10px;
-  flex-wrap:wrap;
-}
-.footer .mono { opacity:.9; }
-
-    /* Tooltip */
     .tip{
       position:fixed; pointer-events:none; z-index:10;
       background:#fff; border:1px solid var(--border); border-radius:12px;
       padding:8px 10px; box-shadow:0 8px 18px rgba(0,0,0,0.08);
-      font-size:12px; color:#111; line-height:1.35; max-width:280px;
+      font-size:12px; color:#111; line-height:1.35; max-width:300px;
       opacity:0; transform:translateY(6px);
       transition:opacity 80ms linear, transform 80ms linear;
     }
     .tip.on{opacity:1; transform:translateY(0);}
     .tip .t{color:var(--muted);font-size:11px;margin-bottom:4px;}
 
-    /* Comparison table */
     table{border-collapse:collapse;width:100%;font-size:12px;}
     th,td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top;}
     th{color:#333;font-weight:800;background:#fbfbfb;}
@@ -94,18 +57,17 @@
 </head>
 
 <body>
-    <div class="header">
-  <div class="titleblock">
-    <h2>Prime Observer</h2>
-    <div class="subtitle">Network Observability &amp; Experience Engine</div>
+  <div class="header">
+    <div class="titleblock">
+      <h2>Prime Observer</h2>
+      <div class="subtitle">Network Observability &amp; Experience Engine</div>
+    </div>
+    <div class="badges">
+      <span class="badge">Build <strong id="buildTag">v0.3.10</strong></span>
+    </div>
   </div>
 
-  <div class="badges">
-    <span class="badge">Build <strong id="buildTag">v0.3.7</strong></span>
-  </div>
-</div>
-
-<div id="status">Loading…</div>
+  <div id="status">Loading…</div>
 
   <div class="row">
     <div class="card" style="min-width:240px;">
@@ -146,13 +108,13 @@
 
   <div class="section-title">
     <h3>WAN “bad moments” heatmap (by provider)</h3>
-    <div class="legend">15‑minute buckets • darker = more bad moments • hover for details</div>
+    <div class="legend">15‑minute buckets • dark gray = sustained • amber = turbulence • click a bucket to inspect that interval on the WAN chart</div>
   </div>
   <svg id="heatmap" width="1100" height="180"></svg>
 
   <div class="section-title">
     <h3>WAN (Internet) — p95 latency (ms)</h3>
-    <div class="legend">FIBER = solid • TMOBILE = dashed • gray bands = sustained bad buckets • amber ticks = isolated raw spikes</div>
+    <div class="legend">FIBER = solid • TMOBILE = dashed • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
   </div>
   <svg id="wan" width="1100" height="300"></svg>
 
@@ -163,7 +125,6 @@
   <svg id="lan" width="1100" height="250"></svg>
 
   <div class="small" style="margin-top:10px;">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
-
   <div id="tip" class="tip" role="tooltip" aria-hidden="true"></div>
 
   <script src="./d3.min.js"></script>
@@ -171,28 +132,43 @@
     const REFRESH_MS = 5000;
     const WINDOW_HOURS = 24;
     const HEAT_BIN_MINUTES = 15;
-
-    // Environment
     const CSV_URL = "./latest.csv";
     const GATEWAY_HOST = "192.168.1.1";
-
-    // WAN targets you actually care about (from you): 1.1.1.1 and 9.9.9.9
     const WAN_HOSTS = new Set(["1.1.1.1","9.9.9.9"]);
-
-    // "Bad" thresholds (WAN focused)
-    // NOTE: these are heuristics for *experience*, not performance benchmarking.
     const WAN_BAD = { p95: 140, jitter: 50, loss: 1.0 };
     const WAN_BAD_PERSISTENCE = 2;
+    const TURBULENCE_MIN_RAW_BAD = 4;
 
-    // UI
+    let selectedBucketKey = null;
+    let currentVizState = null;
+
+    function bucketKey(d){
+      const phase = d.phase || "FIBER";
+      const t = d.t instanceof Date ? d.t.getTime() : new Date(d.t).getTime();
+      return `${phase}|${t}`;
+    }
+
+    function rerenderFromState(){
+      if (!currentVizState) return;
+      renderHeatmap("#heatmap", currentVizState.wanSeriesMarked);
+      renderLine("#wan", currentVizState.wanSeriesMarked, {
+        label: "WAN p95",
+        badBuckets: currentVizState.badBuckets,
+        turbulenceBuckets: currentVizState.turbulenceBuckets,
+        rawSpikeMarkers: currentVizState.rawSpikeMarkers,
+        selectedBucket: currentVizState.selectedBucket
+      });
+      renderLine("#lan", currentVizState.lanSeries, { label: "LAN p95" });
+    }
+
     const tip = document.getElementById("tip");
     function tipShow(html, x, y){
       tip.innerHTML = html;
-      const pad = 12;
-      const w = tip.offsetWidth || 240;
-      const h = tip.offsetHeight || 80;
       let left = x + 14;
       let top = y + 14;
+      const w = tip.offsetWidth || 240;
+      const h = tip.offsetHeight || 80;
+      const pad = 12;
       if (left + w + pad > window.innerWidth) left = x - w - 14;
       if (top + h + pad > window.innerHeight) top = y - h - 14;
       tip.style.left = left + "px";
@@ -243,47 +219,34 @@
       const res = await fetch(CSV_URL, { cache: "no-store" });
       const text = await res.text();
       const rows = d3.csvParse(text);
-
       const now = new Date();
       const cutoff = new Date(now.getTime() - WINDOW_HOURS * 3600 * 1000);
 
       const clean = [];
       for (const r of rows) {
         const t = parseTs((r.ts || "").trim());
-        if (!t) continue;
-        if (t < cutoff) continue;
+        if (!t || t < cutoff) continue;
 
         const host = (r.host || "").trim();
         const phase = ((r.phase_label || "FIBER").trim().toUpperCase());
-
         const p95 = parseFloatSafe((r.p95_ms || "").trim(), null);
         const jitter = parseFloatSafe((r.jitter_ms || "").trim(), 0);
         const loss = parseFloatSafe((r.loss_pct || "").trim(), 0);
 
-        if (!host) continue;
-        if (p95 === null) continue;
-
-        // Only keep gateway + your chosen WAN targets (reduces noise + prevents "wrong host" bugs)
+        if (!host || p95 === null) continue;
         if (!isGateway(host) && !isWanTarget(host)) continue;
-
         clean.push({ t, host, phase, p95, jitter, loss });
       }
-
       clean.sort((a,b)=>a.t-b.t);
       return clean;
     }
 
-    // Aggregate series:
-    // - WAN: for each (phase, timestamp) collapse across WAN targets to max p95 (worst target)
-    // - LAN: for each (phase, timestamp) collapse to gateway sample (max p95 if duplicates)
     function toSeries(data){
-      const lan = new Map(); // phase|ts -> point
-      const wan = new Map(); // phase|ts -> point (max across targets)
-
+      const lan = new Map();
+      const wan = new Map();
       for (const r of data){
         const ts = r.t.getTime();
         const key = r.phase + "|" + ts;
-
         if (isGateway(r.host)){
           const prev = lan.get(key);
           if (!prev || r.p95 > prev.p95) lan.set(key, r);
@@ -292,7 +255,6 @@
           if (!prev || r.p95 > prev.p95) wan.set(key, r);
         }
       }
-
       return {
         lanSeries: Array.from(lan.values()).sort((a,b)=>a.t-b.t),
         wanSeries: Array.from(wan.values()).sort((a,b)=>a.t-b.t),
@@ -301,76 +263,49 @@
 
     function updateHeader(data) {
       const status = document.getElementById("status");
-      const phaseEl = document.getElementById("phase");
-      const pill = document.getElementById("phasePill");
-      const lastTsEl = document.getElementById("lastTs");
-      const gwLabel = document.getElementById("gwLabel");
-
-      gwLabel.textContent = GATEWAY_HOST;
+      document.getElementById("gwLabel").textContent = GATEWAY_HOST;
       document.getElementById("windowHours").textContent = WINDOW_HOURS;
-
       if (!data.length) {
         status.textContent = "Waiting for data…";
         return;
       }
-
       status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
       const last = data[data.length - 1];
-      phaseEl.textContent = last.phase;
-      pill.textContent = last.phase;
-      lastTsEl.textContent = to12h(last.t);
+      document.getElementById("phase").textContent = last.phase;
+      document.getElementById("phasePill").textContent = last.phase;
+      document.getElementById("lastTs").textContent = to12h(last.t);
     }
 
     function computeTelemetry(data) {
-      const rowsInWindow = data.length;
-
+      document.getElementById("rowsInWindow").textContent = data.length.toString();
       const now = new Date();
       const tenMinCut = new Date(now.getTime() - 10 * 60000);
       const recent = data.filter(d => d.t >= tenMinCut);
-      const ingestRate = (recent.length / 10.0);
-
-      document.getElementById("rowsInWindow").textContent = rowsInWindow.toString();
-      document.getElementById("ingestRate").textContent = fmt2(ingestRate);
+      document.getElementById("ingestRate").textContent = fmt2(recent.length / 10.0);
       document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString(undefined, {hour12:true, hour:"numeric", minute:"2-digit", second:"2-digit"});
     }
 
     function computeSpikeStreak(wanSeries){
       const el = document.getElementById("wanSpikeStreak");
-      if (!el) return;
-      if (!wanSeries.length){
-        el.textContent = "—";
-        return;
-      }
-
-      const THRESHOLD = 120; // ms
-      const SAMPLE_INTERVAL_MIN = 2; // approximate collector cadence
-
+      if (!wanSeries.length){ el.textContent = "—"; return; }
+      const THRESHOLD = 120;
+      const SAMPLE_INTERVAL_MIN = 2;
       let streak = 0;
       for (let i = wanSeries.length - 1; i >= 0; i--) {
         if ((wanSeries[i].p95 ?? 0) > THRESHOLD) streak++;
         else break;
       }
-
-      if (streak === 0) {
-        el.textContent = "0";
-        return;
-      }
-
-      const minutes = streak * SAMPLE_INTERVAL_MIN;
-      el.textContent = `${streak} samples (~${minutes} min)`;
+      el.textContent = streak === 0 ? "0" : `${streak} samples (~${streak * SAMPLE_INTERVAL_MIN} min)`;
     }
 
     function computeUserNoticeability(summary){
       const scoreEl = document.getElementById("noticeScore");
       const labelEl = document.getElementById("noticeLabel");
-
-      if (!scoreEl || !labelEl) return;
       if (!summary || summary.score == null) {
         scoreEl.textContent = "—";
         labelEl.textContent = summary?.label || "No data";
         return;
       }
-
       scoreEl.textContent = String(summary.score);
       labelEl.textContent = summary.label;
     }
@@ -382,29 +317,20 @@
     }
 
     function getNoticeabilitySummary(wanSeries){
-      if (!wanSeries.length) {
-        return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
-      }
-
+      if (!wanSeries.length) return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
       const now = new Date();
       const scoreCut = new Date(now.getTime() - 15 * 60000);
       const forecastCut = new Date(now.getTime() - 60 * 60000);
-
       const recent = wanSeries.filter(d => d.t >= scoreCut);
       const recentHour = wanSeries.filter(d => d.t >= forecastCut);
-
-      if (!recent.length) {
-        return { score: null, label: "No recent WAN data", forecast: "No recent WAN data", why: "No WAN samples in the last 15 minutes." };
-      }
+      if (!recent.length) return { score: null, label: "No recent WAN data", forecast: "No recent WAN data", why: "No WAN samples in the last 15 minutes." };
 
       const p95s = recent.map(d => d.p95).filter(Number.isFinite);
       const medianP95 = quantile(p95s, 0.50) ?? 0;
       const p95ofP95 = quantile(p95s, 0.95) ?? 0;
-
       const elevated = recent.filter(d => d.p95 > 120).length;
       const severe = recent.filter(d => d.p95 > 180).length;
       const elevatedFrac = recent.length ? (elevated / recent.length) : 0;
-
       let consecutiveElevated = 0;
       for (let i = recent.length - 1; i >= 0; i--) {
         if ((recent[i].p95 ?? 0) > 120) consecutiveElevated++;
@@ -418,7 +344,6 @@
       penalty += elevatedFrac * 25;
       penalty += Math.min(20, consecutiveElevated * 5);
       penalty += Math.min(10, severe * 2);
-
       const score = Math.max(0, Math.min(100, Math.round(100 - penalty)));
 
       let label = "Probably masked";
@@ -437,61 +362,40 @@
         else break;
       }
 
-      const recentJitter95 = recentHour.length ? (quantile(recentHour.map(d => d.jitter).filter(Number.isFinite), 0.95) ?? 0) : 0;
-      const recentMedian60 = recentHour.length ? (quantile(recentHour.map(d => d.p95).filter(Number.isFinite), 0.50) ?? 0) : 0;
-
       let forecast = "Stable";
       if (recentBadRate >= 0.20 || wanSpikeStreak >= 3) forecast = "Risk";
       else if (recentBadRate > 0 || wanSpikeStreak >= 1) forecast = "Watch";
 
       let why = `Stable because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) and no sustained WAN spike streak.`;
-      if (forecast === "Watch") {
-        why = `Watch because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a short WAN spike streak of ${wanSpikeStreak}.`;
-      } else if (forecast === "Risk") {
-        why = `Risk because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a sustained WAN spike streak of ${wanSpikeStreak}.`;
-      }
+      if (forecast === "Watch") why = `Watch because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a short WAN spike streak of ${wanSpikeStreak}.`;
+      else if (forecast === "Risk") why = `Risk because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a sustained WAN spike streak of ${wanSpikeStreak}.`;
 
-      return {
-        score,
-        label,
-        forecast,
-        why,
-        metrics: { badCount60, total60, recentBadRate, recentBadPct, wanSpikeStreak, recentJitter95, recentMedian60 }
-      };
+      return { score, label, forecast, why };
     }
-
 
     function computeNoticeabilityForecast(summary){
       const el = document.getElementById("noticeForecast");
       const whyEl = document.getElementById("noticeWhy");
-      if (!el) return;
-
       if (!summary){
         el.textContent = "No data";
-        if (whyEl) whyEl.textContent = "Why: No WAN data.";
+        whyEl.textContent = "Why: No WAN data.";
         return;
       }
-
       el.textContent = summary.forecast || "No data";
-      if (whyEl) whyEl.textContent = "Why: " + (summary.why || "—");
+      whyEl.textContent = "Why: " + (summary.why || "—");
     }
 
     function computeProviderStats(seriesArr){
-      // seriesArr is already per-point (collapsed across targets)
       if (!seriesArr.length) return null;
-
       const bad = seriesArr.filter(d => d.isBad).length;
       const badRate = bad / seriesArr.length;
-
       const p95s = seriesArr.map(d=>d.p95);
       const jit  = seriesArr.map(d=>d.jitter);
-
       const medianP95 = quantile(p95s, 0.50);
       const p95ofP95  = quantile(p95s, 0.95);
       const jitter95  = quantile(jit, 0.95);
 
-      // Convert bad rate into something humans feel: bad minutes per hour (based on 1-minute buckets)
-      const buckets = new Map(); // minute -> worst row in that minute
+      const buckets = new Map();
       for (const d of seriesArr){
         const b = minuteBucket(d.t);
         const prev = buckets.get(b);
@@ -500,60 +404,24 @@
       const badMinutes = Array.from(buckets.values()).filter(d => d.isBad).length;
       const totalMinutes = buckets.size || 1;
       const badMinPerHour = 60 * (badMinutes / totalMinutes);
-
-      return {
-        n: seriesArr.length,
-        badRate,
-        badMinPerHour,
-        medianP95,
-        p95ofP95,
-        jitter95,
-      };
+      return { n: seriesArr.length, badRate, badMinPerHour, medianP95, p95ofP95, jitter95 };
     }
 
     function renderComparisonTable(wanSeries){
       const wrap = document.getElementById("compareWrap");
       wrap.innerHTML = "";
-
       const byPhase = d3.group(wanSeries, d=>d.phase || "FIBER");
       const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
-
       if (!phases.length){
         wrap.innerHTML = "<div class='small'>No WAN data in window for configured targets.</div>";
         return;
       }
-
-      const rows = phases.map(p=>{
-        const stats = computeProviderStats(byPhase.get(p) || []);
-        return { phase:p, stats };
-      });
-
-      // Delta (if both present)
-      let deltaHtml = "";
-      if (rows.length === 2 && rows[0].stats && rows[1].stats){
-        const a = rows[0].phase === "FIBER" ? rows[0].stats : rows[1].stats;
-        const b = rows[0].phase === "TMOBILE" ? rows[0].stats : rows[1].stats;
-        const dp95 = (b.p95ofP95 != null && a.p95ofP95 != null) ? (b.p95ofP95 - a.p95ofP95) : null;
-        const dbad = (b.badMinPerHour != null && a.badMinPerHour != null) ? (b.badMinPerHour - a.badMinPerHour) : null;
-        deltaHtml = `
-          <div class="small" style="margin-top:10px;">
-            <b>Delta (TMOBILE − FIBER):</b>
-            p95 ≈ <span class="mono">${fmt1(dp95)}</span> ms • bad‑min/hr ≈ <span class="mono">${fmt1(dbad)}</span>
-          </div>
-        `;
-      }
-
+      const rows = phases.map(p => ({ phase:p, stats: computeProviderStats(byPhase.get(p) || []) }));
       const table = document.createElement("table");
       table.innerHTML = `
         <thead>
           <tr>
-            <th>Provider</th>
-            <th>WAN p95 (median)</th>
-            <th>WAN p95 (95th)</th>
-            <th>Jitter (95th)</th>
-            <th>Bad rate</th>
-            <th>Bad‑min/hr</th>
-            <th>Samples</th>
+            <th>Provider</th><th>WAN p95 (median)</th><th>WAN p95 (95th)</th><th>Jitter (95th)</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
           </tr>
         </thead>
         <tbody>
@@ -561,22 +429,53 @@
             const s = r.stats;
             const cls = r.phase === "TMOBILE" ? "tmobile" : "fiber";
             if (!s) return `<tr><td><span class="tag ${cls}">${r.phase}</span></td><td colspan="6" class="small">No data.</td></tr>`;
-            return `
-              <tr>
-                <td><span class="tag ${cls}">${r.phase}</span></td>
-                <td>${fmt1(s.medianP95)} ms</td>
-                <td>${fmt1(s.p95ofP95)} ms</td>
-                <td>${fmt1(s.jitter95)} ms</td>
-                <td>${fmt1(100*s.badRate)}%</td>
-                <td>${fmt1(s.badMinPerHour)}</td>
-                <td class="mono">${s.n}</td>
-              </tr>
-            `;
+            return `<tr><td><span class="tag ${cls}">${r.phase}</span></td><td>${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
           }).join("")}
-        </tbody>
-      `;
+        </tbody>`;
       wrap.appendChild(table);
-      wrap.insertAdjacentHTML("beforeend", deltaHtml);
+    }
+
+    function classifyBuckets(wanSeries){
+      const binMs = HEAT_BIN_MINUTES * 60000;
+      const buckets = new Map();
+
+      for (const d of wanSeries){
+        const b = Math.floor(d.t.getTime() / binMs) * binMs;
+        let obj = buckets.get(b);
+        if (!obj) obj = { phase: d.phase || "FIBER", rows: [] };
+        obj.rows.push(d);
+        buckets.set(b, obj);
+      }
+
+      const now = new Date();
+      const recentCut = new Date(now.getTime() - 60 * 60000);
+
+      return Array.from(buckets.entries()).map(([k, v]) => {
+        const rows = v.rows.sort((a,b)=>a.t-b.t);
+        const total = rows.length;
+        const bad = rows.filter(d => d.isBad).length;
+        const rawBad = rows.filter(d => d.rawBad).length;
+        let rawRun = 0, maxRawRun = 0;
+        for (const row of rows){
+          rawRun = row.rawBad ? rawRun + 1 : 0;
+          if (rawRun > maxRawRun) maxRawRun = rawRun;
+        }
+        const bucket = {
+          phase: v.phase,
+          t: new Date(Number(k)),
+          t2: new Date(Number(k) + binMs),
+          total, bad, rawBad,
+          rate: total ? bad / total : 0,
+          rawRate: total ? rawBad / total : 0,
+          maxRawRun,
+          isBadBucket: bad > 0,
+          isTurbulence: bad === 0 && rawBad >= TURBULENCE_MIN_RAW_BAD && maxRawRun < WAN_BAD_PERSISTENCE,
+          recent: (new Date(Number(k) + binMs)) >= recentCut
+        };
+        bucket.key = bucketKey(bucket);
+        bucket.selected = selectedBucketKey === bucket.key;
+        return bucket;
+      }).sort((a,b)=>a.t-b.t);
     }
 
     function renderHeatmap(svgSel, wanSeries) {
@@ -586,10 +485,8 @@
       const w = +svg.attr("width");
       const h = +svg.attr("height");
       const pad = { l: 16, r: 16, t: 18, b: 30 };
-
       const innerW = w - pad.l - pad.r;
       const innerH = h - pad.t - pad.b;
-
       const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
 
       if (!wanSeries.length) {
@@ -597,57 +494,24 @@
         return;
       }
 
-      const byPhase = d3.group(wanSeries, d=>d.phase || "FIBER");
+      const buckets = classifyBuckets(wanSeries);
+      const byPhase = d3.group(buckets, d=>d.phase || "FIBER");
       const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
       const rows = phases.length || 1;
 
       const rowH = innerH / rows;
-      const binMs = HEAT_BIN_MINUTES * 60000;
-
-      // shared x domain across all phases
-      const allTimes = wanSeries.map(d=>d.t.getTime());
+      const allTimes = buckets.map(d=>d.t.getTime());
       const minT = Math.min(...allTimes);
-      const maxT = Math.max(...allTimes) + binMs;
-
-      const x = d3.scaleTime()
-        .domain([new Date(minT), new Date(maxT)])
-        .range([0, innerW]);
-
-      const axis = d3.axisBottom(x)
-        .ticks(8)
-        .tickFormat(d => d.toLocaleTimeString(undefined, {hour12:true, hour:"numeric"}))
-        .tickSizeOuter(0);
+      const maxT = Math.max(...allTimes) + HEAT_BIN_MINUTES * 60000;
+      const x = d3.scaleTime().domain([new Date(minT), new Date(maxT)]).range([0, innerW]);
+      const axis = d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined, {hour12:true, hour:"numeric"})).tickSizeOuter(0);
 
       function drawRow(phase, idx){
-        const series = byPhase.get(phase) || [];
+        const values = byPhase.get(phase) || [];
         const y0 = idx * rowH;
-
-        // bins -> bad rate
-        const bins = new Map();
-        for (const d of series) {
-          const b = Math.floor(d.t.getTime() / binMs) * binMs;
-          const prev = bins.get(b) || { bad: 0, total: 0 };
-          prev.total += 1;
-          if (d.isBad) prev.bad += 1;
-          bins.set(b, prev);
-        }
-        const keys = Array.from(bins.keys()).sort((a,b)=>a-b);
-        const values = keys.map(k => {
-          const v = bins.get(k);
-          const rate = v.total ? (v.bad / v.total) : 0;
-          return { phase, t: new Date(k), t2: new Date(k + binMs), rate, bad:v.bad, total:v.total };
-        });
-
-        if (!values.length){
-          g.append("text").attr("x", 6).attr("y", y0 + 18).attr("fill", "#666").text(`${phase}: no data`);
-          return;
-        }
-
-        const maxRate = d3.max(values, d=>d.rate) || 1;
-        // dark == more bad, light == calm
-        const shade = d3.scaleLinear().domain([0, maxRate]).range([92, 25]);
-
-        const rectW = Math.max(1, innerW / values.length);
+        const maxRate = d3.max(values, d => Math.max(d.rate, d.rawRate)) || 1;
+        const calmShade = d3.scaleLinear().domain([0, maxRate]).range([92, 82]);
+        const rectW = Math.max(1, innerW / Math.max(values.length,1));
 
         g.selectAll(`rect.bin-${phase}`)
           .data(values)
@@ -657,76 +521,54 @@
           .attr("y", y0)
           .attr("width", rectW)
           .attr("height", rowH - 8)
-          .attr("fill", d => `hsl(0 0% ${shade(d.rate)}%)`)
-          .attr("stroke", "#fff")
-          .attr("stroke-width", 0.3)
+          .attr("fill", d => {
+            if (d.isBadBucket) return d.recent ? "rgba(0,0,0,0.72)" : "rgba(0,0,0,0.60)";
+            if (d.isTurbulence) return d.recent ? "rgba(214,144,0,0.55)" : "rgba(214,144,0,0.42)";
+            return `hsl(0 0% ${calmShade(d.rawRate)}%)`;
+          })
+          .attr("stroke", d => d.selected ? "rgba(31,119,180,0.95)" : "#fff")
+          .attr("stroke-width", d => d.selected ? 2.5 : 0.3)
+          .style("cursor", "pointer")
+          .on("click", (ev, d) => {
+            ev.stopPropagation();
+            selectedBucketKey = (selectedBucketKey === d.key) ? null : d.key;
+            if (currentVizState) currentVizState.selectedBucket = selectedBucketKey ? d : null;
+            rerenderFromState();
+            tipHide();
+          })
           .on("mousemove", (ev, d) => {
+            const cls = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
             const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
-                          <div>Bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
-                          <div class="small">Bad if p95>${WAN_BAD.p95}ms or jitter>${WAN_BAD.jitter}ms or loss>${WAN_BAD.loss}%</div>`;
+                          <div><b>${cls}</b></div>
+                          <div>Sustained bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
+                          <div>Raw bad rate: ${(d.rawRate*100).toFixed(1)}% (${d.rawBad}/${d.total})</div>
+                          <div class="small">Max raw run: ${d.maxRawRun}</div>
+                          <div class="small">Click to highlight this interval on the WAN chart.</div>`;
             tipShow(html, ev.clientX, ev.clientY);
           })
           .on("mouseleave", () => tipHide());
 
-        // row label
-        const color = phase === "TMOBILE" ? "var(--tmobile)" : "var(--fiber)";
-        g.append("text")
-          .attr("x", 0)
-          .attr("y", y0 - 4)
-          .attr("fill", "#333")
-          .attr("font-size", 12)
-          .attr("font-weight", 800)
-          .text(phase);
-
-        g.append("line")
-          .attr("x1", 0).attr("x2", innerW)
-          .attr("y1", y0 + rowH - 8).attr("y2", y0 + rowH - 8)
-          .attr("stroke", "#eee");
+        g.append("text").attr("x", 0).attr("y", y0 - 4).attr("fill", "#333").attr("font-size", 12).attr("font-weight", 800).text(phase);
+        g.append("line").attr("x1", 0).attr("x2", innerW).attr("y1", y0 + rowH - 8).attr("y2", y0 + rowH - 8).attr("stroke", "#eee");
       }
 
       phases.forEach((p,i)=>drawRow(p,i));
+      svg.on("click", () => {
+        if (selectedBucketKey !== null) {
+          selectedBucketKey = null;
+          if (currentVizState) currentVizState.selectedBucket = null;
+          rerenderFromState();
+          tipHide();
+        }
+      });
 
-      g.append("g")
-        .attr("transform", `translate(0,${innerH})`)
-        .call(axis)
-        .selectAll("text").attr("fill","#666");
-
+      g.append("g").attr("transform", `translate(0,${innerH})`).call(axis).selectAll("text").attr("fill","#666");
       g.selectAll(".domain, .tick line").attr("stroke","#ddd");
     }
 
-
-    function computeBadBuckets(wanSeries){
-      const binMs = HEAT_BIN_MINUTES * 60000;
-      const buckets = new Map();
-      for (const d of wanSeries){
-        const b = Math.floor(d.t.getTime() / binMs) * binMs;
-        const prev = buckets.get(b) || { bad: 0, total: 0 };
-        prev.total += 1;
-        if (d.isBad) prev.bad += 1;
-        buckets.set(b, prev);
-      }
-
-      const now = new Date();
-      const recentCut = new Date(now.getTime() - 60 * 60000);
-
-      return Array.from(buckets.entries())
-        .map(([k, v]) => ({
-          t1: new Date(Number(k)),
-          t2: new Date(Number(k) + binMs),
-          bad: v.bad,
-          total: v.total,
-          rate: v.total ? (v.bad / v.total) : 0,
-          recent: (new Date(Number(k) + binMs)) >= recentCut
-        }))
-        .filter(d => d.bad > 0)
-        .sort((a,b)=>a.t1-b.t1);
-    }
-
-    function computeRawSpikeMarkers(wanSeries){
-      return wanSeries
-        .filter(d => d.rawBad && !d.isBad)
-        .map(d => ({ ...d }));
-    }
+    function computeBadBuckets(wanSeries){ return classifyBuckets(wanSeries).filter(d => d.isBadBucket); }
+    function computeTurbulenceBuckets(wanSeries){ return classifyBuckets(wanSeries).filter(d => d.isTurbulence); }
+    function computeRawSpikeMarkers(wanSeries){ return wanSeries.filter(d => d.rawBad && !d.isBad).map(d => ({ ...d })); }
 
     function renderLine(svgSel, seriesArr, opts={}) {
       const svg = d3.select(svgSel);
@@ -735,10 +577,8 @@
       const w = +svg.attr("width");
       const h = +svg.attr("height");
       const pad = { l: 52, r: 18, t: 16, b: 34 };
-
       const innerW = w - pad.l - pad.r;
       const innerH = h - pad.t - pad.b;
-
       const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
 
       if (!seriesArr.length) {
@@ -750,51 +590,59 @@
       const ymin = d3.min(seriesArr, d=>d.p95);
       const ymax = d3.max(seriesArr, d=>d.p95);
       const spread = Math.max(5, (ymax - ymin) || 0);
-      const padY = spread * 0.2;
-      const y = d3.scaleLinear().domain([Math.max(0, ymin - padY), ymax + padY]).range([innerH, 0]);
+      const y = d3.scaleLinear().domain([Math.max(0, ymin - spread*0.2), ymax + spread*0.2]).range([innerH, 0]);
+
+      if (opts.turbulenceBuckets && opts.turbulenceBuckets.length){
+        g.selectAll(".turb-band")
+          .data(opts.turbulenceBuckets)
+          .enter()
+          .append("rect")
+          .attr("x", d => x(d.t))
+          .attr("y", 0)
+          .attr("width", d => Math.max(2, x(d.t2) - x(d.t)))
+          .attr("height", innerH)
+          .attr("fill", d => d.recent ? "rgba(214,144,0,0.12)" : "rgba(214,144,0,0.08)")
+          .attr("pointer-events", "none");
+      }
 
       if (opts.badBuckets && opts.badBuckets.length){
         g.selectAll(".bad-band")
           .data(opts.badBuckets)
           .enter()
           .append("rect")
-          .attr("class", "bad-band")
-          .attr("x", d => x(d.t1))
+          .attr("x", d => x(d.t))
           .attr("y", 0)
-          .attr("width", d => Math.max(2, x(d.t2) - x(d.t1)))
+          .attr("width", d => Math.max(2, x(d.t2) - x(d.t)))
           .attr("height", innerH)
           .attr("fill", d => d.recent ? "rgba(0,0,0,0.16)" : "rgba(0,0,0,0.10)")
           .attr("pointer-events", "none");
       }
 
-      g.append("g")
-        .attr("transform", `translate(0,${innerH})`)
-        .call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0))
-        .selectAll("text").attr("fill","#666");
-      g.append("g")
-        .call(d3.axisLeft(y).ticks(6).tickSizeOuter(0))
-        .selectAll("text").attr("fill","#666");
+      if (opts.selectedBucket){
+        g.append("rect")
+          .attr("x", x(opts.selectedBucket.t))
+          .attr("y", 0)
+          .attr("width", Math.max(2, x(opts.selectedBucket.t2) - x(opts.selectedBucket.t)))
+          .attr("height", innerH)
+          .attr("fill", "rgba(31,119,180,0.08)")
+          .attr("stroke", "rgba(31,119,180,0.95)")
+          .attr("stroke-width", 2.5)
+          .attr("pointer-events", "none");
+      }
+
+      g.append("g").attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0)).selectAll("text").attr("fill","#666");
+      g.append("g").call(d3.axisLeft(y).ticks(6).tickSizeOuter(0)).selectAll("text").attr("fill","#666");
       g.selectAll(".domain, .tick line").attr("stroke", "#ddd");
 
       const byPhase = d3.group(seriesArr, d=>d.phase || "FIBER");
       const phases = ["FIBER","TMOBILE"];
-
-      const line = d3.line()
-        .x(d=>x(d.t))
-        .y(d=>y(d.p95))
-        .curve(d3.curveMonotoneX);
+      const line = d3.line().x(d=>x(d.t)).y(d=>y(d.p95)).curve(d3.curveMonotoneX);
 
       for (const phase of phases){
         const pts = byPhase.get(phase);
         if (!pts || !pts.length) continue;
         const stroke = (phase === "TMOBILE") ? "var(--tmobile)" : "var(--fiber)";
-        g.append("path")
-          .datum(pts)
-          .attr("fill","none")
-          .attr("stroke", stroke)
-          .attr("stroke-width", 2)
-          .attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null)
-          .attr("d", line);
+        g.append("path").datum(pts).attr("fill","none").attr("stroke", stroke).attr("stroke-width", 2).attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null).attr("d", line);
       }
 
       if (opts.rawSpikeMarkers && opts.rawSpikeMarkers.length){
@@ -802,7 +650,6 @@
           .data(opts.rawSpikeMarkers)
           .enter()
           .append("line")
-          .attr("class", "raw-spike-marker")
           .attr("x1", d => x(d.t))
           .attr("x2", d => x(d.t))
           .attr("y1", d => Math.max(0, y(d.p95) - 16))
@@ -816,7 +663,6 @@
           .data(opts.rawSpikeMarkers)
           .enter()
           .append("circle")
-          .attr("class", "raw-spike-dot")
           .attr("cx", d => x(d.t))
           .attr("cy", d => y(d.p95))
           .attr("r", 2.5)
@@ -824,10 +670,8 @@
           .attr("pointer-events", "none");
       }
 
-      // hover: nearest point across all phases
       const allPts = seriesArr.slice().sort((a,b)=>a.t-b.t);
       const bisect = d3.bisector(d => d.t).left;
-
       const focus = g.append("g").style("display","none");
       focus.append("line").attr("y1",0).attr("y2",innerH).attr("stroke","#bbb").attr("stroke-dasharray","3 4");
       focus.append("circle").attr("r",3).attr("fill","#111").attr("opacity",0.8);
@@ -846,22 +690,20 @@
           const d = (b && a) ? ((b.t - t) < (t - a.t) ? b : a) : (a || b);
           if (!d) return;
 
-          const cx = x(d.t);
-          const cy = y(d.p95);
+          const cx = x(d.t), cy = y(d.p95);
           focus.style("display", null);
           focus.select("line").attr("x1",cx).attr("x2",cx);
           focus.select("circle").attr("cx",cx).attr("cy",cy);
 
-          const label = opts.label || "p95";
+          let extra = '';
+          if (opts.selectedBucket && d.t >= opts.selectedBucket.t && d.t < opts.selectedBucket.t2) extra = '<div class="small">Inside selected heatmap interval.</div>';
+          if (d.rawBad && !d.isBad) extra += '<div class="small">Isolated raw spike.</div>';
           const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
-                        <div><b>${label}:</b> ${fmt1(d.p95)} ms</div>
-                        <div class="small">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>`;
+                        <div><b>${opts.label || "p95"}:</b> ${fmt1(d.p95)} ms</div>
+                        <div class="small">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>${extra}`;
           tipShow(html, ev.clientX, ev.clientY);
         })
-        .on("mouseleave", () => {
-          focus.style("display","none");
-          tipHide();
-        });
+        .on("mouseleave", () => { focus.style("display","none"); tipHide(); });
     }
 
     async function tick() {
@@ -874,16 +716,18 @@
         const wanSeriesMarked = markPersistentWanBad(wanSeries);
         const noticeSummary = getNoticeabilitySummary(wanSeriesMarked);
         const badBuckets = computeBadBuckets(wanSeriesMarked);
+        const turbulenceBuckets = computeTurbulenceBuckets(wanSeriesMarked);
         const rawSpikeMarkers = computeRawSpikeMarkers(wanSeriesMarked);
+        const selectedBucket = selectedBucketKey ? (classifyBuckets(wanSeriesMarked).find(d => d.key === selectedBucketKey) || null) : null;
+        if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
+
+        currentVizState = { lanSeries, wanSeriesMarked, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket };
 
         computeSpikeStreak(wanSeriesMarked);
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary);
         renderComparisonTable(wanSeriesMarked);
-        renderHeatmap("#heatmap", wanSeriesMarked);
-        renderLine("#wan", wanSeriesMarked, { label: "WAN p95", badBuckets, rawSpikeMarkers });
-        renderLine("#lan", lanSeries, { label: "LAN p95" });
-
+        rerenderFromState();
       } catch (e) {
         console.error(e);
         document.getElementById("status").textContent = "Error loading data (check console).";
