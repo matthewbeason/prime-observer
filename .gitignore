@@ -40,3 +40,4 @@ viz/*.csv
 __pycache__/
 *.pyc
 .venv/
+build_hourly_baseline.py

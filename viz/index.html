@@ -63,7 +63,7 @@
       <div class="subtitle">Network Observability &amp; Experience Engine</div>
     </div>
     <div class="badges">
-      <span class="badge">Build <strong id="buildTag">v0.3.10</strong></span>
+      <span class="badge">Build <strong id="buildTag">v0.3.12</strong></span>
     </div>
   </div>
 
@@ -95,6 +95,13 @@
       <div><b>Forecast:</b> <span id="noticeForecast">—</span></div>
       <div class="small" id="noticeWhy">Why: —</div>
       <div class="small">Forecast uses the same sustained “bad moment” logic shown in the heatmap.</div>
+    </div>
+
+    <div class="card" style="min-width:240px;">
+      <h4><span>Network Attribution</span><span class="pill">v1</span></h4>
+      <div class="value" style="font-size:20px;" id="attribLabel">—</div>
+      <div><b>Confidence:</b> <span id="attribConfidence">—</span></div>
+      <div class="small" id="attribWhy">Why: —</div>
     </div>
 
     <div class="card" style="min-width:520px;flex:1;">
@@ -138,6 +145,8 @@
     const WAN_BAD = { p95: 140, jitter: 50, loss: 1.0 };
     const WAN_BAD_PERSISTENCE = 2;
     const TURBULENCE_MIN_RAW_BAD = 4;
+    const ATTRIBUTION_CUT_MINUTES = 15;
+    const LAN_BAD_P95 = 120;
 
     let selectedBucketKey = null;
     let currentVizState = null;
@@ -310,6 +319,12 @@
       labelEl.textContent = summary.label;
     }
 
+    function updateAttributionCard(attribution){
+      document.getElementById("attribLabel").textContent = attribution?.label || "—";
+      document.getElementById("attribConfidence").textContent = attribution?.confidence || "—";
+      document.getElementById("attribWhy").textContent = "Why: " + (attribution?.why || "—");
+    }
+
     function quantile(arr, q){
       if (!arr.length) return null;
       const sorted = arr.slice().sort((a,b)=>a-b);
@@ -476,6 +491,52 @@
         bucket.selected = selectedBucketKey === bucket.key;
         return bucket;
       }).sort((a,b)=>a.t-b.t);
+    }
+
+    function computeAttribution(wanSeries, lanSeries){
+      const now = new Date();
+      const cut = new Date(now.getTime() - ATTRIBUTION_CUT_MINUTES * 60000);
+
+      const recentWan = wanSeries.filter(d => d.t >= cut);
+      const recentLan = lanSeries.filter(d => d.t >= cut);
+      const recentBuckets = classifyBuckets(wanSeries).filter(b => b.t2 >= cut);
+
+      const wanBad = recentWan.some(d => d.isBad);
+      const wanTurbulence = recentBuckets.some(b => b.isTurbulence);
+
+      const lanElevated = recentLan.filter(d => (d.p95 ?? 0) > LAN_BAD_P95);
+      const lanElevatedRate = recentLan.length ? (lanElevated.length / recentLan.length) : 0;
+      const lanBad = lanElevated.length >= 3 && lanElevatedRate > 0.2;
+
+      let label = "Inconclusive";
+      let confidence = "Low";
+      let why = "Signals are mixed across LAN and WAN.";
+
+      if (!recentWan.length && !recentLan.length){
+        label = "No recent data";
+        confidence = "Low";
+        why = "No LAN or WAN samples in the last 15 minutes.";
+      } else if (lanBad && wanBad){
+        label = "Likely local (LAN / Wi‑Fi)";
+        confidence = "Medium";
+        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) and WAN also shows sustained degradation.`;
+      } else if (lanBad && !wanBad && !wanTurbulence){
+        label = "Likely local (LAN / Wi‑Fi)";
+        confidence = "High";
+        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) while WAN remains stable.`;
+      } else if (!lanBad && (wanBad || wanTurbulence)){
+        label = "Likely upstream (ISP / path)";
+        confidence = wanBad ? "High" : "Medium";
+        why = wanBad
+          ? `WAN shows sustained degradation while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`
+          : `WAN shows turbulence while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`;
+      } else if (!lanBad && !wanBad && !wanTurbulence){
+        label = "No network issue detected";
+        confidence = "High";
+        why = "LAN and WAN both look stable in the last 15 minutes.";
+      }
+
+      return { label, confidence, why };
     }
 
     function renderHeatmap(svgSel, wanSeries) {
@@ -718,6 +779,7 @@
         const badBuckets = computeBadBuckets(wanSeriesMarked);
         const turbulenceBuckets = computeTurbulenceBuckets(wanSeriesMarked);
         const rawSpikeMarkers = computeRawSpikeMarkers(wanSeriesMarked);
+        const attribution = computeAttribution(wanSeriesMarked, lanSeries);
         const selectedBucket = selectedBucketKey ? (classifyBuckets(wanSeriesMarked).find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
 
@@ -726,6 +788,7 @@
         computeSpikeStreak(wanSeriesMarked);
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary);
+        updateAttributionCard(attribution);
         renderComparisonTable(wanSeriesMarked);
         rerenderFromState();
       } catch (e) {
