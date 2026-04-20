@@ -63,7 +63,7 @@
       <div class="subtitle">Network Observability &amp; Experience Engine</div>
     </div>
     <div class="badges">
-      <span class="badge">Build <strong id="buildTag">v0.3.12</strong></span>
+      <span class="badge">Build <strong id="buildTag">v0.3.13</strong></span>
     </div>
   </div>
 
@@ -93,6 +93,7 @@
       <div class="value" id="noticeScore">—</div>
       <div><b>State:</b> <span id="noticeLabel">—</span></div>
       <div><b>Forecast:</b> <span id="noticeForecast">—</span></div>
+      <div><b>Pattern:</b> <span id="noticePattern">—</span></div>
       <div class="small" id="noticeWhy">Why: —</div>
       <div class="small">Forecast uses the same sustained “bad moment” logic shown in the heatmap.</div>
     </div>
@@ -241,10 +242,12 @@
         const p95 = parseFloatSafe((r.p95_ms || "").trim(), null);
         const jitter = parseFloatSafe((r.jitter_ms || "").trim(), 0);
         const loss = parseFloatSafe((r.loss_pct || "").trim(), 0);
+        const baselineP95 = parseFloatSafe((r.baseline_p95 || "").trim(), null);
+        const baselineDeltaPct = parseFloatSafe((r.baseline_delta_pct || "").trim(), null);
 
         if (!host || p95 === null) continue;
         if (!isGateway(host) && !isWanTarget(host)) continue;
-        clean.push({ t, host, phase, p95, jitter, loss });
+        clean.push({ t, host, phase, p95, jitter, loss, baselineP95, baselineDeltaPct });
       }
       clean.sort((a,b)=>a.t-b.t);
       return clean;
@@ -330,6 +333,39 @@
       const sorted = arr.slice().sort((a,b)=>a-b);
       return d3.quantile(sorted, q);
     }
+
+    function updatePatternAwareness(wanSeries){
+      const el = document.getElementById("noticePattern");
+      if (!el){
+        return;
+      }
+      if (!wanSeries.length){
+        el.textContent = "Learning...";
+        return;
+      }
+
+      const latest = [...wanSeries].reverse().find(d =>
+        d.baselineDeltaPct != null && Number.isFinite(d.baselineDeltaPct)
+      );
+
+      if (!latest){
+        el.textContent = "Learning...";
+        return;
+      }
+
+      const delta = latest.baselineDeltaPct;
+
+      if (Math.abs(delta) < 10){
+        el.textContent = "Normal for this time of day";
+      } else if (delta > 25){
+        el.textContent = `Highly elevated for this time of day (+${fmt1(delta)}%)`;
+      } else if (delta > 10){
+        el.textContent = `Slightly elevated for this time of day (+${fmt1(delta)}%)`;
+      } else {
+        el.textContent = `Better than usual for this time of day (${fmt1(delta)}%)`;
+      }
+    }
+
 
     function getNoticeabilitySummary(wanSeries){
       if (!wanSeries.length) return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
@@ -788,6 +824,7 @@
         computeSpikeStreak(wanSeriesMarked);
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary);
+        updatePatternAwareness(wanSeriesMarked);
         updateAttributionCard(attribution);
         renderComparisonTable(wanSeriesMarked);
         rerenderFromState();
