@@ -63,7 +63,7 @@
       <div class="subtitle">Network Observability &amp; Experience Engine</div>
     </div>
     <div class="badges">
-      <span class="badge">Build <strong id="buildTag">v0.3.13</strong></span>
+      <span class="badge">Build <strong id="buildTag">v0.3.14</strong></span>
     </div>
   </div>
 
@@ -106,23 +106,23 @@
     </div>
 
     <div class="card" style="min-width:520px;flex:1;">
-      <h4><span>Provider comparison (WAN targets aggregated)</span><span class="small">last 24h</span></h4>
+      <h4><span>WAN Health Summary</span><span class="small">last 24h</span></h4>
       <div class="small" style="margin-bottom:8px;">
-        This view is deliberately simple: compare <b>WAN experience</b> by upstream provider, while also watching how <b>LAN/Wi‑Fi</b> shifts when you swap upstream.
+        Current WAN experience across monitored internet targets. Use this to track latency, jitter, loss, and sustained degradation over time.
       </div>
       <div id="compareWrap"></div>
     </div>
   </div>
 
   <div class="section-title">
-    <h3>WAN “bad moments” heatmap (by provider)</h3>
+    <h3>WAN “bad moments” heatmap</h3>
     <div class="legend">15‑minute buckets • dark gray = sustained • amber = turbulence • click a bucket to inspect that interval on the WAN chart</div>
   </div>
   <svg id="heatmap" width="1100" height="180"></svg>
 
   <div class="section-title">
     <h3>WAN (Internet) — p95 latency (ms)</h3>
-    <div class="legend">FIBER = solid • TMOBILE = dashed • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
+    <div class="legend">Current WAN path: FIBER = solid • TMOBILE = dashed if present • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
   </div>
   <svg id="wan" width="1100" height="300"></svg>
 
@@ -458,13 +458,13 @@
       return { n: seriesArr.length, badRate, badMinPerHour, medianP95, p95ofP95, jitter95 };
     }
 
-    function renderComparisonTable(wanSeries){
+    function renderWanHealthTable(wanSeries){
       const wrap = document.getElementById("compareWrap");
       wrap.innerHTML = "";
       const byPhase = d3.group(wanSeries, d=>d.phase || "FIBER");
       const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
       if (!phases.length){
-        wrap.innerHTML = "<div class='small'>No WAN data in window for configured targets.</div>";
+        wrap.innerHTML = "<div class='small'>No WAN health data in window for configured targets.</div>";
         return;
       }
       const rows = phases.map(p => ({ phase:p, stats: computeProviderStats(byPhase.get(p) || []) }));
@@ -472,15 +472,15 @@
       table.innerHTML = `
         <thead>
           <tr>
-            <th>Provider</th><th>WAN p95 (median)</th><th>WAN p95 (95th)</th><th>Jitter (95th)</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
+            <th>Connection</th><th>WAN p95 (median)</th><th>WAN p95 (95th)</th><th>Jitter (95th)</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map(r=>{
             const s = r.stats;
             const cls = r.phase === "TMOBILE" ? "tmobile" : "fiber";
-            if (!s) return `<tr><td><span class="tag ${cls}">${r.phase}</span></td><td colspan="6" class="small">No data.</td></tr>`;
-            return `<tr><td><span class="tag ${cls}">${r.phase}</span></td><td>${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
+            if (!s) return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td colspan="6" class="small">No data.</td></tr>`;
+            return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td>${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
           }).join("")}
         </tbody>`;
       wrap.appendChild(table);
@@ -826,7 +826,7 @@
         computeNoticeabilityForecast(noticeSummary);
         updatePatternAwareness(wanSeriesMarked);
         updateAttributionCard(attribution);
-        renderComparisonTable(wanSeriesMarked);
+        renderWanHealthTable(wanSeriesMarked);
         rerenderFromState();
       } catch (e) {
         console.error(e);

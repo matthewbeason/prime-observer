@@ -11,31 +11,47 @@ OUT      = VIZ_DIR / "latest.csv"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
+
+# Keep the historical bakeoff_*.csv naming for compatibility, but treat these
+# files as Prime Observer telemetry history now that the provider bakeoff phase
+# is over.
+TELEMETRY_PATTERN = "bakeoff_*.csv"
 BASELINE_FILE_COUNT = 10
+
 WAN_HOSTS = {"1.1.1.1", "9.9.9.9"}
+BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct")
+
 
 def sanitize_field(s: str) -> str:
     if s is None:
         return ""
     return " | ".join(str(s).splitlines()).replace("\t", " ").strip()
 
+
+def telemetry_files():
+    return sorted(DATA_DIR.glob(TELEMETRY_PATTERN))
+
+
 def newest_by_mtime():
-    files = list(DATA_DIR.glob("bakeoff_*.csv"))
+    files = telemetry_files()
     if not files:
         return None
     return max(files, key=lambda p: p.stat().st_mtime)
 
+
 def recent_baseline_files():
-    files = sorted(DATA_DIR.glob("bakeoff_*.csv"))
+    files = telemetry_files()
     if not files:
         return []
     return files[-min(len(files), BASELINE_FILE_COUNT):]
+
 
 def parse_ts(ts: str):
     try:
         return dt.datetime.fromisoformat(ts)
     except Exception:
         return None
+
 
 def median(values):
     vals = sorted(v for v in values if v is not None)
@@ -47,30 +63,40 @@ def median(values):
         return vals[mid]
     return (vals[mid - 1] + vals[mid]) / 2.0
 
-def compute_hourly_baseline():
+
+def compute_hourly_wan_baseline():
+    """Return hourly WAN p95 medians using recent telemetry history."""
     by_hour = defaultdict(list)
     used_files = []
+
     for src in recent_baseline_files():
         try:
             with src.open("r", newline="") as f:
                 reader = csv.DictReader(f)
                 row_count = 0
+
                 for r in reader:
                     host = (r.get("host") or "").strip()
                     if host not in WAN_HOSTS:
                         continue
+
                     t = parse_ts(r.get("ts", ""))
                     if t is None:
                         continue
+
                     try:
                         p95 = float((r.get("p95_ms") or "").strip())
                     except Exception:
                         continue
+
                     by_hour[t.hour].append(p95)
                     row_count += 1
+
                 if row_count:
                     used_files.append(src.name)
-        except Exception:
+
+        except Exception as exc:
+            print(f"Warning: skipped baseline source {src.name}: {exc}")
             continue
 
     baseline = {}
@@ -78,80 +104,106 @@ def compute_hourly_baseline():
         m = median(vals)
         if m is not None:
             baseline[hour] = m
+
     return baseline, used_files
+
+
+def ensure_fieldnames(fieldnames):
+    out = list(fieldnames or [])
+    for col in BASELINE_COLUMNS:
+        if col not in out:
+            out.append(col)
+    return out
+
+
+def apply_baseline_fields(row, timestamp, baseline_by_hour):
+    host = (row.get("host") or "").strip()
+
+    if host not in WAN_HOSTS:
+        row["baseline_p95"] = ""
+        row["baseline_delta_pct"] = ""
+        return row
+
+    baseline = baseline_by_hour.get(timestamp.hour)
+
+    try:
+        current_p95 = float((row.get("p95_ms") or "").strip())
+    except Exception:
+        current_p95 = None
+
+    if baseline is None:
+        row["baseline_p95"] = ""
+        row["baseline_delta_pct"] = ""
+        return row
+
+    row["baseline_p95"] = f"{baseline:.1f}"
+
+    if current_p95 is not None and baseline > 0:
+        delta_pct = ((current_p95 - baseline) / baseline) * 100.0
+        row["baseline_delta_pct"] = f"{delta_pct:.1f}"
+    else:
+        row["baseline_delta_pct"] = ""
+
+    return row
+
 
 def main():
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
     src = newest_by_mtime()
     if not src:
-        print("No bakeoff_*.csv files found.")
+        print(f"No telemetry CSV files found matching {TELEMETRY_PATTERN}.")
         return
 
-    baseline_by_hour, used_files = compute_hourly_baseline()
+    baseline_by_hour, baseline_sources = compute_hourly_wan_baseline()
 
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - WINDOW
 
     rows_out = []
+
     with src.open("r", newline="") as f:
         reader = csv.DictReader(f)
-        fieldnames = list(reader.fieldnames or [])
-        if "baseline_p95" not in fieldnames:
-            fieldnames.append("baseline_p95")
-        if "baseline_delta_pct" not in fieldnames:
-            fieldnames.append("baseline_delta_pct")
+        fieldnames = ensure_fieldnames(reader.fieldnames)
 
-        for r in reader:
-            t = parse_ts(r.get("ts", ""))
+        for row in reader:
+            t = parse_ts(row.get("ts", ""))
             if t is None:
                 continue
+
             if t.tzinfo is None:
                 t = t.replace(tzinfo=dt.timezone.utc)
+
             if t.astimezone(dt.timezone.utc) < cutoff:
                 continue
 
-            if "traceroute_snip" in r:
-                r["traceroute_snip"] = sanitize_field(r.get("traceroute_snip", ""))
-            if "speedtest_raw_json" in r:
-                r["speedtest_raw_json"] = sanitize_field(r.get("speedtest_raw_json", ""))
+            if "traceroute_snip" in row:
+                row["traceroute_snip"] = sanitize_field(row.get("traceroute_snip", ""))
 
-            host = (r.get("host") or "").strip()
-            if host in WAN_HOSTS:
-                hour = t.hour
-                baseline = baseline_by_hour.get(hour)
-                try:
-                    current_p95 = float((r.get("p95_ms") or "").strip())
-                except Exception:
-                    current_p95 = None
+            if "speedtest_raw_json" in row:
+                row["speedtest_raw_json"] = sanitize_field(row.get("speedtest_raw_json", ""))
 
-                if baseline is not None:
-                    r["baseline_p95"] = f"{baseline:.1f}"
-                    if current_p95 is not None and baseline > 0:
-                        delta_pct = ((current_p95 - baseline) / baseline) * 100.0
-                        r["baseline_delta_pct"] = f"{delta_pct:.1f}"
-                    else:
-                        r["baseline_delta_pct"] = ""
-                else:
-                    r["baseline_p95"] = ""
-                    r["baseline_delta_pct"] = ""
-            else:
-                r["baseline_p95"] = ""
-                r["baseline_delta_pct"] = ""
-
-            rows_out.append(r)
+            row = apply_baseline_fields(row, t, baseline_by_hour)
+            rows_out.append(row)
 
     tmp = OUT.with_suffix(".csv.tmp")
     with tmp.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore", quoting=csv.QUOTE_MINIMAL)
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fieldnames,
+            extrasaction="ignore",
+            quoting=csv.QUOTE_MINIMAL,
+        )
         writer.writeheader()
-        for r in rows_out:
-            writer.writerow(r)
+        for row in rows_out:
+            writer.writerow(row)
+
     tmp.replace(OUT)
 
-    print(f"Wrote {len(rows_out)} rows to {OUT} from source {src.name}")
-    print(f"Baseline files used: {', '.join(used_files) if used_files else 'none'}")
-    print(f"Baseline hours available: {sorted(baseline_by_hour.keys())}")
+    print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
+    print(f"WAN baseline files used: {', '.join(baseline_sources) if baseline_sources else 'none'}")
+    print(f"WAN baseline hours available: {sorted(baseline_by_hour.keys())}")
+
 
 if __name__ == "__main__":
     main()
