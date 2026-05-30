@@ -35,6 +35,8 @@
     }
     .badge strong { font-weight:800; }
     #status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
+    .hmeta{display:flex;gap:6px;align-items:center;}
+    .subtle{font-size:11px;color:var(--muted);}
 
     .tip{
       position:fixed; pointer-events:none; z-index:10;
@@ -63,7 +65,7 @@
       <div class="subtitle">Network Observability &amp; Experience Engine</div>
     </div>
     <div class="badges">
-      <span class="badge">Build <strong id="buildTag">v0.3.14</strong></span>
+      <span class="badge">Build <strong id="buildTag">v0.4.0</strong></span>
     </div>
   </div>
 
@@ -105,6 +107,18 @@
       <div class="small" id="attribWhy">Why: —</div>
     </div>
 
+    <div class="card" style="min-width:240px;">
+      <h4><span>DNS Security</span><span class="hmeta"><span class="subtle" id="dnsStale"></span><span class="pill">NextDNS</span></span></h4>
+      <div class="value" style="font-size:20px;" id="dnsValue">—</div>
+      <div id="dnsDetails">
+        <div><b>Queries:</b> <span id="dnsQueries">—</span></div>
+        <div><b>Encrypted:</b> <span id="dnsEncrypted">—</span></div>
+        <div><b>Top reason:</b> <span id="dnsTopReason">—</span></div>
+        <div class="small">Last update: <span id="dnsLastUpdate">—</span></div>
+      </div>
+      <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
+    </div>
+
     <div class="card" style="min-width:520px;flex:1;">
       <h4><span>WAN Health Summary</span><span class="small">last 24h</span></h4>
       <div class="small" style="margin-bottom:8px;">
@@ -141,6 +155,8 @@
     const WINDOW_HOURS = 24;
     const HEAT_BIN_MINUTES = 15;
     const CSV_URL = "./latest.csv";
+    const NEXTDNS_URL = "./nextdns_summary.json";
+    const NEXTDNS_STALE_MINUTES = 60;
     const GATEWAY_HOST = "192.168.1.1";
     const WAN_HOSTS = new Set(["1.1.1.1","9.9.9.9"]);
     const WAN_BAD = { p95: 140, jitter: 50, loss: 1.0 };
@@ -197,6 +213,7 @@
     }
     function fmt1(x) { return (x==null || !Number.isFinite(x)) ? "—" : x.toFixed(1); }
     function fmt2(x) { return (x==null || !Number.isFinite(x)) ? "—" : x.toFixed(2); }
+    function fmtInt(x) { return (x==null || !Number.isFinite(x)) ? "—" : Math.round(x).toLocaleString(); }
     function parseTs(s) {
       const d = new Date(s);
       return isNaN(d.getTime()) ? null : d;
@@ -207,6 +224,9 @@
     }
     function to12h(d){
       return d.toLocaleString(undefined, { hour12:true, year:"numeric", month:"numeric", day:"numeric", hour:"numeric", minute:"2-digit" });
+    }
+    function toShortTime(d){
+      return d.toLocaleString(undefined, { hour12:true, hour:"numeric", minute:"2-digit" });
     }
 
     function isGateway(host){ return host === GATEWAY_HOST; }
@@ -244,13 +264,63 @@
         const loss = parseFloatSafe((r.loss_pct || "").trim(), 0);
         const baselineP95 = parseFloatSafe((r.baseline_p95 || "").trim(), null);
         const baselineDeltaPct = parseFloatSafe((r.baseline_delta_pct || "").trim(), null);
+        const baselineSampleCount = parseFloatSafe((r.baseline_sample_count || "").trim(), null);
 
         if (!host || p95 === null) continue;
         if (!isGateway(host) && !isWanTarget(host)) continue;
-        clean.push({ t, host, phase, p95, jitter, loss, baselineP95, baselineDeltaPct });
+        clean.push({ t, host, phase, p95, jitter, loss, baselineP95, baselineDeltaPct, baselineSampleCount });
       }
       clean.sort((a,b)=>a.t-b.t);
       return clean;
+    }
+
+    async function loadNextDnsSummary(){
+      const res = await fetch(NEXTDNS_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error("NextDNS summary unavailable");
+      return await res.json();
+    }
+
+    function setDnsUnavailable(){
+      document.getElementById("dnsValue").textContent = "Unavailable";
+      document.getElementById("dnsDetails").style.display = "none";
+      document.getElementById("dnsUnavailable").style.display = "block";
+      document.getElementById("dnsStale").textContent = "";
+    }
+
+    function updateDnsSecurityCard(data){
+      if (!data || data.status !== "ok" || !data.summary){
+        setDnsUnavailable();
+        return;
+      }
+
+      const summary = data.summary;
+      const generatedAt = parseTs(data.generated_at || "");
+      const ageMs = generatedAt ? (Date.now() - generatedAt.getTime()) : null;
+      const isStale = ageMs == null || ageMs > NEXTDNS_STALE_MINUTES * 60000;
+      const topReason = Array.isArray(summary.top_reasons) && summary.top_reasons.length
+        ? (summary.top_reasons[0].name || "—")
+        : "—";
+      const blockRate = parseFloatSafe(summary.block_rate_pct, null);
+      const encryptedRate = parseFloatSafe(summary.encrypted_rate_pct, null);
+      const totalQueries = parseFloatSafe(summary.total_queries, null);
+
+      document.getElementById("dnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
+      document.getElementById("dnsQueries").textContent = fmtInt(totalQueries);
+      document.getElementById("dnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
+      document.getElementById("dnsTopReason").textContent = topReason;
+      document.getElementById("dnsLastUpdate").textContent = generatedAt ? toShortTime(generatedAt) : "—";
+      document.getElementById("dnsDetails").style.display = "block";
+      document.getElementById("dnsUnavailable").style.display = "none";
+      document.getElementById("dnsStale").textContent = isStale ? "Stale" : "";
+    }
+
+    async function refreshDnsSecurity(){
+      try {
+        const data = await loadNextDnsSummary();
+        updateDnsSecurityCard(data);
+      } catch (e) {
+        setDnsUnavailable();
+      }
     }
 
     function toSeries(data){
@@ -354,16 +424,37 @@
       }
 
       const delta = latest.baselineDeltaPct;
+      const sampleCount = latest.baselineSampleCount;
 
-      if (Math.abs(delta) < 10){
-        el.textContent = "Normal for this time of day";
-      } else if (delta > 25){
-        el.textContent = `Highly elevated for this time of day (+${fmt1(delta)}%)`;
-      } else if (delta > 10){
-        el.textContent = `Slightly elevated for this time of day (+${fmt1(delta)}%)`;
-      } else {
-        el.textContent = `Better than usual for this time of day (${fmt1(delta)}%)`;
+      if (sampleCount == null || !Number.isFinite(sampleCount)){
+        el.textContent = "Learning...";
+        return;
       }
+
+      if (sampleCount < 4){
+        el.textContent = `Learning... · Low confidence (${sampleCount} samples)`;
+        return;
+      }
+
+      let confidence = "Low confidence";
+      if (sampleCount >= 40){
+        confidence = "High confidence";
+      } else if (sampleCount >= 16){
+        confidence = "Medium confidence";
+      }
+
+      let label = "";
+      if (Math.abs(delta) < 10){
+        label = "Normal for this time of day";
+      } else if (delta > 25){
+        label = `Highly elevated for this time of day (+${fmt1(delta)}%)`;
+      } else if (delta > 10){
+        label = `Slightly elevated for this time of day (+${fmt1(delta)}%)`;
+      } else {
+        label = `Better than usual for this time of day (${fmt1(delta)}%)`;
+      }
+
+      el.textContent = `${label} · ${confidence} (${sampleCount} samples)`;
     }
 
 
@@ -828,6 +919,7 @@
         updateAttributionCard(attribution);
         renderWanHealthTable(wanSeriesMarked);
         rerenderFromState();
+        refreshDnsSecurity();
       } catch (e) {
         console.error(e);
         document.getElementById("status").textContent = "Error loading data (check console).";
