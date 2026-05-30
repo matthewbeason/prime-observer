@@ -8,6 +8,7 @@
     :root{
       --bg:#fafafa; --card:#fff; --border:#e6e6e6; --muted:#666; --ink:#111;
       --fiber:#1f77b4; --tmobile:#d33;
+      --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833;
       --radius:14px;
     }
     body{font-family:system-ui,-apple-system,sans-serif;margin:24px;background:var(--bg);color:var(--ink);}
@@ -16,9 +17,19 @@
     .row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;}
     .card{background:var(--card);padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);min-width:210px;}
     .card h4{margin:0 0 8px;font-size:13px;font-weight:750;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;}
+    .card.compact{min-width:180px;padding:10px 12px;}
+    .card.accent-ok{border-left:3px solid rgba(47,125,79,.45);}
+    .card.accent-watch{border-left:3px solid rgba(154,106,22,.45);}
+    .card.accent-risk{border-left:3px solid rgba(165,72,51,.50);}
     .pill{font-size:11px;color:#333;background:#f2f2f2;border:1px solid var(--border);padding:2px 8px;border-radius:999px;}
+    .pill.ok{color:var(--ok);border-color:rgba(47,125,79,.28);background:#fff;}
+    .pill.watch{color:var(--watch);border-color:rgba(154,106,22,.30);background:#fff;}
+    .pill.risk{color:var(--risk);border-color:rgba(165,72,51,.30);background:#fff;}
     .small{font-size:12px;color:var(--muted);line-height:1.35;}
     .value{font-size:22px;font-weight:800;margin-top:2px;}
+    .value.ok{color:var(--ok);}
+    .value.watch{color:var(--watch);}
+    .value.risk{color:var(--risk);}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
     svg{background:#fff;border:1px solid var(--border);border-radius:var(--radius);margin-top:10px;}
     .section-title{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;}
@@ -37,6 +48,14 @@
     #status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
     .hmeta{display:flex;gap:6px;align-items:center;}
     .subtle{font-size:11px;color:var(--muted);}
+    .metric-line{font-size:12px;line-height:1.45;}
+    .health-card{min-width:420px;flex:1 1 520px;}
+    .health-card h4{margin-bottom:6px;}
+    .health-card .small{max-width:680px;}
+    .health-table{font-size:11px;}
+    .health-table th{font-size:11px;color:var(--muted);font-weight:750;background:#fff;}
+    .health-table td{padding:6px 6px;}
+    .health-table .metric-strong{font-weight:750;color:#222;}
 
     .tip{
       position:fixed; pointer-events:none; z-index:10;
@@ -65,18 +84,18 @@
       <div class="subtitle">Network Observability &amp; Experience Engine</div>
     </div>
     <div class="badges">
-      <span class="badge">Build <strong id="buildTag">v0.4.0</strong></span>
+      <span class="badge">Build <strong id="buildTag">v0.4.1</strong></span>
     </div>
   </div>
 
   <div id="status">Loading…</div>
 
   <div class="row">
-    <div class="card" style="min-width:240px;">
-      <h4><span>Phase</span><span class="pill" id="phasePill">—</span></h4>
-      <div><b>Current:</b> <span id="phase">—</span></div>
-      <div><b>Last sample:</b> <span id="lastTs">—</span></div>
-      <div class="small">Window: <span id="windowHours">—</span>h • Gateway: <span class="mono" id="gwLabel">—</span></div>
+    <div class="card compact">
+      <h4><span>Connection</span><span class="pill" id="phasePill">—</span></h4>
+      <div class="metric-line"><b>Current path:</b> <span id="phase">—</span></div>
+      <div class="metric-line"><b>Gateway:</b> <span class="mono" id="gwLabel">—</span></div>
+      <div class="small">Last sample: <span id="lastTs">—</span></div>
     </div>
 
     <div class="card" style="min-width:240px;">
@@ -90,7 +109,7 @@
       <div class="small">Last refresh: <span id="lastRefresh">—</span></div>
     </div>
 
-    <div class="card" style="min-width:240px;">
+    <div class="card" style="min-width:240px;" id="noticeCard">
       <h4><span>User Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
       <div class="value" id="noticeScore">—</div>
       <div><b>State:</b> <span id="noticeLabel">—</span></div>
@@ -100,14 +119,14 @@
       <div class="small">Forecast uses the same sustained “bad moment” logic shown in the heatmap.</div>
     </div>
 
-    <div class="card" style="min-width:240px;">
+    <div class="card" style="min-width:240px;" id="attribCard">
       <h4><span>Network Attribution</span><span class="pill">v1</span></h4>
       <div class="value" style="font-size:20px;" id="attribLabel">—</div>
       <div><b>Confidence:</b> <span id="attribConfidence">—</span></div>
       <div class="small" id="attribWhy">Why: —</div>
     </div>
 
-    <div class="card" style="min-width:240px;">
+    <div class="card accent-ok" style="min-width:240px;" id="dnsCard">
       <h4><span>DNS Security</span><span class="hmeta"><span class="subtle" id="dnsStale"></span><span class="pill">NextDNS</span></span></h4>
       <div class="value" style="font-size:20px;" id="dnsValue">—</div>
       <div id="dnsDetails">
@@ -119,7 +138,7 @@
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
 
-    <div class="card" style="min-width:520px;flex:1;">
+    <div class="card health-card">
       <h4><span>WAN Health Summary</span><span class="small">last 24h</span></h4>
       <div class="small" style="margin-bottom:8px;">
         Current WAN experience across monitored internet targets. Use this to track latency, jitter, loss, and sustained degradation over time.
@@ -228,6 +247,11 @@
     function toShortTime(d){
       return d.toLocaleString(undefined, { hour12:true, hour:"numeric", minute:"2-digit" });
     }
+    function setAccent(el, accent){
+      if (!el) return;
+      el.classList.remove("accent-ok","accent-watch","accent-risk","ok","watch","risk");
+      if (accent) el.classList.add(accent);
+    }
 
     function isGateway(host){ return host === GATEWAY_HOST; }
     function isWanTarget(host){ return WAN_HOSTS.has(host); }
@@ -285,6 +309,8 @@
       document.getElementById("dnsDetails").style.display = "none";
       document.getElementById("dnsUnavailable").style.display = "block";
       document.getElementById("dnsStale").textContent = "";
+      setAccent(document.getElementById("dnsCard"), null);
+      setAccent(document.getElementById("dnsValue"), null);
     }
 
     function updateDnsSecurityCard(data){
@@ -312,6 +338,8 @@
       document.getElementById("dnsDetails").style.display = "block";
       document.getElementById("dnsUnavailable").style.display = "none";
       document.getElementById("dnsStale").textContent = isStale ? "Stale" : "";
+      setAccent(document.getElementById("dnsCard"), "accent-ok");
+      setAccent(document.getElementById("dnsValue"), "ok");
     }
 
     async function refreshDnsSecurity(){
@@ -346,7 +374,8 @@
     function updateHeader(data) {
       const status = document.getElementById("status");
       document.getElementById("gwLabel").textContent = GATEWAY_HOST;
-      document.getElementById("windowHours").textContent = WINDOW_HOURS;
+      const windowEl = document.getElementById("windowHours");
+      if (windowEl) windowEl.textContent = WINDOW_HOURS;
       if (!data.length) {
         status.textContent = "Waiting for data…";
         return;
@@ -355,7 +384,7 @@
       const last = data[data.length - 1];
       document.getElementById("phase").textContent = last.phase;
       document.getElementById("phasePill").textContent = last.phase;
-      document.getElementById("lastTs").textContent = to12h(last.t);
+      document.getElementById("lastTs").textContent = toShortTime(last.t);
     }
 
     function computeTelemetry(data) {
@@ -386,16 +415,29 @@
       if (!summary || summary.score == null) {
         scoreEl.textContent = "—";
         labelEl.textContent = summary?.label || "No data";
+        setAccent(document.getElementById("noticeCard"), null);
+        setAccent(scoreEl, null);
         return;
       }
       scoreEl.textContent = String(summary.score);
       labelEl.textContent = summary.label;
+      const accent = summary.forecast === "Risk" ? "risk" : (summary.forecast === "Watch" ? "watch" : "ok");
+      setAccent(document.getElementById("noticeCard"), `accent-${accent}`);
+      setAccent(scoreEl, accent);
     }
 
     function updateAttributionCard(attribution){
-      document.getElementById("attribLabel").textContent = attribution?.label || "—";
+      const label = attribution?.label || "—";
+      const labelEl = document.getElementById("attribLabel");
+      labelEl.textContent = label;
       document.getElementById("attribConfidence").textContent = attribution?.confidence || "—";
       document.getElementById("attribWhy").textContent = "Why: " + (attribution?.why || "—");
+      let accent = null;
+      if (label === "No network issue detected") accent = "ok";
+      else if (label === "Likely upstream (ISP / path)" || label === "Likely local (LAN / Wi‑Fi)") accent = "risk";
+      else if (label === "Inconclusive") accent = "watch";
+      setAccent(document.getElementById("attribCard"), accent ? `accent-${accent}` : null);
+      setAccent(labelEl, accent);
     }
 
     function quantile(arr, q){
@@ -560,10 +602,11 @@
       }
       const rows = phases.map(p => ({ phase:p, stats: computeProviderStats(byPhase.get(p) || []) }));
       const table = document.createElement("table");
+      table.className = "health-table";
       table.innerHTML = `
         <thead>
           <tr>
-            <th>Connection</th><th>WAN p95 (median)</th><th>WAN p95 (95th)</th><th>Jitter (95th)</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
+            <th>WAN path</th><th>p95 median</th><th>p95 95th</th><th>Jitter 95th</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
           </tr>
         </thead>
         <tbody>
@@ -571,7 +614,7 @@
             const s = r.stats;
             const cls = r.phase === "TMOBILE" ? "tmobile" : "fiber";
             if (!s) return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td colspan="6" class="small">No data.</td></tr>`;
-            return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td>${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
+            return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td class="metric-strong">${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
           }).join("")}
         </tbody>`;
       wrap.appendChild(table);

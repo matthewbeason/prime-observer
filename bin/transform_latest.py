@@ -19,7 +19,7 @@ TELEMETRY_PATTERN = "bakeoff_*.csv"
 BASELINE_FILE_COUNT = 10
 
 WAN_HOSTS = {"1.1.1.1", "9.9.9.9"}
-BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct")
+BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct", "baseline_sample_count")
 
 
 def sanitize_field(s: str) -> str:
@@ -65,7 +65,7 @@ def median(values):
 
 
 def compute_hourly_wan_baseline():
-    """Return hourly WAN p95 medians using recent telemetry history."""
+    """Return hourly WAN p95 medians and sample counts using recent telemetry history."""
     by_hour = defaultdict(list)
     used_files = []
 
@@ -105,7 +105,9 @@ def compute_hourly_wan_baseline():
         if m is not None:
             baseline[hour] = m
 
-    return baseline, used_files
+    sample_counts = {hour: len(vals) for hour, vals in by_hour.items()}
+
+    return baseline, sample_counts, used_files
 
 
 def ensure_fieldnames(fieldnames):
@@ -116,15 +118,17 @@ def ensure_fieldnames(fieldnames):
     return out
 
 
-def apply_baseline_fields(row, timestamp, baseline_by_hour):
+def apply_baseline_fields(row, timestamp, baseline_by_hour, baseline_sample_counts):
     host = (row.get("host") or "").strip()
 
     if host not in WAN_HOSTS:
         row["baseline_p95"] = ""
         row["baseline_delta_pct"] = ""
+        row["baseline_sample_count"] = ""
         return row
 
     baseline = baseline_by_hour.get(timestamp.hour)
+    sample_count = baseline_sample_counts.get(timestamp.hour, "")
 
     try:
         current_p95 = float((row.get("p95_ms") or "").strip())
@@ -134,9 +138,11 @@ def apply_baseline_fields(row, timestamp, baseline_by_hour):
     if baseline is None:
         row["baseline_p95"] = ""
         row["baseline_delta_pct"] = ""
+        row["baseline_sample_count"] = ""
         return row
 
     row["baseline_p95"] = f"{baseline:.1f}"
+    row["baseline_sample_count"] = str(sample_count)
 
     if current_p95 is not None and baseline > 0:
         delta_pct = ((current_p95 - baseline) / baseline) * 100.0
@@ -155,7 +161,7 @@ def main():
         print(f"No telemetry CSV files found matching {TELEMETRY_PATTERN}.")
         return
 
-    baseline_by_hour, baseline_sources = compute_hourly_wan_baseline()
+    baseline_by_hour, baseline_sample_counts, baseline_sources = compute_hourly_wan_baseline()
 
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - WINDOW
@@ -183,7 +189,7 @@ def main():
             if "speedtest_raw_json" in row:
                 row["speedtest_raw_json"] = sanitize_field(row.get("speedtest_raw_json", ""))
 
-            row = apply_baseline_fields(row, t, baseline_by_hour)
+            row = apply_baseline_fields(row, t, baseline_by_hour, baseline_sample_counts)
             rows_out.append(row)
 
     tmp = OUT.with_suffix(".csv.tmp")
