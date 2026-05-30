@@ -329,4 +329,6 @@ Explicitly deferred for now:
 
 ## License
 
-Personal project / home lab tooling. License details TBD.
+Prime Observer is released under the MIT License.
+
+See the LICENSE file for details.
