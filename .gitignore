@@ -41,3 +41,5 @@ __pycache__/
 *.pyc
 .venv/
 build_hourly_baseline.py
+.env.nextdns
+viz/nextdns_summary.json
