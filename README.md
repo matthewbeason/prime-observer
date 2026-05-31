@@ -16,8 +16,6 @@ Current v0.4.1 dashboard
 
 Prime Observer Dashboard
 
-Required asset: no dashboard screenshot file is currently present in the repository. Add one before publishing if the README should render a screenshot on GitHub.
-
 The dashboard is designed to answer:
 
 - Is the network healthy?
@@ -208,6 +206,8 @@ If using NextDNS, generate the optional DNS summary:
 ```bash
 python3 bin/fetch_nextdns_summary.py
 ```
+
+For automated NextDNS summary refresh on macOS, use the LaunchAgent documented in `docs/nextdns-launchagent.md`.
 
 Serve the dashboard locally:
 

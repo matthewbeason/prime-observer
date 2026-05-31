@@ -17,6 +17,11 @@ Primary dashboard and transforms:
 - `viz/index.html` - static dashboard, scoring, attribution, charts, DNS Security card, and visual hierarchy.
 - `bin/transform_latest.py` - converts recent historical telemetry into `viz/latest.csv` and adds pattern baseline fields.
 - `bin/fetch_nextdns_summary.py` - optional local NextDNS summary fetcher.
+- `launchd/` - macOS LaunchAgent definitions.
+- `launchd/com.mbeason.prime-observer.nextdns-refresh.plist` - refreshes the NextDNS summary every 30 minutes.
+- `docs/nextdns-launchagent.md` - install, status, unload, and remove commands for the NextDNS LaunchAgent.
+- `docs/images/prime-observer-v041.png` - current dashboard screenshot for v0.4.1 documentation.
+- `LICENSE` - MIT license.
 
 Generated/local runtime files:
 
