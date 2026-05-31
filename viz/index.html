@@ -6,8 +6,8 @@
   <title>Prime Observer</title>
   <style>
     :root{
-      --bg:#fafafa; --card:#fff; --border:#e6e6e6; --muted:#666; --ink:#111;
-      --fiber:#1f77b4; --tmobile:#d33;
+      --bg:#f3f1ec; --card:#fbfaf7; --chart:#fdfbf8; --border:#ddd8cf; --muted:#6f6a62; --ink:#171512;
+      --fiber:#2b6f92; --tmobile:#9a4f43;
       --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833;
       --radius:14px;
     }
@@ -21,17 +21,18 @@
     .card.accent-ok{border-left:3px solid rgba(47,125,79,.45);}
     .card.accent-watch{border-left:3px solid rgba(154,106,22,.45);}
     .card.accent-risk{border-left:3px solid rgba(165,72,51,.50);}
-    .pill{font-size:11px;color:#333;background:#f2f2f2;border:1px solid var(--border);padding:2px 8px;border-radius:999px;}
-    .pill.ok{color:var(--ok);border-color:rgba(47,125,79,.28);background:#fff;}
-    .pill.watch{color:var(--watch);border-color:rgba(154,106,22,.30);background:#fff;}
-    .pill.risk{color:var(--risk);border-color:rgba(165,72,51,.30);background:#fff;}
+    .card.egg-glow{box-shadow:0 0 0 2px rgba(154,106,22,.10), 0 8px 24px rgba(64,54,40,.08);}
+    .pill{font-size:11px;color:#34302a;background:#f0ede6;border:1px solid var(--border);padding:2px 8px;border-radius:999px;}
+    .pill.ok{color:var(--ok);border-color:rgba(47,125,79,.28);background:#fbfaf7;}
+    .pill.watch{color:var(--watch);border-color:rgba(154,106,22,.30);background:#fbfaf7;}
+    .pill.risk{color:var(--risk);border-color:rgba(165,72,51,.30);background:#fbfaf7;}
     .small{font-size:12px;color:var(--muted);line-height:1.35;}
     .value{font-size:22px;font-weight:800;margin-top:2px;}
     .value.ok{color:var(--ok);}
     .value.watch{color:var(--watch);}
     .value.risk{color:var(--risk);}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
-    svg{background:#fff;border:1px solid var(--border);border-radius:var(--radius);margin-top:10px;}
+    svg{background:var(--chart);border:1px solid var(--border);border-radius:var(--radius);margin-top:10px;}
     .section-title{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;}
     .section-title h3{margin:0;}
     .legend{font-size:12px;color:var(--muted);}
@@ -41,9 +42,10 @@
     .subtitle { font-size:13px; color:var(--muted); margin:0; }
     .badges { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .badge {
-      font-size:11px;color:#222;background:#f2f2f2;border:1px solid var(--border);
+      font-size:11px;color:#2f2a24;background:#f0ede6;border:1px solid var(--border);
       padding:3px 9px;border-radius:999px;white-space:nowrap;
     }
+    .badge.egg-glow{box-shadow:0 0 0 2px rgba(43,111,146,.12), 0 6px 18px rgba(64,54,40,.08);}
     .badge strong { font-weight:800; }
     #status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
     .hmeta{display:flex;gap:6px;align-items:center;}
@@ -53,15 +55,22 @@
     .health-card h4{margin-bottom:6px;}
     .health-card .small{max-width:680px;}
     .health-table{font-size:11px;}
-    .health-table th{font-size:11px;color:var(--muted);font-weight:750;background:#fff;}
+    .health-table th{font-size:11px;color:var(--muted);font-weight:750;background:#f6f3ed;}
     .health-table td{padding:6px 6px;}
     .health-table .metric-strong{font-weight:750;color:#222;}
 
+    .egg-message{
+      display:none;margin-top:8px;padding:6px 8px;border:1px solid rgba(154,106,22,.22);
+      border-radius:10px;background:#f7f2e8;color:#5d4f3a;font-size:12px;line-height:1.35;
+    }
+    .egg-message.on{display:block;}
+    .header-egg{margin-top:6px;max-width:420px;}
+
     .tip{
       position:fixed; pointer-events:none; z-index:10;
-      background:#fff; border:1px solid var(--border); border-radius:12px;
-      padding:8px 10px; box-shadow:0 8px 18px rgba(0,0,0,0.08);
-      font-size:12px; color:#111; line-height:1.35; max-width:300px;
+      background:#fbfaf7; border:1px solid var(--border); border-radius:12px;
+      padding:8px 10px; box-shadow:0 8px 18px rgba(64,54,40,0.10);
+      font-size:12px; color:var(--ink); line-height:1.35; max-width:300px;
       opacity:0; transform:translateY(6px);
       transition:opacity 80ms linear, transform 80ms linear;
     }
@@ -70,8 +79,8 @@
 
     table{border-collapse:collapse;width:100%;font-size:12px;}
     th,td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top;}
-    th{color:#333;font-weight:800;background:#fbfbfb;}
-    .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#fff;}
+    th{color:#34302a;font-weight:800;background:#f6f3ed;}
+    .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#fbfaf7;}
     .tag.fiber{border-color:rgba(31,119,180,.35);}
     .tag.tmobile{border-color:rgba(221,51,51,.35);}
   </style>
@@ -81,10 +90,11 @@
   <div class="header">
     <div class="titleblock">
       <h2>Prime Observer</h2>
-      <div class="subtitle">Network Observability &amp; Experience Engine</div>
+      <div class="subtitle" id="subtitle">Network Observability &amp; Experience Engine</div>
+      <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
-      <span class="badge">Build <strong id="buildTag">v0.4.1</strong></span>
+      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.4.1</strong></span>
     </div>
   </div>
 
@@ -93,7 +103,7 @@
   <div class="row">
     <div class="card compact">
       <h4><span>Connection</span><span class="pill" id="phasePill">—</span></h4>
-      <div class="metric-line"><b>Current path:</b> <span id="phase">—</span></div>
+      <div class="metric-line"><b>Connection path:</b> <span id="phase">—</span></div>
       <div class="metric-line"><b>Gateway:</b> <span class="mono" id="gwLabel">—</span></div>
       <div class="small">Last sample: <span id="lastTs">—</span></div>
     </div>
@@ -112,6 +122,7 @@
     <div class="card" style="min-width:240px;" id="noticeCard">
       <h4><span>User Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
       <div class="value" id="noticeScore">—</div>
+      <div class="egg-message" id="zeroLawMessage">Zeroth Law Check: no significant harm to humans detected.</div>
       <div><b>State:</b> <span id="noticeLabel">—</span></div>
       <div><b>Forecast:</b> <span id="noticeForecast">—</span></div>
       <div><b>Pattern:</b> <span id="noticePattern">—</span></div>
@@ -155,13 +166,13 @@
 
   <div class="section-title">
     <h3>WAN (Internet) — p95 latency (ms)</h3>
-    <div class="legend">Current WAN path: FIBER = solid • TMOBILE = dashed if present • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
+    <div class="legend">Current path shown as solid line • alternate paths shown dashed if present • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
   </div>
   <svg id="wan" width="1100" height="300"></svg>
 
   <div class="section-title">
     <h3>LAN (Gateway) — p95 latency (ms)</h3>
-    <div class="legend">Same colors as provider (LAN samples are tagged with phase_label)</div>
+    <div class="legend">Same path styling as WAN chart</div>
   </div>
   <svg id="lan" width="1100" height="250"></svg>
 
@@ -191,6 +202,66 @@
       const phase = d.phase || "FIBER";
       const t = d.t instanceof Date ? d.t.getTime() : new Date(d.t).getTime();
       return `${phase}|${t}`;
+    }
+
+    function pathLabel(phase){
+      if (phase === "FIBER") return "Current path";
+      if (phase === "TMOBILE") return "Alternate path";
+      return "Connection path";
+    }
+
+    function pathTagLabel(phase){
+      if (phase === "FIBER" || phase === "TMOBILE") return pathLabel(phase);
+      return `Connection path (${phase || "UNKNOWN"})`;
+    }
+
+    function makeBurstTrigger(limit, windowMs, action){
+      let clicks = [];
+      return () => {
+        const now = Date.now();
+        clicks = clicks.filter(t => now - t <= windowMs);
+        clicks.push(now);
+        if (clicks.length >= limit){
+          clicks = [];
+          action();
+        }
+      };
+    }
+
+    function showTemporaryMessage(el, ms = 8000){
+      if (!el) return;
+      clearTimeout(el._hideTimer);
+      el.classList.add("on");
+      el._hideTimer = setTimeout(() => el.classList.remove("on"), ms);
+    }
+
+    function initEasterEggs(){
+      const noticeScore = document.getElementById("noticeScore");
+      const noticeCard = document.getElementById("noticeCard");
+      const zeroLawMessage = document.getElementById("zeroLawMessage");
+      const buildBadge = document.getElementById("buildBadge");
+      const subtitle = document.getElementById("subtitle");
+      const seldonMessage = document.getElementById("seldonMessage");
+      const originalSubtitle = subtitle?.textContent || "";
+
+      noticeScore?.addEventListener("click", makeBurstTrigger(7, 6000, () => {
+        showTemporaryMessage(zeroLawMessage);
+        noticeCard?.classList.add("egg-glow");
+        clearTimeout(noticeCard?._eggTimer);
+        if (noticeCard) noticeCard._eggTimer = setTimeout(() => noticeCard.classList.remove("egg-glow"), 8000);
+      }));
+
+      buildBadge?.addEventListener("click", makeBurstTrigger(5, 5000, () => {
+        if (subtitle) subtitle.textContent = "Prime Radiant active. Future network behavior remains probabilistic.";
+        showTemporaryMessage(seldonMessage);
+        buildBadge.classList.add("egg-glow");
+        clearTimeout(buildBadge._eggTimer);
+        buildBadge._eggTimer = setTimeout(() => {
+          buildBadge.classList.remove("egg-glow");
+          if (subtitle) subtitle.textContent = originalSubtitle;
+        }, 8000);
+        console.log("Prime Observer: Seldon crisis simulation acknowledged.");
+      }));
     }
 
     function rerenderFromState(){
@@ -382,8 +453,8 @@
       }
       status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
       const last = data[data.length - 1];
-      document.getElementById("phase").textContent = last.phase;
-      document.getElementById("phasePill").textContent = last.phase;
+      document.getElementById("phase").textContent = pathTagLabel(last.phase);
+      document.getElementById("phasePill").textContent = pathLabel(last.phase);
       document.getElementById("lastTs").textContent = toShortTime(last.t);
     }
 
@@ -613,8 +684,9 @@
           ${rows.map(r=>{
             const s = r.stats;
             const cls = r.phase === "TMOBILE" ? "tmobile" : "fiber";
-            if (!s) return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td colspan="6" class="small">No data.</td></tr>`;
-            return `<tr><td><span class="tag ${cls}">WAN (${r.phase})</span></td><td class="metric-strong">${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
+            const label = pathTagLabel(r.phase);
+            if (!s) return `<tr><td><span class="tag ${cls}">${label}</span></td><td colspan="6" class="small">No data.</td></tr>`;
+            return `<tr><td><span class="tag ${cls}">${label}</span></td><td class="metric-strong">${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
           }).join("")}
         </tbody>`;
       wrap.appendChild(table);
@@ -769,7 +841,7 @@
           })
           .on("mousemove", (ev, d) => {
             const cls = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
-            const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+            const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                           <div><b>${cls}</b></div>
                           <div>Sustained bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
                           <div>Raw bad rate: ${(d.rawRate*100).toFixed(1)}% (${d.rawBad}/${d.total})</div>
@@ -779,7 +851,7 @@
           })
           .on("mouseleave", () => tipHide());
 
-        g.append("text").attr("x", 0).attr("y", y0 - 4).attr("fill", "#333").attr("font-size", 12).attr("font-weight", 800).text(phase);
+        g.append("text").attr("x", 0).attr("y", y0 - 4).attr("fill", "#34302a").attr("font-size", 12).attr("font-weight", 800).text(pathLabel(phase));
         g.append("line").attr("x1", 0).attr("x2", innerW).attr("y1", y0 + rowH - 8).attr("y2", y0 + rowH - 8).attr("stroke", "#eee");
       }
 
@@ -861,9 +933,9 @@
           .attr("pointer-events", "none");
       }
 
-      g.append("g").attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0)).selectAll("text").attr("fill","#666");
-      g.append("g").call(d3.axisLeft(y).ticks(6).tickSizeOuter(0)).selectAll("text").attr("fill","#666");
-      g.selectAll(".domain, .tick line").attr("stroke", "#ddd");
+      g.append("g").attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0)).selectAll("text").attr("fill","var(--muted)");
+      g.append("g").call(d3.axisLeft(y).ticks(6).tickSizeOuter(0)).selectAll("text").attr("fill","var(--muted)");
+      g.selectAll(".domain, .tick line").attr("stroke", "var(--border)");
 
       const byPhase = d3.group(seriesArr, d=>d.phase || "FIBER");
       const phases = ["FIBER","TMOBILE"];
@@ -929,7 +1001,7 @@
           let extra = '';
           if (opts.selectedBucket && d.t >= opts.selectedBucket.t && d.t < opts.selectedBucket.t2) extra = '<div class="small">Inside selected heatmap interval.</div>';
           if (d.rawBad && !d.isBad) extra += '<div class="small">Isolated raw spike.</div>';
-          const html = `<div class="t"><b>${d.phase}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+          const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                         <div><b>${opts.label || "p95"}:</b> ${fmt1(d.p95)} ms</div>
                         <div class="small">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>${extra}`;
           tipShow(html, ev.clientX, ev.clientY);
@@ -969,6 +1041,7 @@
       }
     }
 
+    initEasterEggs();
     tick();
     setInterval(tick, REFRESH_MS);
   </script>
