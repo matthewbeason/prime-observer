@@ -139,6 +139,8 @@ bin/transform_latest.py
         v
 viz/latest.csv
         |
+        +--> viz/network_attribution.json
+        |
         v
 viz/index.html
 ```
@@ -164,10 +166,13 @@ viz/index.html
   Historical telemetry files. The name is legacy; the product is now framed around WAN health and user experience observability.
 
 - `bin/transform_latest.py`
-  Reads the newest historical telemetry file, keeps the last 24 hours, computes hourly WAN baselines, adds Pattern Confidence fields, and writes `viz/latest.csv`.
+  Reads the newest historical telemetry file, keeps the last 24 hours, computes hourly WAN baselines, adds Pattern Confidence fields, writes `viz/latest.csv`, and exports Network Attribution results.
 
 - `viz/latest.csv`
   Generated dashboard input containing the current 24-hour telemetry window.
+
+- `viz/network_attribution.json`
+  Generated machine-readable Network Attribution export for downstream tools. The legacy top-level `attribution_*` fields describe current/recent attribution for the last 15 minutes. The export also includes `current_attribution`, `window_attribution`, and per-incident `incidents` so reports can attribute sustained slowdown intervals across the 24-hour observation window.
 
 - `bin/fetch_nextdns_summary.py`
   Optional local NextDNS analytics summary fetcher. Uses Python standard library only.
