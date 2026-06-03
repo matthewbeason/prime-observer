@@ -19,6 +19,9 @@ API_BASE = "https://api.nextdns.io"
 USER_AGENT = "PrimeObserver/0.4.1"
 DEFAULT_WINDOW = "-24h"
 DEFAULT_TIMEOUT_SECONDS = 8
+DEFAULT_EXPORT_DOMAIN_NAMES = "0"
+DEFAULT_TOP_ENTITIES_LIMIT = 5
+MAX_TOP_ENTITIES_LIMIT = 50
 
 REQUIRED_CONFIG = ("NEXTDNS_PROFILE_ID", "NEXTDNS_API_KEY")
 
@@ -91,13 +94,48 @@ def load_config():
         file_values,
         str(DEFAULT_TIMEOUT_SECONDS),
     )
+    config["NEXTDNS_EXPORT_DOMAIN_NAMES"] = config_value(
+        "NEXTDNS_EXPORT_DOMAIN_NAMES",
+        file_values,
+        DEFAULT_EXPORT_DOMAIN_NAMES,
+    )
+    config["NEXTDNS_TOP_ENTITIES_LIMIT"] = config_value(
+        "NEXTDNS_TOP_ENTITIES_LIMIT",
+        file_values,
+        str(DEFAULT_TOP_ENTITIES_LIMIT),
+    )
 
     try:
         config["NEXTDNS_TIMEOUT_SECONDS"] = float(config["NEXTDNS_TIMEOUT_SECONDS"])
     except ValueError:
         config["NEXTDNS_TIMEOUT_SECONDS"] = DEFAULT_TIMEOUT_SECONDS
 
+    config["NEXTDNS_EXPORT_DOMAIN_NAMES"] = parse_bool(config["NEXTDNS_EXPORT_DOMAIN_NAMES"])
+    config["NEXTDNS_TOP_ENTITIES_LIMIT"] = parse_int(
+        config["NEXTDNS_TOP_ENTITIES_LIMIT"],
+        DEFAULT_TOP_ENTITIES_LIMIT,
+        minimum=1,
+        maximum=MAX_TOP_ENTITIES_LIMIT,
+    )
+
     return config
+
+
+def parse_bool(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_int(value, default, minimum=None, maximum=None):
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        parsed = default
+
+    if minimum is not None:
+        parsed = max(minimum, parsed)
+    if maximum is not None:
+        parsed = min(maximum, parsed)
+    return parsed
 
 
 def print_config_summary(config):
@@ -111,7 +149,9 @@ def print_config_summary(config):
         f"API key present: {present}; "
         f"API key length: {len(api_key)}; "
         f"window: {config.get('NEXTDNS_WINDOW') or DEFAULT_WINDOW}; "
-        f"timeout: {config.get('NEXTDNS_TIMEOUT_SECONDS')}s"
+        f"timeout: {config.get('NEXTDNS_TIMEOUT_SECONDS')}s; "
+        f"export domain names: {'yes' if config.get('NEXTDNS_EXPORT_DOMAIN_NAMES') else 'no'}; "
+        f"top entities limit: {config.get('NEXTDNS_TOP_ENTITIES_LIMIT')}"
     )
 
 
@@ -201,15 +241,76 @@ def pct(part, whole):
     return round((part / whole) * 100.0, 1)
 
 
+def share(part, whole):
+    if whole <= 0:
+        return None
+    return round(part / whole, 4)
+
+
+def dominance_ratio(rows):
+    if len(rows) < 2:
+        return None
+
+    first = rows[0]["count"]
+    second = rows[1]["count"]
+    if second <= 0:
+        return None
+    return round(first / second, 2)
+
+
+def build_top_entities(rows, total_queries, export_names):
+    entities = []
+
+    for idx, row in enumerate(rows, 1):
+        try:
+            queries = int(row.get("queries") or 0)
+        except (TypeError, ValueError):
+            queries = 0
+
+        entity = {
+            "entity_type": "domain",
+            "label": f"entity_{idx}",
+            "name_redacted": not export_names,
+            "count": queries,
+            "share_of_total": share(queries, total_queries),
+            "dominance_ratio": None,
+        }
+
+        if export_names:
+            name = str(row.get("domain") or "").strip()
+            if name:
+                entity["name"] = name
+
+        entities.append(entity)
+
+    top_dominance_ratio = dominance_ratio(entities)
+    if entities:
+        entities[0]["dominance_ratio"] = top_dominance_ratio
+
+    return entities, top_dominance_ratio
+
+
 def build_summary(config):
     profile_id = config["NEXTDNS_PROFILE_ID"].strip()
     api_key = config["NEXTDNS_API_KEY"].strip()
     window = config["NEXTDNS_WINDOW"].strip() or DEFAULT_WINDOW
     timeout = config["NEXTDNS_TIMEOUT_SECONDS"]
+    export_domain_names = config["NEXTDNS_EXPORT_DOMAIN_NAMES"]
+    top_entities_limit = config["NEXTDNS_TOP_ENTITIES_LIMIT"]
 
     status_rows = data_list(fetch_json(profile_id, api_key, "status", window, timeout))
     reasons_rows = data_list(fetch_json(profile_id, api_key, "reasons", window, timeout, {"limit": 5}))
     encryption_rows = data_list(fetch_json(profile_id, api_key, "encryption", window, timeout))
+    domains_rows = data_list(
+        fetch_json(
+            profile_id,
+            api_key,
+            "domains",
+            window,
+            timeout,
+            {"limit": top_entities_limit},
+        )
+    )
 
     status_counts = count_by_key(status_rows, "status")
     total_queries = sum(status_counts.values())
@@ -241,6 +342,13 @@ def build_summary(config):
             queries = 0
         top_reasons.append({"name": name, "queries": queries})
 
+    top_entities, top_entity_dominance_ratio = build_top_entities(
+        domains_rows[:top_entities_limit],
+        total_queries,
+        export_domain_names,
+    )
+    top_entity_share = top_entities[0]["share_of_total"] if top_entities else None
+
     payload = summary_base(config, "ok")
     payload["summary"] = {
         "total_queries": total_queries,
@@ -253,6 +361,9 @@ def build_summary(config):
         "unencrypted_queries": unencrypted_queries,
         "encrypted_rate_pct": pct(encrypted_queries, encryption_total),
         "top_reasons": top_reasons,
+        "top_entity_share": top_entity_share,
+        "top_entity_dominance_ratio": top_entity_dominance_ratio,
+        "top_entities": top_entities,
     }
     payload["error"] = None
     return payload

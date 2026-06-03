@@ -178,7 +178,7 @@ viz/index.html
   Optional local NextDNS analytics summary fetcher. Uses Python standard library only.
 
 - `viz/nextdns_summary.json`
-  Generated public-safe DNS summary. It must not contain API keys, raw domains, client IPs, device names, or full profile IDs.
+  Generated public-safe DNS summary. It must not contain API keys, raw domains by default, client IPs, device names, or full profile IDs.
 
 - `viz/index.html`
   Static D3 dashboard. Loads local CSV and JSON files with `cache: "no-store"` and renders the observability UI.
@@ -246,14 +246,18 @@ Optional:
 ```bash
 NEXTDNS_WINDOW=-24h
 NEXTDNS_TIMEOUT_SECONDS=8
+NEXTDNS_EXPORT_DOMAIN_NAMES=0
+NEXTDNS_TOP_ENTITIES_LIMIT=5
 ```
+
+`NEXTDNS_EXPORT_DOMAIN_NAMES` defaults to `0`, so top DNS concentration signals are exported with redacted labels such as `entity_1` rather than raw domain names.
 
 Security rules:
 
 - Do not commit `.env.nextdns`.
 - Do not put secrets in `viz/index.html`.
 - Do not expose API keys in generated JSON.
-- Do not include raw DNS logs, domain lists, client IPs, device names, or full profile IDs.
+- Do not include raw DNS logs, domain lists by default, client IPs, device names, or full profile IDs.
 - The dashboard must continue working if NextDNS data is missing, stale, invalid, or unavailable.
 
 ## Design Principles

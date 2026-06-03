@@ -208,6 +208,7 @@ Rules:
 - `NEXTDNS_PROFILE_ID` and `NEXTDNS_API_KEY` are secrets/config and must never be committed.
 - `viz/nextdns_summary.json` is generated public-safe output.
 - `viz/nextdns_summary.json` must not include secrets, raw domains, client IPs, device names, or full profile IDs.
+- DNS concentration export must keep domain names redacted by default unless `NEXTDNS_EXPORT_DOMAIN_NAMES=1` is explicitly set locally.
 - The dashboard must display an unavailable/stale state without affecting network telemetry.
 
 ---
