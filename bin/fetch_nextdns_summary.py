@@ -290,6 +290,31 @@ def build_top_entities(rows, total_queries, export_names):
     return entities, top_dominance_ratio
 
 
+def optional_domains_rows(profile_id, api_key, window, timeout, limit):
+    try:
+        rows = data_list(
+            fetch_json(
+                profile_id,
+                api_key,
+                "domains",
+                window,
+                timeout,
+                {"limit": limit},
+            )
+        )
+        return rows, None
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+    ):
+        return [], {
+            "kind": "domains_unavailable",
+            "message": "NextDNS domains analytics unavailable",
+        }
+
+
 def build_summary(config):
     profile_id = config["NEXTDNS_PROFILE_ID"].strip()
     api_key = config["NEXTDNS_API_KEY"].strip()
@@ -301,15 +326,12 @@ def build_summary(config):
     status_rows = data_list(fetch_json(profile_id, api_key, "status", window, timeout))
     reasons_rows = data_list(fetch_json(profile_id, api_key, "reasons", window, timeout, {"limit": 5}))
     encryption_rows = data_list(fetch_json(profile_id, api_key, "encryption", window, timeout))
-    domains_rows = data_list(
-        fetch_json(
-            profile_id,
-            api_key,
-            "domains",
-            window,
-            timeout,
-            {"limit": top_entities_limit},
-        )
+    domains_rows, domains_warning = optional_domains_rows(
+        profile_id,
+        api_key,
+        window,
+        timeout,
+        top_entities_limit,
     )
 
     status_counts = count_by_key(status_rows, "status")
@@ -366,6 +388,8 @@ def build_summary(config):
         "top_entities": top_entities,
     }
     payload["error"] = None
+    if domains_warning:
+        payload["warnings"] = [domains_warning]
     return payload
 
 
