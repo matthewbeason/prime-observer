@@ -10,6 +10,10 @@ It is not a generic network monitor, and it is no longer primarily an ISP compar
 
 Current release: **v0.4.1**
 
+Portfolio context: Prime Observer demonstrates local-first observability,
+user-noticeability scoring, privacy-aware DNS/security summaries, and historical
+trend context using flat CSV/JSON artifacts.
+
 ## Dashboard
 
 Current v0.4.1 dashboard
@@ -199,6 +203,19 @@ Optional DNS/security context:
 - NextDNS analytics summary via local generated JSON
 
 ## Running The Dashboard
+
+Quick start:
+
+```bash
+python3 bin/transform_latest.py
+python3 -m http.server 8000 --directory viz
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
 
 Generate the latest telemetry window:
 
