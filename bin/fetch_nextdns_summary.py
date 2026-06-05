@@ -19,7 +19,7 @@ API_BASE = "https://api.nextdns.io"
 USER_AGENT = "PrimeObserver/0.4.1"
 DEFAULT_WINDOW = "-24h"
 DEFAULT_TIMEOUT_SECONDS = 8
-DEFAULT_EXPORT_DOMAIN_NAMES = "0"
+DEFAULT_EXPORT_DOMAIN_NAMES = "1"
 DEFAULT_TOP_ENTITIES_LIMIT = 5
 MAX_TOP_ENTITIES_LIMIT = 50
 
@@ -235,6 +235,13 @@ def count_by_key(rows, key):
     return counts
 
 
+def query_count(row):
+    try:
+        return int(row.get("queries") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def pct(part, whole):
     if whole <= 0:
         return None
@@ -245,6 +252,12 @@ def share(part, whole):
     if whole <= 0:
         return None
     return round(part / whole, 4)
+
+
+def optional_share(part, whole):
+    if part is None:
+        return None
+    return share(part, whole)
 
 
 def dominance_ratio(rows):
@@ -262,10 +275,7 @@ def build_top_entities(rows, total_queries, export_names):
     entities = []
 
     for idx, row in enumerate(rows, 1):
-        try:
-            queries = int(row.get("queries") or 0)
-        except (TypeError, ValueError):
-            queries = 0
+        queries = query_count(row)
 
         entity = {
             "entity_type": "domain",
@@ -290,7 +300,42 @@ def build_top_entities(rows, total_queries, export_names):
     return entities, top_dominance_ratio
 
 
-def optional_domains_rows(profile_id, api_key, window, timeout, limit):
+def top_domain_fact(rows, denominator, export_names):
+    if not rows:
+        return {
+            "domain": None,
+            "count": None,
+            "share": None,
+            "redacted": False,
+        }
+
+    row = rows[0]
+    domain = str(row.get("domain") or "").strip()
+    count = query_count(row)
+    redacted = bool(domain) and not export_names
+
+    return {
+        "domain": domain if export_names and domain else None,
+        "count": count,
+        "share": share(count, denominator),
+        "redacted": redacted,
+    }
+
+
+def optional_domains_rows(
+    profile_id,
+    api_key,
+    window,
+    timeout,
+    limit,
+    status=None,
+    warning_kind="domains_unavailable",
+    warning_message="NextDNS domains analytics unavailable",
+):
+    params = {"limit": limit}
+    if status:
+        params["status"] = status
+
     try:
         rows = data_list(
             fetch_json(
@@ -299,7 +344,7 @@ def optional_domains_rows(profile_id, api_key, window, timeout, limit):
                 "domains",
                 window,
                 timeout,
-                {"limit": limit},
+                params,
             )
         )
         return rows, None
@@ -310,8 +355,8 @@ def optional_domains_rows(profile_id, api_key, window, timeout, limit):
         json.JSONDecodeError,
     ):
         return [], {
-            "kind": "domains_unavailable",
-            "message": "NextDNS domains analytics unavailable",
+            "kind": warning_kind,
+            "message": warning_message,
         }
 
 
@@ -326,6 +371,7 @@ def build_summary(config):
     status_rows = data_list(fetch_json(profile_id, api_key, "status", window, timeout))
     reasons_rows = data_list(fetch_json(profile_id, api_key, "reasons", window, timeout, {"limit": 5}))
     encryption_rows = data_list(fetch_json(profile_id, api_key, "encryption", window, timeout))
+    warnings = []
     domains_rows, domains_warning = optional_domains_rows(
         profile_id,
         api_key,
@@ -333,6 +379,30 @@ def build_summary(config):
         timeout,
         top_entities_limit,
     )
+    blocked_domains_rows, blocked_domains_warning = optional_domains_rows(
+        profile_id,
+        api_key,
+        window,
+        timeout,
+        top_entities_limit,
+        status="blocked",
+        warning_kind="blocked_domains_unavailable",
+        warning_message="NextDNS blocked-domain analytics unavailable",
+    )
+    resolved_domains_rows, resolved_domains_warning = optional_domains_rows(
+        profile_id,
+        api_key,
+        window,
+        timeout,
+        top_entities_limit,
+        status="default",
+        warning_kind="resolved_domains_unavailable",
+        warning_message="NextDNS resolved-domain analytics unavailable",
+    )
+
+    for warning in (domains_warning, blocked_domains_warning, resolved_domains_warning):
+        if warning:
+            warnings.append(warning)
 
     status_counts = count_by_key(status_rows, "status")
     total_queries = sum(status_counts.values())
@@ -358,10 +428,7 @@ def build_summary(config):
     top_reasons = []
     for row in reasons_rows[:5]:
         name = str(row.get("name") or row.get("id") or "Unknown").strip()
-        try:
-            queries = int(row.get("queries") or 0)
-        except (TypeError, ValueError):
-            queries = 0
+        queries = query_count(row)
         top_reasons.append({"name": name, "queries": queries})
 
     top_entities, top_entity_dominance_ratio = build_top_entities(
@@ -370,6 +437,12 @@ def build_summary(config):
         export_domain_names,
     )
     top_entity_share = top_entities[0]["share_of_total"] if top_entities else None
+    top_queried = top_domain_fact(domains_rows, total_queries, export_domain_names)
+    top_blocked = top_domain_fact(blocked_domains_rows, blocked_queries, export_domain_names)
+    top_resolved = top_domain_fact(resolved_domains_rows, default_queries, export_domain_names)
+    top_blocked_share_of_total = optional_share(top_blocked["count"], total_queries)
+    top_resolved_share_of_total = optional_share(top_resolved["count"], total_queries)
+    top_reason = top_reasons[0] if top_reasons else {}
 
     payload = summary_base(config, "ok")
     payload["summary"] = {
@@ -383,13 +456,33 @@ def build_summary(config):
         "unencrypted_queries": unencrypted_queries,
         "encrypted_rate_pct": pct(encrypted_queries, encryption_total),
         "top_reasons": top_reasons,
+        "dns_block_rate": share(blocked_queries, total_queries),
+        "dns_encrypted_rate": share(encrypted_queries, encryption_total),
+        "top_queried_domain": top_queried["domain"],
+        "top_queried_domain_count": top_queried["count"],
+        "top_queried_domain_share": top_queried["share"],
+        "top_queried_domain_redacted": top_queried["redacted"],
+        "top_resolved_domain": top_resolved["domain"],
+        "top_resolved_domain_count": top_resolved["count"],
+        "top_resolved_domain_share": top_resolved["share"],
+        "top_resolved_domain_share_of_resolved": top_resolved["share"],
+        "top_resolved_domain_share_of_total": top_resolved_share_of_total,
+        "top_resolved_domain_redacted": top_resolved["redacted"],
+        "top_blocked_domain": top_blocked["domain"],
+        "top_blocked_domain_count": top_blocked["count"],
+        "top_blocked_domain_share": top_blocked["share"],
+        "top_blocked_domain_share_of_blocked": top_blocked["share"],
+        "top_blocked_domain_share_of_total": top_blocked_share_of_total,
+        "top_blocked_domain_redacted": top_blocked["redacted"],
+        "top_blocked_reason": top_reason.get("name"),
+        "top_blocked_reason_queries": top_reason.get("queries"),
         "top_entity_share": top_entity_share,
         "top_entity_dominance_ratio": top_entity_dominance_ratio,
         "top_entities": top_entities,
     }
     payload["error"] = None
-    if domains_warning:
-        payload["warnings"] = [domains_warning]
+    if warnings:
+        payload["warnings"] = warnings
     return payload
 
 

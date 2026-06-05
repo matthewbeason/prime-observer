@@ -206,9 +206,9 @@ Rules:
 - NextDNS data is fetched only by `bin/fetch_nextdns_summary.py`, never directly by `viz/index.html`.
 - The script uses local configuration from environment variables or `.env.nextdns`.
 - `NEXTDNS_PROFILE_ID` and `NEXTDNS_API_KEY` are secrets/config and must never be committed.
-- `viz/nextdns_summary.json` is generated public-safe output.
-- `viz/nextdns_summary.json` must not include secrets, raw domains, client IPs, device names, or full profile IDs.
-- DNS concentration export must keep domain names redacted by default unless `NEXTDNS_EXPORT_DOMAIN_NAMES=1` is explicitly set locally.
+- `viz/nextdns_summary.json` is generated local/private output.
+- `viz/nextdns_summary.json` may include aggregate top-N domain names from analytics endpoints, but must not include secrets, raw DNS logs, client IPs, local IPs, device names, user attribution, per-query records, or full profile IDs.
+- DNS domain-name export defaults to enabled for local downstream briefings; `NEXTDNS_EXPORT_DOMAIN_NAMES=0` must keep aggregate domain names redacted while preserving counts and shares.
 - The dashboard must display an unavailable/stale state without affecting network telemetry.
 
 ---
