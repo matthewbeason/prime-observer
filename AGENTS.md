@@ -17,6 +17,8 @@ Primary dashboard and transforms:
 - `viz/index.html` - static dashboard, scoring, attribution, charts, DNS Security card, and visual hierarchy.
 - `bin/transform_latest.py` - converts recent historical telemetry into `viz/latest.csv` and adds pattern baseline fields.
 - `bin/fetch_nextdns_summary.py` - optional local NextDNS summary fetcher.
+- `bin/build_investigation.py` - builds read-only historical investigation evidence JSON.
+- `viz/investigate.html` - static historical investigation evidence view.
 - `launchd/` - macOS LaunchAgent definitions.
 - `launchd/com.mbeason.prime-observer.nextdns-refresh.plist` - refreshes the NextDNS summary every 30 minutes.
 - `docs/nextdns-launchagent.md` - install, status, unload, and remove commands for the NextDNS LaunchAgent.
@@ -26,6 +28,7 @@ Primary dashboard and transforms:
 Generated/local runtime files:
 
 - `viz/latest.csv` - generated 24-hour dashboard telemetry window.
+- `viz/investigation.json` - generated historical investigation evidence for a selected window.
 - `viz/nextdns_summary.json` - generated public-safe NextDNS summary consumed by the dashboard.
 - `.env.nextdns` - local NextDNS secrets/config; must not be committed.
 - `.env.nextdns.example` - placeholder example config; safe to commit.
@@ -45,7 +48,8 @@ Prime Observer uses a lightweight local CSV/JSON flow:
 1. Historical telemetry lives in `data/bakeoff_YYYYMMDD.csv`.
 2. `bin/transform_latest.py` reads the newest telemetry file, keeps the last 24 hours, computes WAN baseline context, and writes `viz/latest.csv`.
 3. `bin/fetch_nextdns_summary.py`, when configured, reads NextDNS analytics locally and writes `viz/nextdns_summary.json`.
-4. `viz/index.html` reads local generated files with `cache: "no-store"` and renders the dashboard.
+4. `bin/build_investigation.py`, when requested, reads historical telemetry and writes `viz/investigation.json`.
+5. `viz/index.html` and `viz/investigate.html` read local generated files with `cache: "no-store"` and render dashboard or investigation views.
 
 The dashboard must continue functioning if optional features fail, including missing, stale, invalid, or unavailable NextDNS data.
 
@@ -82,6 +86,12 @@ Key metrics and context:
 - baseline deviation
 - baseline confidence
 - DNS blocked-query summary, when available
+
+Historical investigation is factual evidence only. Prime Observer may show WAN
+and LAN samples, counts, thresholds, buckets, source files, and generated DNS
+summary context around a requested window. It must not move Core Signal
+interpretation, correlations, recommendations, or higher-level meaning into
+Prime Observer.
 
 ---
 

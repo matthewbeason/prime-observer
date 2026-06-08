@@ -164,6 +164,21 @@ viz/nextdns_summary.json
 viz/index.html
 ```
 
+Historical investigation:
+
+```text
+data/bakeoff_YYYYMMDD.csv
+        |
+        v
+bin/build_investigation.py
+        |
+        v
+viz/investigation.json
+        |
+        v
+viz/investigate.html
+```
+
 ### Key Files
 
 - `data/bakeoff_YYYYMMDD.csv`
@@ -183,6 +198,12 @@ viz/index.html
 
 - `viz/nextdns_summary.json`
   Generated local DNS summary. It may include aggregate top-N domain names from analytics endpoints, but must not contain API keys, raw logs, client IPs, device names, per-query records, or full profile IDs.
+
+- `bin/build_investigation.py`
+  Builds a local read-only investigation JSON for a historical time window using existing telemetry files. The output is factual evidence, not interpretation.
+
+- `viz/investigate.html`
+  Static historical evidence view for `viz/investigation.json`.
 
 - `viz/index.html`
   Static D3 dashboard. Loads local CSV and JSON files with `cache: "no-store"` and renders the observability UI.
@@ -230,6 +251,20 @@ python3 bin/fetch_nextdns_summary.py
 ```
 
 For automated NextDNS summary refresh on macOS, use the LaunchAgent documented in `docs/nextdns-launchagent.md`.
+
+Generate a historical investigation:
+
+```bash
+python3 bin/build_investigation.py --start 2026-05-30T17:30:00-07:00 --end 2026-05-30T18:00:00-07:00
+```
+
+Then open:
+
+```text
+http://localhost:8000/investigate.html
+```
+
+See `docs/investigation-workflow.md` for details and future Olivaw deep-link shape.
 
 Serve the dashboard locally:
 

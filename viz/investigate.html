@@ -1,0 +1,240 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prime Observer Investigation</title>
+  <style>
+    :root{
+      --bg:#f3f1ec; --card:#fbfaf7; --border:#ddd8cf; --muted:#6f6a62; --ink:#171512;
+      --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833; --radius:10px;
+    }
+    body{font-family:system-ui,-apple-system,sans-serif;margin:24px;background:var(--bg);color:var(--ink);}
+    h1{font-size:24px;margin:0;}
+    h2{font-size:17px;margin:22px 0 10px;}
+    h3{font-size:14px;margin:0 0 8px;}
+    .header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;}
+    .subtitle{font-size:13px;color:var(--muted);margin-top:4px;}
+    .pill{font-size:11px;color:#34302a;background:#f0ede6;border:1px solid var(--border);padding:3px 9px;border-radius:999px;white-space:nowrap;}
+    .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;}
+    .value{font-size:22px;font-weight:800;margin-top:2px;}
+    .small{font-size:12px;color:var(--muted);line-height:1.4;}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
+    .status{font-size:12px;color:var(--muted);margin:10px 0 14px;}
+    table{border-collapse:collapse;width:100%;font-size:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+    th,td{border-bottom:1px solid var(--border);padding:8px 7px;text-align:left;vertical-align:top;}
+    th{font-size:11px;background:#f6f3ed;color:#34302a;font-weight:800;}
+    tr:last-child td{border-bottom:0;}
+    .section-note{font-size:12px;color:var(--muted);margin:-4px 0 10px;}
+    .risk{color:var(--risk);font-weight:750;}
+    .watch{color:var(--watch);font-weight:750;}
+    .ok{color:var(--ok);font-weight:750;}
+    .wide{overflow:auto;}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Prime Observer Investigation</h1>
+      <div class="subtitle">Historical evidence view for a selected telemetry window</div>
+    </div>
+    <span class="pill">Evidence only</span>
+  </div>
+
+  <div id="status" class="status">Loading investigation.json...</div>
+  <div id="deepLink" class="status"></div>
+
+  <div class="row" id="eventCards"></div>
+
+  <h2>Before / During / After</h2>
+  <div class="section-note">WAN and LAN are summarized separately. Bad counts use Prime Observer thresholds from the generated investigation file.</div>
+  <div class="wide">
+    <table id="periodTable"></table>
+  </div>
+
+  <h2>WAN Buckets</h2>
+  <div class="section-note">15-minute factual buckets around the requested window.</div>
+  <div class="wide">
+    <table id="bucketTable"></table>
+  </div>
+
+  <h2>Timeline Samples</h2>
+  <div class="section-note">Representative telemetry rows from the generated investigation file.</div>
+  <div class="wide">
+    <table id="sampleTable"></table>
+  </div>
+
+  <h2>DNS Context</h2>
+  <div id="dnsContext" class="card"></div>
+
+  <h2>Sources</h2>
+  <div class="wide">
+    <table id="sourceTable"></table>
+  </div>
+
+  <script>
+    const INVESTIGATION_URL = "./investigation.json";
+
+    function fmt(value, suffix = ""){
+      if (value === null || value === undefined || value === "") return "—";
+      return `${value}${suffix}`;
+    }
+
+    function shortTime(value){
+      if (!value) return "—";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    function cell(value, suffix = ""){
+      return `<td>${fmt(value, suffix)}</td>`;
+    }
+
+    function renderCard(title, value, detail){
+      return `<div class="card"><h3>${title}</h3><div class="value">${value}</div><div class="small">${detail}</div></div>`;
+    }
+
+    function renderEventCards(data){
+      const event = data.event_window || {};
+      const thresholds = data.thresholds || {};
+      document.getElementById("eventCards").innerHTML = [
+        renderCard("Event Window", fmt(event.duration_minutes, " min"), `${shortTime(event.start)} to ${shortTime(event.end)}`),
+        renderCard("Context Window", fmt(data.input?.pad_minutes, " min pad"), `${shortTime(event.context_start)} to ${shortTime(event.context_end)}`),
+        renderCard("WAN Bad Thresholds", `${thresholds.wan_bad_p95_ms} ms`, `jitter > ${thresholds.wan_bad_jitter_ms} ms or loss > ${thresholds.wan_bad_loss_pct}%`),
+        renderCard("Generated", shortTime(data.generated_at), `schema ${fmt(data.schema_version)}`),
+      ].join("");
+    }
+
+    function renderPeriodTable(data){
+      const rows = ["before","during","after"].map(name => {
+        const period = data.periods?.[name] || {};
+        const wan = period.wan || {};
+        const lan = period.lan || {};
+        return `<tr>
+          <td><b>${name}</b><div class="small">${shortTime(period.start)} to ${shortTime(period.end)}</div></td>
+          ${cell(period.total_samples)}
+          ${cell(wan.sample_count)}
+          ${cell(wan.median_p95_ms, " ms")}
+          ${cell(wan.p95_95th_ms, " ms")}
+          ${cell(wan.jitter_95th_ms, " ms")}
+          ${cell(wan.max_loss_pct, "%")}
+          ${cell(wan.raw_bad_count)}
+          ${cell(wan.sustained_bad_count)}
+          ${cell(wan.turbulence_bucket_count)}
+          ${cell(lan.sample_count)}
+          ${cell(lan.median_p95_ms, " ms")}
+          ${cell(lan.max_p95_ms, " ms")}
+          ${cell(lan.elevated_p95_count)}
+        </tr>`;
+      }).join("");
+
+      document.getElementById("periodTable").innerHTML = `
+        <thead><tr>
+          <th>Period</th><th>Total samples</th><th>WAN samples</th><th>WAN median p95</th><th>WAN p95 95th</th>
+          <th>WAN jitter 95th</th><th>WAN max loss</th><th>WAN raw bad</th><th>WAN sustained bad</th>
+          <th>Turbulence buckets</th><th>LAN samples</th><th>LAN median p95</th><th>LAN max p95</th><th>LAN elevated</th>
+        </tr></thead><tbody>${rows}</tbody>`;
+    }
+
+    function renderBucketTable(data){
+      const rows = [];
+      for (const name of ["before","during","after"]){
+        for (const bucket of (data.periods?.[name]?.wan_buckets || [])){
+          const state = bucket.sustained_bad_count > 0 ? '<span class="risk">bad</span>' : bucket.turbulence ? '<span class="watch">turbulence</span>' : '<span class="ok">observed</span>';
+          rows.push(`<tr>
+            <td>${name}</td>
+            <td>${shortTime(bucket.start)}</td>
+            <td>${shortTime(bucket.end)}</td>
+            ${cell(bucket.sample_count)}
+            ${cell(bucket.raw_bad_count)}
+            ${cell(bucket.sustained_bad_count)}
+            ${cell(bucket.max_raw_bad_run)}
+            ${cell(bucket.max_p95_ms, " ms")}
+            ${cell(bucket.max_jitter_ms, " ms")}
+            ${cell(bucket.max_loss_pct, "%")}
+            <td>${state}</td>
+          </tr>`);
+        }
+      }
+
+      document.getElementById("bucketTable").innerHTML = `
+        <thead><tr><th>Period</th><th>Start</th><th>End</th><th>Samples</th><th>Raw bad</th><th>Sustained bad</th><th>Max run</th><th>Max p95</th><th>Max jitter</th><th>Max loss</th><th>Bucket</th></tr></thead>
+        <tbody>${rows.join("") || '<tr><td colspan="11">No WAN bucket evidence available.</td></tr>'}</tbody>`;
+    }
+
+    function renderSamples(data){
+      const rows = (data.timeline_samples || []).map(sample => `<tr>
+        <td>${shortTime(sample.ts)}</td>
+        <td>${sample.kind}</td>
+        <td class="mono">${sample.host}</td>
+        <td>${sample.phase}</td>
+        ${cell(sample.p95_ms, " ms")}
+        ${cell(sample.jitter_ms, " ms")}
+        ${cell(sample.loss_pct, "%")}
+        ${cell(sample.max_ms, " ms")}
+        <td class="mono">${sample.source_file}</td>
+      </tr>`).join("");
+      document.getElementById("sampleTable").innerHTML = `
+        <thead><tr><th>Time</th><th>Kind</th><th>Host</th><th>Path</th><th>p95</th><th>Jitter</th><th>Loss</th><th>Max</th><th>Source</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="9">No samples available.</td></tr>'}</tbody>`;
+    }
+
+    function renderDns(data){
+      const dns = data.dns_context || {};
+      const summary = dns.summary || {};
+      const entities = (summary.top_entities || []).map(entity => {
+        const label = entity.name_redacted ? entity.label : (entity.name || entity.label);
+        return `<div>${label}: ${fmt(entity.count)} queries (${fmt(entity.share_of_total)})</div>`;
+      }).join("");
+
+      document.getElementById("dnsContext").innerHTML = dns.available ? `
+        <div><b>Status:</b> ${fmt(dns.status)}</div>
+        <div><b>Generated:</b> ${shortTime(dns.generated_at)} (${fmt(dns.minutes_from_event_midpoint, " min from event midpoint")})</div>
+        <div><b>Window:</b> ${fmt(dns.window)}</div>
+        <div><b>Total queries:</b> ${fmt(summary.total_queries)}</div>
+        <div><b>Blocked:</b> ${fmt(summary.blocked_queries)} (${fmt(summary.block_rate_pct, "%")})</div>
+        <div><b>Encrypted:</b> ${fmt(summary.encrypted_rate_pct, "%")}</div>
+        <div><b>Top blocked reason:</b> ${fmt(summary.top_blocked_reason)} (${fmt(summary.top_blocked_reason_queries)} queries)</div>
+        <div class="small" style="margin-top:8px;">${fmt(dns.note)}</div>
+        <div class="small" style="margin-top:8px;">${entities}</div>
+      ` : `<div><b>Status:</b> unavailable</div><div class="small">${fmt(dns.reason || dns.note)}</div>`;
+    }
+
+    function renderSources(data){
+      const rows = (data.sources?.telemetry_files || []).map(src => `<tr><td class="mono">${src.path}</td><td>${src.rows}</td></tr>`).join("");
+      document.getElementById("sourceTable").innerHTML = `
+        <thead><tr><th>Telemetry file</th><th>Rows used</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="2">No telemetry files contributed rows.</td></tr>'}</tbody>`;
+    }
+
+    function renderDeepLink(){
+      const params = new URLSearchParams(window.location.search);
+      const start = params.get("start") || params.get("event_start");
+      const end = params.get("end") || params.get("event_end");
+      if (!start && !end) return;
+      document.getElementById("deepLink").innerHTML =
+        `Requested URL window: <span class="mono">${fmt(start)}</span> to <span class="mono">${fmt(end)}</span>. Generate matching evidence with <span class="mono">bin/build_investigation.py</span>.`;
+    }
+
+    async function main(){
+      renderDeepLink();
+      const response = await fetch(INVESTIGATION_URL, {cache: "no-store"});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      document.getElementById("status").textContent = "Loaded investigation.json";
+      renderEventCards(data);
+      renderPeriodTable(data);
+      renderBucketTable(data);
+      renderSamples(data);
+      renderDns(data);
+      renderSources(data);
+    }
+
+    main().catch(err => {
+      document.getElementById("status").textContent = `Unable to load investigation.json: ${err.message}`;
+    });
+  </script>
+</body>
+</html>
