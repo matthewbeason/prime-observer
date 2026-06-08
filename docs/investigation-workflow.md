@@ -53,7 +53,7 @@ Use `--no-index` to generate only `viz/investigation.json`.
 
 ## View The Evidence
 
-Serve the dashboard files locally:
+Serve the dashboard files locally from the repository root:
 
 ```bash
 python3 -m http.server 8000 --directory viz
@@ -64,6 +64,10 @@ Open:
 ```text
 http://localhost:8000/investigate.html
 ```
+
+Do not open `viz/investigate.html` directly from disk. The investigation view
+loads `investigation.json` through browser `fetch`, and direct `file://` access
+can prevent the JSON file from loading.
 
 The page loads `investigation.json` with `cache: "no-store"` and renders:
 

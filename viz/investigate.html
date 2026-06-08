@@ -27,6 +27,7 @@
     th{font-size:11px;background:#f6f3ed;color:#34302a;font-weight:800;}
     tr:last-child td{border-bottom:0;}
     .section-note{font-size:12px;color:var(--muted);margin:-4px 0 10px;}
+    .status.error{color:var(--risk);line-height:1.45;max-width:760px;}
     .risk{color:var(--risk);font-weight:750;}
     .watch{color:var(--watch);font-weight:750;}
     .ok{color:var(--ok);font-weight:750;}
@@ -87,6 +88,8 @@
 
   <script>
     const INVESTIGATION_URL = "./investigation.json";
+    const LOCAL_SERVER_COMMAND = "python3 -m http.server 8000 --directory viz";
+    const LOCAL_INVESTIGATION_URL = "http://localhost:8000/investigate.html";
 
     function fmt(value, suffix = ""){
       if (value === null || value === undefined || value === "") return "—";
@@ -275,6 +278,19 @@
         `Requested URL window: <span class="mono">${fmt(start)}</span> to <span class="mono">${fmt(end)}</span>. Generate matching evidence with <span class="mono">bin/build_investigation.py</span>.`;
     }
 
+    function investigationLoadErrorMessage(err){
+      const details = err?.message ? ` ${err.message}.` : "";
+      const fileHint = window.location.protocol === "file:"
+        ? " This page is open directly from disk, which can prevent the browser from loading local JSON files."
+        : " Check that viz/investigation.json has been generated and is reachable from the local server.";
+      return [
+        `Unable to load investigation.json.${details}`,
+        fileHint,
+        `From the Prime Observer repository root, start the local server with: ${LOCAL_SERVER_COMMAND}.`,
+        `Then open: ${LOCAL_INVESTIGATION_URL}.`,
+      ].join(" ");
+    }
+
     async function main(){
       renderDeepLink();
       const response = await fetch(INVESTIGATION_URL, {cache: "no-store"});
@@ -292,7 +308,9 @@
     }
 
     main().catch(err => {
-      document.getElementById("status").textContent = `Unable to load investigation.json: ${err.message}`;
+      const status = document.getElementById("status");
+      status.classList.add("error");
+      status.textContent = investigationLoadErrorMessage(err);
     });
   </script>
 </body>

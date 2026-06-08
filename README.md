@@ -272,6 +272,10 @@ Then open:
 http://localhost:8000/investigate.html
 ```
 
+Open the investigation view through the local server, not directly from disk.
+Direct `file://` access can prevent the browser from loading
+`investigation.json`.
+
 See `docs/investigation-workflow.md` for details and future Olivaw deep-link shape.
 
 The investigation workflow also maintains an optional generated Investigation

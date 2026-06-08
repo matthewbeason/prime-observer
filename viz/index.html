@@ -45,6 +45,8 @@
       font-size:11px;color:#2f2a24;background:#f0ede6;border:1px solid var(--border);
       padding:3px 9px;border-radius:999px;white-space:nowrap;
     }
+    a.badge{text-decoration:none;}
+    a.badge:hover{border-color:#c8bfb1;background:#f7f4ed;}
     .badge.egg-glow{box-shadow:0 0 0 2px rgba(43,111,146,.12), 0 6px 18px rgba(64,54,40,.08);}
     .badge strong { font-weight:800; }
     #status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
@@ -94,6 +96,7 @@
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
+      <a class="badge" href="./investigate.html">Investigation Evidence</a>
       <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.6.0</strong></span>
     </div>
   </div>
