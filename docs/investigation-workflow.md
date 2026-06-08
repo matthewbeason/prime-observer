@@ -33,9 +33,23 @@ The generated output is:
 
 ```text
 viz/investigation.json
+viz/investigation_index.json
 ```
 
-`viz/investigation.json` is local generated output and should not be committed.
+`viz/investigation.json` and `viz/investigation_index.json` are local generated
+outputs and should not be committed.
+
+`viz/investigation_index.json` is an additive catalog of generated
+investigations. Each entry contains:
+
+- `id`
+- `title`
+- `created_at`
+- `event_count`
+- `status`
+- `path`
+
+Use `--no-index` to generate only `viz/investigation.json`.
 
 ## View The Evidence
 
@@ -56,6 +70,8 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 - event start, end, duration, and context window
 - before, during, and after WAN/LAN summaries
 - WAN p95, jitter, loss, sample counts, bad counts, and turbulence buckets
+- deterministic event navigation metadata
+- factual nearby-event metadata
 - representative timeline samples
 - local generated NextDNS context, when available
 - telemetry source files used
@@ -96,11 +112,42 @@ The JSON uses this high-level structure:
     "during": {},
     "after": {}
   },
+  "events": [],
+  "navigation": {
+    "first_event": null,
+    "last_event": null,
+    "events": {}
+  },
+  "event_neighborhoods": [],
   "timeline_samples": [],
   "dns_context": {},
   "sources": {}
 }
 ```
+
+The `events`, `navigation`, and `event_neighborhoods` fields are additive.
+Older consumers that read the original v0.5.0 fields can continue to use the
+export without changes.
+
+## Event Navigation And Neighborhoods
+
+Investigation events are sorted deterministically by start time, end time, and
+event ID. The export includes:
+
+- `first_event`
+- `last_event`
+- per-event `previous_event`
+- per-event `next_event`
+
+Event neighborhood discovery is factual only. It may report:
+
+- temporal proximity
+- shared investigation membership
+- shared evidence windows
+
+It must not report causality, confidence, recommendations, correlations, or
+interpretations. A nearby event means only that the generated evidence file
+contains events near each other or in the same investigation context.
 
 ## Privacy
 
@@ -121,6 +168,8 @@ Allowed wording for consumers:
 - LAN samples remained below threshold.
 - Packet loss was 0% during the window.
 - DNS summary closest to the event showed X total queries.
+- A WAN bucket observation was near the requested investigation window.
+- Two events share the same generated investigation file.
 
 Avoid interpretive wording in Prime Observer:
 
@@ -129,3 +178,4 @@ Avoid interpretive wording in Prime Observer:
 - This was due to a specific application.
 - Users were impacted.
 - Recommendation: change provider.
+- This event is correlated with another event.

@@ -59,6 +59,18 @@
     <table id="bucketTable"></table>
   </div>
 
+  <h2>Investigation Events</h2>
+  <div class="section-note">Deterministic event metadata and adjacent-event navigation from the generated investigation file.</div>
+  <div class="wide">
+    <table id="eventTable"></table>
+  </div>
+
+  <h2>Nearby Events</h2>
+  <div class="section-note">Factual neighborhood signals only: temporal proximity, shared investigation membership, and shared evidence windows.</div>
+  <div class="wide">
+    <table id="neighborhoodTable"></table>
+  </div>
+
   <h2>Timeline Samples</h2>
   <div class="section-note">Representative telemetry rows from the generated investigation file.</div>
   <div class="wide">
@@ -164,6 +176,51 @@
         <tbody>${rows.join("") || '<tr><td colspan="11">No WAN bucket evidence available.</td></tr>'}</tbody>`;
     }
 
+    function renderEventTable(data){
+      const nav = data.navigation || {};
+      const navEvents = nav.events || {};
+      const rows = (data.events || []).map(event => {
+        const eventNav = navEvents[event.id] || {};
+        return `<tr>
+          <td class="mono">${event.id}</td>
+          <td>${fmt(event.title)}</td>
+          <td>${fmt(event.type)}</td>
+          <td>${fmt(event.period)}</td>
+          <td>${shortTime(event.start)}</td>
+          <td>${shortTime(event.end)}</td>
+          <td class="mono">${fmt(eventNav.previous_event)}</td>
+          <td class="mono">${fmt(eventNav.next_event)}</td>
+        </tr>`;
+      }).join("");
+      document.getElementById("eventTable").innerHTML = `
+        <thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Period</th><th>Start</th><th>End</th><th>Previous</th><th>Next</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8">No event metadata available.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="8" class="small">First event: <span class="mono">${fmt(nav.first_event)}</span> · Last event: <span class="mono">${fmt(nav.last_event)}</span></td></tr></tfoot>`;
+    }
+
+    function renderNeighborhoodTable(data){
+      const eventTitles = {};
+      for (const event of (data.events || [])) eventTitles[event.id] = event.title;
+      const rows = [];
+      for (const item of (data.event_neighborhoods || [])){
+        for (const nearby of (item.nearby_events || [])){
+          rows.push(`<tr>
+            <td class="mono">${item.event_id}</td>
+            <td>${fmt(eventTitles[item.event_id])}</td>
+            <td class="mono">${nearby.event_id}</td>
+            <td>${fmt(eventTitles[nearby.event_id])}</td>
+            ${cell(nearby.minutes_from_event, " min")}
+            <td>${nearby.shared_investigation_membership ? "yes" : "no"}</td>
+            <td>${nearby.shared_evidence_window ? "yes" : "no"}</td>
+            <td>${(nearby.signals || []).join(", ")}</td>
+          </tr>`);
+        }
+      }
+      document.getElementById("neighborhoodTable").innerHTML = `
+        <thead><tr><th>Event</th><th>Event title</th><th>Nearby event</th><th>Nearby title</th><th>Distance</th><th>Shared investigation</th><th>Shared window</th><th>Signals</th></tr></thead>
+        <tbody>${rows.join("") || '<tr><td colspan="8">No nearby-event metadata available.</td></tr>'}</tbody>`;
+    }
+
     function renderSamples(data){
       const rows = (data.timeline_samples || []).map(sample => `<tr>
         <td>${shortTime(sample.ts)}</td>
@@ -227,6 +284,8 @@
       renderEventCards(data);
       renderPeriodTable(data);
       renderBucketTable(data);
+      renderEventTable(data);
+      renderNeighborhoodTable(data);
       renderSamples(data);
       renderDns(data);
       renderSources(data);

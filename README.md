@@ -172,6 +172,8 @@ data/bakeoff_YYYYMMDD.csv
         v
 bin/build_investigation.py
         |
+        +--> viz/investigation_index.json
+        |
         v
 viz/investigation.json
         |
@@ -200,7 +202,13 @@ viz/investigate.html
   Generated local DNS summary. It may include aggregate top-N domain names from analytics endpoints, but must not contain API keys, raw logs, client IPs, device names, per-query records, or full profile IDs.
 
 - `bin/build_investigation.py`
-  Builds a local read-only investigation JSON for a historical time window using existing telemetry files. The output is factual evidence, not interpretation.
+  Builds a local read-only investigation JSON for a historical time window using existing telemetry files. The output is factual evidence, not interpretation. It also updates a generated investigation catalog by default.
+
+- `viz/investigation.json`
+  Generated local investigation evidence for a selected window. Wave 1 metadata is additive and includes deterministic event navigation plus factual nearby-event discovery.
+
+- `viz/investigation_index.json`
+  Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
 
 - `viz/investigate.html`
   Static historical evidence view for `viz/investigation.json`.

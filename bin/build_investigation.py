@@ -11,6 +11,7 @@ BASE = Path("/Users/mbeason/prime-observer")
 DATA_DIR = BASE / "data"
 VIZ_DIR = BASE / "viz"
 OUT = VIZ_DIR / "investigation.json"
+INDEX_OUT = VIZ_DIR / "investigation_index.json"
 NEXTDNS_SUMMARY = VIZ_DIR / "nextdns_summary.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
@@ -49,6 +50,13 @@ def iso(value):
     if value is None:
         return None
     return value.isoformat()
+
+
+def event_id(prefix, start, end):
+    start_part = iso(start).replace("+00:00", "Z") if start is not None else "unknown"
+    end_part = iso(end).replace("+00:00", "Z") if end is not None else "unknown"
+    safe = "".join(ch if ch.isalnum() else "-" for ch in f"{start_part}_{end_part}")
+    return f"{prefix}-{safe.strip('-').lower()}"
 
 
 def parse_float(value):
@@ -273,6 +281,163 @@ def period_payload(samples, name):
     }
 
 
+def event_payload(event_id_value, event_type, title, start, end, period, evidence_window, details=None):
+    return {
+        "id": event_id_value,
+        "type": event_type,
+        "title": title,
+        "start": iso(start),
+        "end": iso(end),
+        "period": period,
+        "evidence_window": {
+            "start": iso(evidence_window[0]),
+            "end": iso(evidence_window[1]),
+        },
+        "details": details or {},
+    }
+
+
+def event_midpoint(event):
+    start = utc_ts(event.get("start"))
+    end = utc_ts(event.get("end"))
+    if start is None or end is None:
+        return None
+    return start + ((end - start) / 2)
+
+
+def evidence_window(event):
+    window = event.get("evidence_window") if isinstance(event.get("evidence_window"), dict) else {}
+    return utc_ts(window.get("start")), utc_ts(window.get("end"))
+
+
+def overlaps(a_start, a_end, b_start, b_end):
+    return (
+        a_start is not None
+        and a_end is not None
+        and b_start is not None
+        and b_end is not None
+        and a_start <= b_end
+        and b_start <= a_end
+    )
+
+
+def build_events(periods_payload, start_utc, end_utc, window_start, window_end):
+    selected_id = event_id("requested", start_utc, end_utc)
+    events = [
+        event_payload(
+            selected_id,
+            "requested_window",
+            "Requested investigation window",
+            start_utc,
+            end_utc,
+            "during",
+            (window_start, window_end),
+            {"source": "cli_input"},
+        )
+    ]
+
+    for period_name, period in periods_payload.items():
+        for bucket in period.get("wan_buckets", []):
+            if not (bucket.get("raw_bad_count") or bucket.get("sustained_bad_count") or bucket.get("turbulence")):
+                continue
+            bucket_start = utc_ts(bucket.get("start"))
+            bucket_end = utc_ts(bucket.get("end"))
+            if bucket_start is None or bucket_end is None:
+                continue
+            events.append(
+                event_payload(
+                    event_id("wan-bucket", bucket_start, bucket_end),
+                    "wan_bucket_observation",
+                    "WAN bucket observation",
+                    bucket_start,
+                    bucket_end,
+                    period_name,
+                    (bucket_start, bucket_end),
+                    {
+                        "sample_count": bucket.get("sample_count"),
+                        "raw_bad_count": bucket.get("raw_bad_count"),
+                        "sustained_bad_count": bucket.get("sustained_bad_count"),
+                        "turbulence": bucket.get("turbulence"),
+                        "max_raw_bad_run": bucket.get("max_raw_bad_run"),
+                    },
+                )
+            )
+
+    events.sort(key=lambda item: (item["start"] or "", item["end"] or "", item["id"]))
+    return events
+
+
+def navigation_payload(events):
+    if not events:
+        return {
+            "first_event": None,
+            "last_event": None,
+            "events": {},
+        }
+
+    nav_events = {}
+    for idx, event in enumerate(events):
+        nav_events[event["id"]] = {
+            "previous_event": events[idx - 1]["id"] if idx > 0 else None,
+            "next_event": events[idx + 1]["id"] if idx < len(events) - 1 else None,
+        }
+
+    return {
+        "first_event": events[0]["id"],
+        "last_event": events[-1]["id"],
+        "events": nav_events,
+    }
+
+
+def neighborhood_payload(events):
+    neighborhoods = []
+    for event in events:
+        midpoint = event_midpoint(event)
+        event_window_start, event_window_end = evidence_window(event)
+        nearby = []
+
+        for candidate in events:
+            if candidate["id"] == event["id"]:
+                continue
+            candidate_midpoint = event_midpoint(candidate)
+            candidate_window_start, candidate_window_end = evidence_window(candidate)
+            minutes = (
+                rounded(abs((candidate_midpoint - midpoint).total_seconds()) / 60.0, 2)
+                if midpoint is not None and candidate_midpoint is not None
+                else None
+            )
+            shared_window = overlaps(
+                event_window_start,
+                event_window_end,
+                candidate_window_start,
+                candidate_window_end,
+            )
+            signals = ["shared_investigation_membership"]
+            if minutes is not None:
+                signals.append("temporal_proximity")
+            if shared_window:
+                signals.append("shared_evidence_window")
+
+            nearby.append({
+                "event_id": candidate["id"],
+                "minutes_from_event": minutes,
+                "shared_investigation_membership": True,
+                "shared_evidence_window": shared_window,
+                "signals": signals,
+            })
+
+        nearby.sort(key=lambda item: (
+            item["minutes_from_event"] if item["minutes_from_event"] is not None else float("inf"),
+            item["event_id"],
+        ))
+        neighborhoods.append({
+            "event_id": event["id"],
+            "nearby_events": nearby,
+        })
+
+    return neighborhoods
+
+
 def compact_sample(sample):
     return {
         "ts": sample["ts"].isoformat(),
@@ -367,9 +532,18 @@ def build_investigation(start, end, pad_minutes):
 
     event_midpoint = start_utc + ((end_utc - start_utc) / 2)
 
+    periods_payload = {
+        name: period_payload(rows, name)
+        for name, rows in periods.items()
+    }
+    events = build_events(periods_payload, start_utc, end_utc, window_start, window_end)
+
     return {
         "schema_version": 1,
         "generated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
+        "id": event_id("investigation", start_utc, end_utc),
+        "title": f"Investigation {iso(start_utc)} to {iso(end_utc)}",
+        "status": "available" if samples else "no_samples",
         "input": {
             "start": start,
             "end": end,
@@ -394,10 +568,10 @@ def build_investigation(start, end, pad_minutes):
             "telemetry_files": sources,
             "nextdns_summary": str(NEXTDNS_SUMMARY.relative_to(BASE)),
         },
-        "periods": {
-            name: period_payload(rows, name)
-            for name, rows in periods.items()
-        },
+        "periods": periods_payload,
+        "events": events,
+        "navigation": navigation_payload(events),
+        "event_neighborhoods": neighborhood_payload(events),
         "timeline_samples": key_samples(samples),
         "dns_context": dns_context(event_midpoint),
         "notes": [
@@ -417,6 +591,54 @@ def write_json(path, payload):
     tmp.replace(path)
 
 
+def read_index(path):
+    if not path.exists():
+        return {"schema_version": 1, "investigations": []}
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"schema_version": 1, "investigations": []}
+    if not isinstance(payload, dict):
+        return {"schema_version": 1, "investigations": []}
+    investigations = payload.get("investigations")
+    if not isinstance(investigations, list):
+        investigations = []
+    return {
+        "schema_version": payload.get("schema_version", 1),
+        "generated_at": payload.get("generated_at"),
+        "investigations": investigations,
+    }
+
+
+def catalog_entry(payload, out_path):
+    return {
+        "id": payload["id"],
+        "title": payload["title"],
+        "created_at": payload["generated_at"],
+        "event_count": len(payload.get("events") or []),
+        "status": payload.get("status", "available"),
+        "path": str(out_path.relative_to(BASE)) if out_path.is_absolute() and out_path.is_relative_to(BASE) else str(out_path),
+    }
+
+
+def update_index(index_path, investigation_payload, out_path):
+    index = read_index(index_path)
+    entry = catalog_entry(investigation_payload, out_path)
+    entries = [
+        item for item in index.get("investigations", [])
+        if isinstance(item, dict) and item.get("id") != entry["id"]
+    ]
+    entries.append(entry)
+    entries.sort(key=lambda item: (item.get("created_at") or "", item.get("id") or ""), reverse=True)
+    updated = {
+        "schema_version": index.get("schema_version", 1),
+        "generated_at": investigation_payload["generated_at"],
+        "investigations": entries,
+    }
+    write_json(index_path, updated)
+    return updated
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Build a factual Prime Observer investigation JSON for a historical time window."
@@ -425,6 +647,8 @@ def main(argv=None):
     parser.add_argument("--end", required=True, help="Event end timestamp, ISO-8601")
     parser.add_argument("--pad-minutes", type=int, default=30, help="Context minutes before and after the event")
     parser.add_argument("--out", type=Path, default=OUT, help="Output JSON path")
+    parser.add_argument("--index-out", type=Path, default=INDEX_OUT, help="Generated investigation catalog JSON path")
+    parser.add_argument("--no-index", action="store_true", help="Skip updating the generated investigation catalog")
     args = parser.parse_args(argv)
 
     if args.pad_minutes < 0:
@@ -436,7 +660,11 @@ def main(argv=None):
         parser.error(str(exc))
 
     write_json(args.out, payload)
+    if not args.no_index:
+        update_index(args.index_out, payload, args.out)
     print(f"Wrote investigation to {args.out}")
+    if not args.no_index:
+        print(f"Updated investigation index at {args.index_out}")
     print(
         "Telemetry samples: "
         f"{sum(period['total_samples'] for period in payload['periods'].values())}; "
