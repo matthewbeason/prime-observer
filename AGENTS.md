@@ -6,7 +6,7 @@ Prime Observer is a lightweight personal network observability and user-experien
 
 The goal is not simply to measure network performance. The goal is to determine whether network behavior is likely to be noticeable to users and to provide useful attribution and context.
 
-Current production release: v0.5.0
+Current production release: v0.6.0
 
 ---
 
@@ -29,6 +29,7 @@ Generated/local runtime files:
 
 - `viz/latest.csv` - generated 24-hour dashboard telemetry window.
 - `viz/investigation.json` - generated historical investigation evidence for a selected window.
+- `viz/investigation_index.json` - generated catalog of local investigation evidence files.
 - `viz/nextdns_summary.json` - generated public-safe NextDNS summary consumed by the dashboard.
 - `.env.nextdns` - local NextDNS secrets/config; must not be committed.
 - `.env.nextdns.example` - placeholder example config; safe to commit.
@@ -88,10 +89,11 @@ Key metrics and context:
 - DNS blocked-query summary, when available
 
 Historical investigation is factual evidence only. Prime Observer may show WAN
-and LAN samples, counts, thresholds, buckets, source files, and generated DNS
-summary context around a requested window. It must not move Core Signal
-interpretation, correlations, recommendations, or higher-level meaning into
-Prime Observer.
+and LAN samples, counts, thresholds, buckets, source files, generated DNS
+summary context, investigation catalogs, navigation metadata, and factual
+nearby-event discovery around a requested window. It must not move Core Signal
+interpretation, correlations, event confidence scoring, recommendations, or
+higher-level meaning into Prime Observer.
 
 ---
 
@@ -223,10 +225,13 @@ Rules:
 
 ---
 
-## v0.5.0 Includes
+## v0.6.0 Includes
 
 - Historical investigation workflow for selected time windows.
 - Investigation JSON generation from historical telemetry.
+- Investigation Index generation with `id`, `title`, `created_at`, `event_count`, `status`, and `path` catalog fields.
+- Historical Navigation metadata for first, previous, next, and last event movement.
+- Event Neighborhood Discovery based on temporal proximity, shared investigation membership, and shared evidence windows.
 - Static investigation evidence viewer with future Olivaw deep-link support.
 - Architecture boundary preservation: Prime Observer evidence, Core Signal interpretation, Olivaw synthesis and navigation.
 - Pattern confidence using `baseline_sample_count`.
@@ -344,7 +349,7 @@ These may be useful later, but they would currently increase complexity faster t
 
 ## Next Observation Period
 
-Live with v0.5.0 for several days before expanding functionality.
+Live with v0.6.0 for several days before expanding functionality.
 
 Watch for:
 
@@ -355,6 +360,7 @@ Watch for:
 - whether turbulence is informative or distracting
 - whether attribution confidence matches real experience
 - whether the compact Connection card and refocused WAN Health Summary improve scanning
+- whether investigation navigation and nearby-event discovery improve evidence review without implying correlation
 
 ---
 
