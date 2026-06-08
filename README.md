@@ -8,7 +8,7 @@ It combines telemetry, historical context, attribution, and DNS security signals
 
 It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, pattern awareness, DNS security context, and operational simplicity.
 
-Current release: **v0.4.1**
+Current release: **v0.5.0**
 
 Portfolio context: Prime Observer demonstrates local-first observability,
 user-noticeability scoring, privacy-aware DNS/security summaries, and historical
@@ -16,7 +16,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current v0.4.1 dashboard
+Current v0.5.0 dashboard
 
 Prime Observer Dashboard
 
@@ -350,10 +350,14 @@ Prime Observer is not:
 
 It is a focused local dashboard for understanding whether network behavior is healthy, unusual, attributable, sustained, and likely noticeable.
 
-## Current Release Notes: v0.4.1
+## Current Release Notes: v0.5.0
 
-v0.4.1 includes:
+v0.5.0 includes:
 
+- Historical investigation workflow for inspecting before, during, and after evidence around a selected time window
+- `bin/build_investigation.py` for local investigation JSON generation from historical telemetry
+- `viz/investigate.html` static evidence viewer with future Olivaw deep-link support
+- Architecture boundary preservation: Prime Observer surfaces evidence, Core Signal interprets, and Olivaw synthesizes and navigates
 - Pattern Confidence using `baseline_sample_count`
 - Optional DNS Security card backed by local NextDNS summary JSON
 - Compact Connection card

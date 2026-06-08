@@ -6,7 +6,7 @@ Prime Observer is a lightweight personal network observability and user-experien
 
 The goal is not simply to measure network performance. The goal is to determine whether network behavior is likely to be noticeable to users and to provide useful attribution and context.
 
-Current production release: v0.4.1
+Current production release: v0.5.0
 
 ---
 
@@ -22,7 +22,7 @@ Primary dashboard and transforms:
 - `launchd/` - macOS LaunchAgent definitions.
 - `launchd/com.mbeason.prime-observer.nextdns-refresh.plist` - refreshes the NextDNS summary every 30 minutes.
 - `docs/nextdns-launchagent.md` - install, status, unload, and remove commands for the NextDNS LaunchAgent.
-- `docs/images/prime-observer-v041.png` - current dashboard screenshot for v0.4.1 documentation.
+- `docs/images/prime-observer-v041.png` - dashboard screenshot image asset.
 - `LICENSE` - MIT license.
 
 Generated/local runtime files:
@@ -223,8 +223,12 @@ Rules:
 
 ---
 
-## v0.4.1 Includes
+## v0.5.0 Includes
 
+- Historical investigation workflow for selected time windows.
+- Investigation JSON generation from historical telemetry.
+- Static investigation evidence viewer with future Olivaw deep-link support.
+- Architecture boundary preservation: Prime Observer evidence, Core Signal interpretation, Olivaw synthesis and navigation.
 - Pattern confidence using `baseline_sample_count`.
 - Optional DNS Security card backed by local `viz/nextdns_summary.json`.
 - Visual hierarchy refinement.
@@ -340,7 +344,7 @@ These may be useful later, but they would currently increase complexity faster t
 
 ## Next Observation Period
 
-Live with v0.4.1 for several days before expanding functionality.
+Live with v0.5.0 for several days before expanding functionality.
 
 Watch for:
 
