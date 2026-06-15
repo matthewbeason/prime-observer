@@ -8,7 +8,7 @@ It combines telemetry, historical context, attribution, and DNS security signals
 
 It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, pattern awareness, DNS security context, and operational simplicity.
 
-Current release: **v0.6.0**
+Current release: **v0.7.0**
 
 Portfolio context: Prime Observer demonstrates local-first observability,
 user-noticeability scoring, privacy-aware DNS/security summaries, and historical
@@ -16,7 +16,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current v0.6.0 dashboard
+Current v0.7.0 dashboard
 
 Prime Observer Dashboard
 
@@ -448,17 +448,24 @@ Prime Observer is not:
 
 It is a focused local dashboard for understanding whether network behavior is healthy, unusual, attributable, sustained, and likely noticeable.
 
-## Current Release Notes: v0.6.0
+## Current Release Notes: v0.7.0
 
-v0.6.0 includes:
+v0.7.0 strengthens evidence collection and investigation workflows while
+preserving Prime Observer's evidence-first responsibility boundary.
 
-- Added Investigation Index support for a generated catalog of local investigation exports
-- Added investigation navigation metadata for first, previous, next, and last events
-- Added factual nearby-event discovery based on temporal proximity, shared investigation membership, and shared evidence windows
-- Improved investigation workflow usability for downstream navigation
-- Preserved strict evidence-first architecture: Prime Observer provides observations, evidence, investigations, timelines, and event discovery only
-- Excluded recommendations, event confidence scores, causal analysis, and event correlation from investigation discovery outputs
-- Maintained backward compatibility for existing v0.5.0 investigation exports through additive metadata
+v0.7.0 includes:
+
+- Added factual target classification for `internet_probe`, `resolver_probe`, `gateway_probe`, and `unknown_probe` telemetry.
+- Added resolver probe support for Cloudflare, Quad9, NextDNS primary, and NextDNS secondary paths.
+- Separated WAN dashboard charts for internet probes, resolver probes, and the LAN gateway.
+- Added target-group evidence exports to dashboard telemetry and historical investigations.
+- Added optional NextDNS analytics evidence ingestion and DNS context artifacts for downstream local briefings.
+- Improved historical investigations with index support, navigation metadata, event neighborhoods, and clearer evidence-view UX.
+- Audited heatmap and chart alignment, documented heatmap/chart semantics, and fixed phase-aware bucket grouping.
+- Improved dashboard explanations for target groups, turbulence, and bad-moment evidence.
+- Preserved additive compatibility for existing investigation and attribution consumers.
+- Preserved strict evidence-first architecture: Prime Observer provides observations, evidence, investigations, timelines, target classification, and external evidence collection only.
+- Excluded DNS analysis, DNS attribution, recommendations, event confidence scores, causal analysis, anomaly analysis, and interpretive conclusions.
 
 ## Future Directions
 

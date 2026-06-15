@@ -6,7 +6,7 @@ Prime Observer is a lightweight personal network observability and user-experien
 
 The goal is not simply to measure network performance. The goal is to determine whether network behavior is likely to be noticeable to users and to provide useful attribution and context.
 
-Current production release: v0.6.0
+Current production release: v0.7.0
 
 ---
 
@@ -66,10 +66,15 @@ LAN:
 
 - `192.168.1.1`
 
-WAN:
+Internet probes:
 
 - `1.1.1.1`
 - `9.9.9.9`
+
+Resolver probes:
+
+- `45.90.28.134`
+- `45.90.30.134`
 
 Optional DNS/security context:
 
@@ -89,11 +94,12 @@ Key metrics and context:
 - DNS blocked-query summary, when available
 
 Historical investigation is factual evidence only. Prime Observer may show WAN
-and LAN samples, counts, thresholds, buckets, source files, generated DNS
-summary context, investigation catalogs, navigation metadata, and factual
-nearby-event discovery around a requested window. It must not move Core Signal
-interpretation, correlations, event confidence scoring, recommendations, or
-higher-level meaning into Prime Observer.
+and LAN samples, target classes, target-group metadata, counts, thresholds,
+buckets, source files, generated DNS summary context, investigation catalogs,
+navigation metadata, and factual nearby-event discovery around a requested
+window. It must not move Core Signal interpretation, correlations, event
+confidence scoring, recommendations, or higher-level meaning into Prime
+Observer.
 
 ---
 
@@ -225,7 +231,7 @@ Rules:
 
 ---
 
-## v0.6.0 Includes
+## v0.7.0 Includes
 
 - Historical investigation workflow for selected time windows.
 - Investigation JSON generation from historical telemetry.
@@ -234,6 +240,13 @@ Rules:
 - Event Neighborhood Discovery based on temporal proximity, shared investigation membership, and shared evidence windows.
 - Static investigation evidence viewer with future Olivaw deep-link support.
 - Architecture boundary preservation: Prime Observer evidence, Core Signal interpretation, Olivaw synthesis and navigation.
+- Target classification for `internet_probe`, `resolver_probe`, `gateway_probe`, and `unknown_probe`.
+- Resolver probe support for Cloudflare, Quad9, NextDNS primary, and NextDNS secondary targets.
+- WAN chart separation for internet probes, resolver probes, and the LAN gateway.
+- Target-group evidence exports for dashboard and investigation consumers.
+- Optional NextDNS analytics evidence ingestion and DNS context artifacts.
+- Heatmap/chart alignment audit, documented heatmap semantics, and phase-aware bucket grouping fixes.
+- Dashboard explanation improvements for target groups, turbulence, and bad-moment evidence.
 - Pattern confidence using `baseline_sample_count`.
 - Optional DNS Security card backed by local `viz/nextdns_summary.json`.
 - Visual hierarchy refinement.
@@ -252,7 +265,8 @@ Rules:
 - DNS Security card
 - WAN Health Summary
 - WAN bad moments heatmap
-- WAN p95 latency chart
+- WAN Internet Probe p95 latency chart
+- WAN Resolver Probe p95 latency chart
 - LAN gateway p95 latency chart
 
 Do not add new dashboard components without first confirming they answer one of the dashboard philosophy questions.
@@ -349,7 +363,7 @@ These may be useful later, but they would currently increase complexity faster t
 
 ## Next Observation Period
 
-Live with v0.6.0 for several days before expanding functionality.
+Live with v0.7.0 for several days before expanding functionality.
 
 Watch for:
 
