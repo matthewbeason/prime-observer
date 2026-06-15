@@ -362,6 +362,26 @@ NEXTDNS_TOP_ENTITIES_LIMIT=5
 
 The generated DNS summary includes additive downstream-friendly fields such as `dns_block_rate`, `dns_encrypted_rate`, `top_queried_domain`, `top_resolved_domain`, `top_blocked_domain`, `top_blocked_reason`, `top_entity_share`, and `top_entity_dominance_ratio`.
 
+It also includes compact evidence fields for direct consumers:
+
+```json
+{
+  "generated_at": "2026-06-15T18:02:09Z",
+  "window": "-24h",
+  "status": "ok",
+  "summary": {
+    "queries": 94818,
+    "blocked": 2823,
+    "blocked_percent": 3.0,
+    "encrypted_percent": 13.0,
+    "top_queries": [],
+    "top_blocked": []
+  }
+}
+```
+
+Historical investigations copy a factual `dns_context` from this generated file when it is available. That context is evidence only; it does not classify DNS activity, assess threats, recommend action, or infer confidence.
+
 Security rules:
 
 - Do not commit `.env.nextdns`.

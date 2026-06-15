@@ -92,6 +92,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertIn("timeline_samples", payload)
         self.assertIn("target_groups", payload)
         self.assertIn("dns_context", payload)
+        self.assertFalse(payload["dns_context"]["available"])
         self.assertTrue(payload["id"].startswith("investigation-"))
         self.assertEqual(payload["status"], "available")
         self.assertGreaterEqual(len(payload["events"]), 2)
@@ -146,6 +147,54 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(entry["event_count"], len(payload["events"]))
         self.assertEqual(entry["status"], "available")
         self.assertEqual(entry["path"], "viz/investigation.json")
+
+    def test_dns_context_is_copied_from_generated_summary(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        summary = {
+            "schema_version": 1,
+            "source": "nextdns",
+            "status": "ok",
+            "profile_id_suffix": "3456",
+            "window": "-24h",
+            "generated_at": "2026-06-08T12:00:00Z",
+            "summary": {
+                "total_queries": 100,
+                "blocked_queries": 5,
+                "block_rate_pct": 5.0,
+                "encrypted_rate_pct": 60.0,
+                "top_blocked_reason": "Blocklist",
+                "top_blocked_reason_queries": 5,
+                "top_entities": [
+                    {
+                        "entity_type": "domain",
+                        "label": "entity_1",
+                        "name_redacted": True,
+                        "count": 20,
+                        "share_of_total": 0.2,
+                    }
+                ],
+            },
+            "error": None,
+        }
+        self.module.NEXTDNS_SUMMARY.write_text(json.dumps(summary))
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        dns = payload["dns_context"]
+        self.assertTrue(dns["available"])
+        self.assertEqual(dns["status"], "ok")
+        self.assertEqual(dns["profile_id_suffix"], "3456")
+        self.assertEqual(dns["summary"]["total_queries"], 100)
+        self.assertEqual(dns["summary"]["blocked_queries"], 5)
+        self.assertEqual(dns["summary"]["block_rate_pct"], 5.0)
+        self.assertEqual(dns["summary"]["encrypted_rate_pct"], 60.0)
+        self.assertIn("not a historical DNS log", dns["note"])
 
 
 if __name__ == "__main__":

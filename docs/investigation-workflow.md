@@ -180,6 +180,12 @@ DNS context, when present, is copied only from the existing generated
 IDs, client IPs, local IPs, device names, user attribution, per-query records, or
 raw DNS logs.
 
+The copied context is factual and summary-only. It may include total query
+counts, blocked query counts, blocked percentage, encrypted percentage,
+redacted or aggregate top-domain rows, generation time, window, and profile ID
+suffix. It must not include threat analysis, suspicious-activity labels,
+recommendations, confidence assessments, or causal explanation.
+
 ## Boundary Rules
 
 Allowed wording for consumers:

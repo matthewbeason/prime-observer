@@ -300,6 +300,24 @@ def build_top_entities(rows, total_queries, export_names):
     return entities, top_dominance_ratio
 
 
+def top_domain_list(rows, denominator, export_names, limit):
+    items = []
+    for idx, row in enumerate(rows[:limit], 1):
+        domain = str(row.get("domain") or "").strip()
+        count = query_count(row)
+        item = {
+            "entity_type": "domain",
+            "label": f"entity_{idx}",
+            "name_redacted": bool(domain) and not export_names,
+            "count": count,
+            "share": share(count, denominator),
+        }
+        if export_names and domain:
+            item["domain"] = domain
+        items.append(item)
+    return items
+
+
 def top_domain_fact(rows, denominator, export_names):
     if not rows:
         return {
@@ -436,6 +454,18 @@ def build_summary(config):
         total_queries,
         export_domain_names,
     )
+    top_queries = top_domain_list(
+        domains_rows,
+        total_queries,
+        export_domain_names,
+        top_entities_limit,
+    )
+    top_blocked_domains = top_domain_list(
+        blocked_domains_rows,
+        blocked_queries,
+        export_domain_names,
+        top_entities_limit,
+    )
     top_entity_share = top_entities[0]["share_of_total"] if top_entities else None
     top_queried = top_domain_fact(domains_rows, total_queries, export_domain_names)
     top_blocked = top_domain_fact(blocked_domains_rows, blocked_queries, export_domain_names)
@@ -446,6 +476,10 @@ def build_summary(config):
 
     payload = summary_base(config, "ok")
     payload["summary"] = {
+        "queries": total_queries,
+        "blocked": blocked_queries,
+        "blocked_percent": pct(blocked_queries, total_queries),
+        "encrypted_percent": pct(encrypted_queries, encryption_total),
         "total_queries": total_queries,
         "blocked_queries": blocked_queries,
         "allowed_queries": allowed_queries,
@@ -476,6 +510,8 @@ def build_summary(config):
         "top_blocked_domain_redacted": top_blocked["redacted"],
         "top_blocked_reason": top_reason.get("name"),
         "top_blocked_reason_queries": top_reason.get("queries"),
+        "top_queries": top_queries,
+        "top_blocked": top_blocked_domains,
         "top_entity_share": top_entity_share,
         "top_entity_dominance_ratio": top_entity_dominance_ratio,
         "top_entities": top_entities,
