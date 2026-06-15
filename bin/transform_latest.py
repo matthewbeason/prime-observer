@@ -281,7 +281,7 @@ def classify_buckets(wan_series):
 
     for sample in wan_series:
         bucket_start = int(sample["t"].timestamp() // bin_seconds) * bin_seconds
-        key = (sample.get("target_class"), bucket_start)
+        key = (sample.get("phase"), sample.get("target_class"), bucket_start)
         obj = buckets.setdefault(key, {
             "phase": sample["phase"] or "FIBER",
             "target_class": sample.get("target_class") or "unknown_probe",
@@ -290,7 +290,7 @@ def classify_buckets(wan_series):
         obj["rows"].append(sample)
 
     out = []
-    for (target_class, bucket_start), bucket in buckets.items():
+    for (_phase, target_class, bucket_start), bucket in buckets.items():
         rows = sorted(bucket["rows"], key=lambda d: d["t"])
         total = len(rows)
         bad = len([d for d in rows if d.get("is_bad")])

@@ -114,6 +114,28 @@ Turbulence represents noisy WAN degradation that does not meet sustained thresho
 
 It is informational rather than operationally significant. This keeps brief instability visually distinct from sustained bad moments.
 
+### Heatmap And Charts
+
+The WAN bad moments heatmap and the WAN Internet Probe chart use the same
+general internet probe evidence after target grouping. Cloudflare and Quad9
+samples are collapsed by timestamp to the worst p95 sample before the dashboard
+marks raw and sustained bad moments.
+
+The two visualizations answer different questions:
+
+- The WAN Internet Probe chart line shows p95 latency values over time.
+- The heatmap shows 15-minute buckets of bad-moment evidence.
+- A raw bad sample is any internet probe sample with p95 latency > 140 ms,
+  jitter > 50 ms, or packet loss > 1%.
+- A dark gray bucket means at least one sample in that bucket was part of a
+  sustained bad run.
+- An amber bucket means turbulence: enough raw bad samples occurred in the
+  bucket to be notable, but they did not meet the sustained persistence rule.
+
+Because bad-moment evidence includes jitter and packet loss, the p95 latency
+line can appear to improve while the heatmap remains dark. That is expected
+when packet loss or jitter is persistent even though p95 latency has fallen.
+
 ### WAN Health Summary
 
 The WAN Health Summary shows current WAN experience by target group, including:

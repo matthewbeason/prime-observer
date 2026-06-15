@@ -100,6 +100,87 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(attribution["resolver_probe_summary"]["sample_count"], 2)
         self.assertIn("target_group_facts", attribution["attribution_evidence"])
 
+    def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = [
+            self.module.normalize_dashboard_sample(
+                self.telemetry_row((base + dt.timedelta(minutes=i)).isoformat(), "1.1.1.1", 30, jitter=20, loss=10)
+            )
+            for i in range(3)
+        ]
+
+        marked = self.module.mark_persistent_wan_bad(rows)
+        buckets = self.module.classify_buckets(marked)
+
+        self.assertEqual([sample["raw_bad"] for sample in marked], [True, True, True])
+        self.assertEqual([sample["is_bad"] for sample in marked], [False, True, True])
+        self.assertEqual(len(buckets), 1)
+        self.assertEqual(buckets[0]["bad"], 2)
+        self.assertEqual(buckets[0]["raw_bad"], 3)
+        self.assertFalse(buckets[0]["is_turbulence"])
+
+    def test_turbulence_bucket_requires_raw_bad_without_sustained_run(self):
+        base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        p95_values = [180, 30, 181, 31, 182, 32, 183]
+        rows = [
+            self.module.normalize_dashboard_sample(
+                self.telemetry_row((base + dt.timedelta(minutes=i)).isoformat(), "1.1.1.1", p95)
+            )
+            for i, p95 in enumerate(p95_values)
+        ]
+
+        marked = self.module.mark_persistent_wan_bad(rows)
+        buckets = self.module.classify_buckets(marked)
+
+        self.assertTrue(buckets[0]["is_turbulence"])
+        self.assertEqual(buckets[0]["bad"], 0)
+        self.assertEqual(buckets[0]["raw_bad"], 4)
+        self.assertEqual(buckets[0]["max_raw_run"], 1)
+
+    def test_sustained_bad_is_tracked_independently_by_target_group(self):
+        base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        internet_first = self.module.normalize_dashboard_sample(
+            self.telemetry_row(base.isoformat(), "1.1.1.1", 180)
+        )
+        resolver_middle = self.module.normalize_dashboard_sample(
+            self.telemetry_row((base + dt.timedelta(minutes=1)).isoformat(), "45.90.28.134", 25)
+        )
+        internet_second = self.module.normalize_dashboard_sample(
+            self.telemetry_row((base + dt.timedelta(minutes=2)).isoformat(), "1.1.1.1", 181)
+        )
+
+        marked = self.module.mark_persistent_wan_bad([internet_first, resolver_middle, internet_second])
+        by_target = [(sample["target_class"], sample["raw_bad"], sample["is_bad"]) for sample in marked]
+
+        self.assertEqual(by_target, [
+            ("internet_probe", True, False),
+            ("resolver_probe", False, False),
+            ("internet_probe", True, True),
+        ])
+
+    def test_buckets_are_separated_by_phase_and_target_group(self):
+        timestamp = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        fiber = self.module.normalize_dashboard_sample(
+            self.telemetry_row(timestamp.isoformat(), "1.1.1.1", 180)
+        )
+        alternate = dict(fiber)
+        alternate["phase"] = "TMOBILE"
+        resolver = self.module.normalize_dashboard_sample(
+            self.telemetry_row(timestamp.isoformat(), "45.90.28.134", 181)
+        )
+
+        marked = self.module.mark_persistent_wan_bad([fiber, alternate, resolver])
+        buckets = self.module.classify_buckets(marked)
+
+        self.assertEqual(
+            sorted((bucket["phase"], bucket["target_class"], bucket["total"]) for bucket in buckets),
+            [
+                ("FIBER", "internet_probe", 1),
+                ("FIBER", "resolver_probe", 1),
+                ("TMOBILE", "internet_probe", 1),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

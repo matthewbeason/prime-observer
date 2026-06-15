@@ -18,6 +18,14 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertNotIn("X-Api-Key", html)
         self.assertNotIn("NEXTDNS_API_KEY", html)
 
+    def test_dashboard_explains_heatmap_and_chart_semantics(self):
+        html = (ROOT / "viz" / "index.html").read_text()
+
+        self.assertIn("dark gray = sustained p95/jitter/loss degradation", html)
+        self.assertIn("line = p95 latency only", html)
+        self.assertIn("Raw reasons: p95", html)
+        self.assertNotIn("Number(k)", html)
+
     def test_investigation_view_renders_dns_context_without_api_access(self):
         html = (ROOT / "viz" / "investigate.html").read_text()
 

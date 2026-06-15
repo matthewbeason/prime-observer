@@ -163,13 +163,13 @@
 
   <div class="section-title">
     <h3>WAN “bad moments” heatmap</h3>
-    <div class="legend">Internet probes only • 15‑minute buckets • dark gray = sustained • amber = turbulence • click a bucket to inspect that interval on the WAN chart</div>
+    <div class="legend">Internet probes only • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect that interval on the WAN p95 chart</div>
   </div>
   <svg id="heatmap" width="1100" height="180"></svg>
 
   <div class="section-title">
     <h3>WAN — Internet probes p95 latency (ms)</h3>
-    <div class="legend">Cloudflare and Quad9 • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
+    <div class="legend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from heatmap buckets and may be driven by p95, jitter, or loss • blue outline = selected interval</div>
   </div>
   <svg id="wanInternet" width="1100" height="300"></svg>
 
@@ -216,8 +216,9 @@
 
     function bucketKey(d){
       const phase = d.phase || "FIBER";
+      const targetClass = d.targetClass || d.target_class || "internet_probe";
       const t = d.t instanceof Date ? d.t.getTime() : new Date(d.t).getTime();
-      return `${phase}|${t}`;
+      return `${phase}|${targetClass}|${t}`;
     }
 
     function pathLabel(phase){
@@ -364,10 +365,12 @@
     }
 
     function markPersistentWanBad(series, minStreak = WAN_BAD_PERSISTENCE){
-      let streak = 0;
+      const streaks = new Map();
       return series.map(r => {
         const rawBad = isWanBadRow(r);
-        streak = rawBad ? streak + 1 : 0;
+        const key = `${r.phase || "FIBER"}|${r.targetClass || "unknown_probe"}`;
+        const streak = rawBad ? (streaks.get(key) || 0) + 1 : 0;
+        streaks.set(key, streak);
         return { ...r, rawBad, isBad: streak >= minStreak };
       });
     }
@@ -768,36 +771,44 @@
 
       for (const d of wanSeries){
         const b = Math.floor(d.t.getTime() / binMs) * binMs;
-        let obj = buckets.get(b);
-        if (!obj) obj = { phase: d.phase || "FIBER", rows: [] };
+        const key = `${d.phase || "FIBER"}|${d.targetClass || "unknown_probe"}|${b}`;
+        let obj = buckets.get(key);
+        if (!obj) obj = { phase: d.phase || "FIBER", targetClass: d.targetClass || "unknown_probe", rows: [] };
         obj.rows.push(d);
-        buckets.set(b, obj);
+        buckets.set(key, obj);
       }
 
       const now = new Date();
       const recentCut = new Date(now.getTime() - 60 * 60000);
 
-      return Array.from(buckets.entries()).map(([k, v]) => {
+      return Array.from(buckets.values()).map((v) => {
         const rows = v.rows.sort((a,b)=>a.t-b.t);
         const total = rows.length;
         const bad = rows.filter(d => d.isBad).length;
         const rawBad = rows.filter(d => d.rawBad).length;
+        const p95Bad = rows.filter(d => d.p95 > WAN_BAD.p95).length;
+        const jitterBad = rows.filter(d => d.jitter > WAN_BAD.jitter).length;
+        const lossBad = rows.filter(d => d.loss > WAN_BAD.loss).length;
         let rawRun = 0, maxRawRun = 0;
         for (const row of rows){
           rawRun = row.rawBad ? rawRun + 1 : 0;
           if (rawRun > maxRawRun) maxRawRun = rawRun;
         }
+        const firstTime = rows.length ? rows[0].t.getTime() : Date.now();
+        const bucketStart = Math.floor(firstTime / binMs) * binMs;
         const bucket = {
           phase: v.phase,
-          t: new Date(Number(k)),
-          t2: new Date(Number(k) + binMs),
+          targetClass: v.targetClass,
+          t: new Date(bucketStart),
+          t2: new Date(bucketStart + binMs),
           total, bad, rawBad,
+          p95Bad, jitterBad, lossBad,
           rate: total ? bad / total : 0,
           rawRate: total ? rawBad / total : 0,
           maxRawRun,
           isBadBucket: bad > 0,
           isTurbulence: bad === 0 && rawBad >= TURBULENCE_MIN_RAW_BAD && maxRawRun < WAN_BAD_PERSISTENCE,
-          recent: (new Date(Number(k) + binMs)) >= recentCut
+          recent: (new Date(bucketStart + binMs)) >= recentCut
         };
         bucket.key = bucketKey(bucket);
         bucket.selected = selectedBucketKey === bucket.key;
@@ -916,8 +927,9 @@
                           <div><b>${cls}</b></div>
                           <div>Sustained bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
                           <div>Raw bad rate: ${(d.rawRate*100).toFixed(1)}% (${d.rawBad}/${d.total})</div>
+                          <div class="small">Raw reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
                           <div class="small">Max raw run: ${d.maxRawRun}</div>
-                          <div class="small">Click to highlight this interval on the WAN chart.</div>`;
+                          <div class="small">Click to highlight this interval on the WAN p95 chart. The chart line shows p95 only.</div>`;
             tipShow(html, ev.clientX, ev.clientY);
           })
           .on("mouseleave", () => tipHide());
