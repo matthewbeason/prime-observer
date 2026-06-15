@@ -72,6 +72,29 @@ class TransformLatestTest(unittest.TestCase):
             "jitter_ms": str(jitter),
         }
 
+    def dashboard_sample(self, timestamp, host, p95, jitter=5, loss=0):
+        return self.module.normalize_dashboard_sample(
+            self.telemetry_row(timestamp.isoformat(), host, p95, jitter=jitter, loss=loss)
+        )
+
+    def marked_recent_wan_samples(self, generated_at, internet_p95=None, resolver_p95=None):
+        internet_p95 = internet_p95 or []
+        resolver_p95 = resolver_p95 or []
+        rows = []
+        offset = max(len(internet_p95), len(resolver_p95), 1)
+        for idx, p95 in enumerate(internet_p95):
+            rows.append(self.dashboard_sample(generated_at - dt.timedelta(minutes=offset - idx), "1.1.1.1", p95))
+        for idx, p95 in enumerate(resolver_p95):
+            rows.append(self.dashboard_sample(generated_at - dt.timedelta(minutes=offset - idx), "45.90.28.134", p95))
+        return self.module.mark_persistent_wan_bad(sorted(rows, key=lambda sample: sample["t"]))
+
+    def recent_lan_samples(self, generated_at, p95_values):
+        offset = max(len(p95_values), 1)
+        return [
+            self.dashboard_sample(generated_at - dt.timedelta(minutes=offset - idx), "192.168.1.1", p95)
+            for idx, p95 in enumerate(p95_values)
+        ]
+
     def test_old_csv_rows_gain_target_metadata_and_grouped_json(self):
         now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         self.write_rows([
@@ -180,6 +203,46 @@ class TransformLatestTest(unittest.TestCase):
                 ("TMOBILE", "internet_probe", 1),
             ],
         )
+
+    def test_wan_dominant_evidence_does_not_become_local_attribution(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        wan = self.marked_recent_wan_samples(
+            now,
+            internet_p95=[180, 181, 182, 183, 184, 185, 186, 187],
+            resolver_p95=[175, 176, 177, 178, 179, 180, 181, 182],
+        )
+        lan = self.recent_lan_samples(now, [130, 131, 132, 133, 134, 40, 41, 42, 43, 44])
+
+        attribution = self.module.compute_recent_attribution(lan, wan, now)
+
+        self.assertEqual(attribution["attribution_label"], "Likely upstream (ISP / path)")
+        counts = attribution["attribution_evidence"]["classification_counts"]
+        self.assertTrue(counts["internet_probe_degraded"])
+        self.assertTrue(counts["resolver_probe_degraded"])
+        self.assertEqual(counts["lan_elevated_samples"], 5)
+
+    def test_mixed_evidence_can_produce_mixed_attribution(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        wan = self.marked_recent_wan_samples(now, internet_p95=[180, 181, 35, 36])
+        lan = self.recent_lan_samples(now, [130, 131, 132, 40, 41])
+
+        attribution = self.module.compute_recent_attribution(lan, wan, now)
+
+        self.assertEqual(attribution["attribution_label"], "Mixed evidence")
+        self.assertEqual(attribution["attribution_confidence"], "Medium")
+        self.assertEqual(attribution["attribution_status"], "mixed_evidence")
+
+    def test_lan_dominant_evidence_still_produces_local_attribution(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        wan = self.marked_recent_wan_samples(now, internet_p95=[180, 181])
+        lan = self.recent_lan_samples(now, [130, 131, 132, 133, 134])
+
+        attribution = self.module.compute_recent_attribution(lan, wan, now)
+
+        self.assertEqual(attribution["attribution_label"], "Likely local (LAN / Wi\u2011Fi)")
+        counts = attribution["attribution_evidence"]["classification_counts"]
+        self.assertEqual(counts["internet_bad_buckets"], 1)
+        self.assertEqual(counts["lan_elevated_samples"], 5)
 
 
 if __name__ == "__main__":

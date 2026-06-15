@@ -322,14 +322,53 @@ def target_group_summary(series):
     for target_class in ("internet_probe", "resolver_probe"):
         rows = [d for d in series if d.get("target_class") == target_class]
         buckets = classify_buckets(rows)
+        bad_buckets = [b for b in buckets if b.get("bad")]
+        turbulence_buckets = [b for b in buckets if b.get("is_turbulence")]
         groups[target_class] = {
             "sample_count": len(rows),
             "host_counts": host_counts(rows),
             "raw_bad_samples": len([d for d in rows if d.get("raw_bad")]),
             "sustained_bad_samples": len([d for d in rows if d.get("is_bad")]),
-            "turbulence_buckets": len([b for b in buckets if b.get("is_turbulence")]),
+            "bad_buckets": len(bad_buckets),
+            "turbulence_buckets": len(turbulence_buckets),
         }
     return groups
+
+
+def attribution_evidence_counts(groups, recent_lan, lan_elevated):
+    internet = groups.get("internet_probe", {}) or {}
+    resolver = groups.get("resolver_probe", {}) or {}
+    internet_bad_buckets = internet.get("bad_buckets", 0) or 0
+    resolver_bad_buckets = resolver.get("bad_buckets", 0) or 0
+    internet_turbulence_buckets = internet.get("turbulence_buckets", 0) or 0
+    resolver_turbulence_buckets = resolver.get("turbulence_buckets", 0) or 0
+    internet_sustained = internet.get("sustained_bad_samples", 0) or 0
+    resolver_sustained = resolver.get("sustained_bad_samples", 0) or 0
+
+    internet_degraded = bool(internet_sustained or internet_turbulence_buckets)
+    resolver_degraded = bool(resolver_sustained or resolver_turbulence_buckets)
+    wan_bad_buckets = internet_bad_buckets + resolver_bad_buckets
+    wan_turbulence_buckets = internet_turbulence_buckets + resolver_turbulence_buckets
+    wan_sustained_bad_samples = internet_sustained + resolver_sustained
+
+    return {
+        "internet_probe_degraded": internet_degraded,
+        "resolver_probe_degraded": resolver_degraded,
+        "lan_elevated": bool(lan_elevated),
+        "internet_bad_buckets": internet_bad_buckets,
+        "resolver_bad_buckets": resolver_bad_buckets,
+        "internet_sustained_bad_samples": internet_sustained,
+        "resolver_sustained_bad_samples": resolver_sustained,
+        "internet_turbulence_buckets": internet_turbulence_buckets,
+        "resolver_turbulence_buckets": resolver_turbulence_buckets,
+        "wan_degraded_target_groups": len([v for v in (internet_degraded, resolver_degraded) if v]),
+        "wan_bad_buckets": wan_bad_buckets,
+        "wan_turbulence_buckets": wan_turbulence_buckets,
+        "wan_sustained_bad_samples": wan_sustained_bad_samples,
+        "wan_evidence_points": wan_sustained_bad_samples + (wan_bad_buckets * WAN_BAD_PERSISTENCE) + wan_turbulence_buckets,
+        "lan_recent_samples": len(recent_lan),
+        "lan_elevated_samples": len(lan_elevated),
+    }
 
 
 def host_counts(samples):
@@ -380,6 +419,7 @@ def attribution_status(label):
         "Likely local (LAN / Wi\u2011Fi)": "likely_local",
         "Likely upstream (ISP / path)": "likely_upstream",
         "No network issue detected": "no_network_issue_detected",
+        "Mixed evidence": "mixed_evidence",
         "Inconclusive": "inconclusive",
     }.get(label, "inconclusive")
 
@@ -390,6 +430,7 @@ def reporting_status(label):
         "Likely local (LAN / Wi\u2011Fi)": "likely_local",
         "Likely upstream (ISP / path)": "likely_upstream",
         "No network issue detected": "no_issue_detected",
+        "Mixed evidence": "mixed_evidence",
         "Inconclusive": "inconclusive",
     }.get(label, "inconclusive")
 
@@ -413,6 +454,7 @@ def compute_recent_attribution(lan_series, wan_series_marked, generated_at):
     lan_elevated_rate = len(lan_elevated) / len(recent_lan) if recent_lan else 0.0
     lan_bad = len(lan_elevated) >= 3 and lan_elevated_rate > 0.2
     group_facts = target_group_fact(groups, recent_lan, lan_elevated, lan_bad)
+    evidence_counts = attribution_evidence_counts(groups, recent_lan, lan_elevated)
 
     label = "Inconclusive"
     confidence = "Low"
@@ -422,10 +464,34 @@ def compute_recent_attribution(lan_series, wan_series_marked, generated_at):
         label = "No recent data"
         confidence = "Low"
         why = "No LAN or WAN samples in the last 15 minutes."
-    elif lan_bad and wan_bad:
-        label = "Likely local (LAN / Wi\u2011Fi)"
-        confidence = "Medium"
-        why = f"LAN is elevated ({len(lan_elevated)}/{len(recent_lan)} samples, {js_round(lan_elevated_rate * 100)}%) and WAN also shows sustained degradation."
+    elif lan_bad and (wan_bad or wan_turbulence):
+        wan_points = evidence_counts["wan_evidence_points"]
+        lan_points = evidence_counts["lan_elevated_samples"]
+        wan_groups = evidence_counts["wan_degraded_target_groups"]
+        wan_dominates = wan_points >= max(lan_points * 2, WAN_BAD_PERSISTENCE) or (
+            wan_groups >= 2 and evidence_counts["wan_bad_buckets"] >= len(lan_elevated)
+        )
+        lan_dominates = lan_points >= max(3, wan_points * 1.5) and lan_elevated_rate >= 0.5
+        if wan_dominates:
+            label = "Likely upstream (ISP / path)"
+            confidence = "Medium"
+            why = (
+                f"WAN evidence spans {wan_groups} target group(s) with {evidence_counts['wan_bad_buckets']} sustained bad bucket(s); "
+                f"LAN has {len(lan_elevated)}/{len(recent_lan)} elevated sample(s)."
+            )
+        elif lan_dominates:
+            label = "Likely local (LAN / Wi\u2011Fi)"
+            confidence = "Medium"
+            why = (
+                f"LAN has {len(lan_elevated)}/{len(recent_lan)} elevated sample(s) and materially exceeds WAN evidence counts."
+            )
+        else:
+            label = "Mixed evidence"
+            confidence = "Medium"
+            why = (
+                f"WAN evidence and LAN elevation are both present: {evidence_counts['wan_bad_buckets']} WAN sustained bad bucket(s), "
+                f"{len(lan_elevated)}/{len(recent_lan)} LAN elevated sample(s)."
+            )
     elif lan_bad and not wan_bad and not wan_turbulence:
         label = "Likely local (LAN / Wi\u2011Fi)"
         confidence = "High"
@@ -451,6 +517,8 @@ def compute_recent_attribution(lan_series, wan_series_marked, generated_at):
             "summary": why,
             "target_group_facts": group_facts,
             "target_groups": groups,
+            "classification_counts": evidence_counts,
+            **evidence_counts,
             "internet_probe_summary": groups.get("internet_probe"),
             "resolver_probe_summary": groups.get("resolver_probe"),
             "lookback_minutes": ATTRIBUTION_CUT_MINUTES,

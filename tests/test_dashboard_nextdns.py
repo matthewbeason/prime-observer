@@ -24,6 +24,9 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn("dark gray = sustained p95/jitter/loss degradation", html)
         self.assertIn("line = p95 latency only", html)
         self.assertIn("Raw reasons: p95", html)
+        self.assertIn("Selected Bucket", html)
+        self.assertIn("selectedBucket: currentVizState.selectedBucket", html)
+        self.assertIn("WAN resolver, and LAN gateway charts", html)
         self.assertNotIn("Number(k)", html)
 
     def test_investigation_view_renders_dns_context_without_api_access(self):
