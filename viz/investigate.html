@@ -49,7 +49,7 @@
   <div class="row" id="eventCards"></div>
 
   <h2>Before / During / After</h2>
-  <div class="section-note">WAN and LAN are summarized separately. Bad counts use Prime Observer thresholds from the generated investigation file.</div>
+  <div class="section-note">Internet probes, resolver probes, and LAN are summarized separately where available. Bad counts use Prime Observer thresholds from the generated investigation file.</div>
   <div class="wide">
     <table id="periodTable"></table>
   </div>
@@ -162,6 +162,8 @@
             <td>${name}</td>
             <td>${shortTime(bucket.start)}</td>
             <td>${shortTime(bucket.end)}</td>
+            <td>${fmt(bucket.target_class)}</td>
+            <td>${Object.keys(bucket.target_hosts || {}).join(", ") || "—"}</td>
             ${cell(bucket.sample_count)}
             ${cell(bucket.raw_bad_count)}
             ${cell(bucket.sustained_bad_count)}
@@ -175,8 +177,8 @@
       }
 
       document.getElementById("bucketTable").innerHTML = `
-        <thead><tr><th>Period</th><th>Start</th><th>End</th><th>Samples</th><th>Raw bad</th><th>Sustained bad</th><th>Max run</th><th>Max p95</th><th>Max jitter</th><th>Max loss</th><th>Bucket</th></tr></thead>
-        <tbody>${rows.join("") || '<tr><td colspan="11">No WAN bucket evidence available.</td></tr>'}</tbody>`;
+        <thead><tr><th>Period</th><th>Start</th><th>End</th><th>Target class</th><th>Hosts</th><th>Samples</th><th>Raw bad</th><th>Sustained bad</th><th>Max run</th><th>Max p95</th><th>Max jitter</th><th>Max loss</th><th>Bucket</th></tr></thead>
+        <tbody>${rows.join("") || '<tr><td colspan="13">No WAN bucket evidence available.</td></tr>'}</tbody>`;
     }
 
     function renderEventTable(data){
@@ -229,6 +231,8 @@
         <td>${shortTime(sample.ts)}</td>
         <td>${sample.kind}</td>
         <td class="mono">${sample.host}</td>
+        <td>${fmt(sample.target_label)}</td>
+        <td>${fmt(sample.target_class)}</td>
         <td>${sample.phase}</td>
         ${cell(sample.p95_ms, " ms")}
         ${cell(sample.jitter_ms, " ms")}
@@ -237,8 +241,8 @@
         <td class="mono">${sample.source_file}</td>
       </tr>`).join("");
       document.getElementById("sampleTable").innerHTML = `
-        <thead><tr><th>Time</th><th>Kind</th><th>Host</th><th>Path</th><th>p95</th><th>Jitter</th><th>Loss</th><th>Max</th><th>Source</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9">No samples available.</td></tr>'}</tbody>`;
+        <thead><tr><th>Time</th><th>Kind</th><th>Host</th><th>Label</th><th>Target class</th><th>Path</th><th>p95</th><th>Jitter</th><th>Loss</th><th>Max</th><th>Source</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="11">No samples available.</td></tr>'}</tbody>`;
     }
 
     function renderDns(data){

@@ -73,7 +73,8 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 
 - event start, end, duration, and context window
 - before, during, and after WAN/LAN summaries
-- WAN p95, jitter, loss, sample counts, bad counts, and turbulence buckets
+- factual target classes and labels for internet, resolver, and gateway probes
+- WAN p95, jitter, loss, sample counts, bad counts, and turbulence buckets by target group where available
 - deterministic event navigation metadata
 - factual nearby-event metadata
 - representative timeline samples
@@ -116,6 +117,7 @@ The JSON uses this high-level structure:
     "during": {},
     "after": {}
   },
+  "target_groups": {},
   "events": [],
   "navigation": {
     "first_event": null,
@@ -129,9 +131,23 @@ The JSON uses this high-level structure:
 }
 ```
 
-The `events`, `navigation`, and `event_neighborhoods` fields are additive.
-Older consumers that read the original v0.5.0 fields can continue to use the
-export without changes.
+The `target_groups`, `target_class`, `target_label`, `events`, `navigation`,
+and `event_neighborhoods` fields are additive. Older consumers that read the
+original v0.5.0 fields can continue to use the export without changes.
+
+## Target Classes
+
+Investigation evidence includes factual target metadata:
+
+- Cloudflare `1.1.1.1` and Quad9 `9.9.9.9` are `internet_probe` targets.
+- NextDNS `45.90.28.134` and `45.90.30.134` are `resolver_probe` targets.
+- The local gateway is a `gateway_probe`.
+- Unknown targets are retained only when safely usable and labeled `unknown_probe`.
+
+These classes help the evidence view show whether bad samples came from general
+WAN/path probes, resolver-path probes, or the LAN gateway. They are not causal
+interpretation. Core Signal remains responsible for interpreting events and
+making recommendations.
 
 ## Event Navigation And Neighborhoods
 
@@ -169,6 +185,8 @@ raw DNS logs.
 Allowed wording for consumers:
 
 - WAN p95 increased during the window.
+- Resolver probe p95 increased during the window.
+- Internet probes remained below degradation thresholds during the window.
 - LAN samples remained below threshold.
 - Packet loss was 0% during the window.
 - DNS summary closest to the event showed X total queries.

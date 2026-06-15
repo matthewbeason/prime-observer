@@ -64,7 +64,7 @@ Inputs include recent WAN latency, persistence, bad moments, jitter, loss, and t
 
 ### Pattern Awareness
 
-Pattern Awareness compares current WAN p95 latency against historical WAN behavior for the same hour of day.
+Pattern Awareness compares current general internet probe p95 latency against historical WAN behavior for the same hour of day.
 
 It helps answer:
 
@@ -93,6 +93,11 @@ Prime Observer attempts to distinguish:
 
 LAN attribution requires persistent elevated LAN evidence. Isolated LAN spikes should not cause the dashboard to blame the local network.
 
+Prime Observer also records factual target classes so summaries can distinguish
+general internet probes, resolver probes, and the local gateway. These classes
+are evidence labels only. Core Signal remains responsible for interpretation,
+recommendations, and higher-level meaning.
+
 ### Sustained Bad Moments
 
 Raw WAN degradation is currently defined as:
@@ -111,7 +116,7 @@ It is informational rather than operationally significant. This keeps brief inst
 
 ### WAN Health Summary
 
-The WAN Health Summary shows current WAN experience across monitored internet targets, including:
+The WAN Health Summary shows current WAN experience by target group, including:
 
 - median WAN p95
 - 95th percentile WAN p95
@@ -120,7 +125,10 @@ The WAN Health Summary shows current WAN experience across monitored internet ta
 - bad minutes per hour
 - sample count
 
-This section is intended as a health summary, not a provider-comparison scoreboard.
+This section is intended as a health summary, not a provider-comparison
+scoreboard. Cloudflare and Quad9 remain general internet reachability probes.
+The configured NextDNS resolver IPs are shown as resolver-path probes so their
+latency is not silently blended into general WAN/path latency.
 
 ### DNS Security
 
@@ -187,13 +195,13 @@ viz/investigate.html
   Historical telemetry files. The name is legacy; the product is now framed around WAN health and user experience observability.
 
 - `bin/transform_latest.py`
-  Reads the newest historical telemetry file, keeps the last 24 hours, computes hourly WAN baselines, adds Pattern Confidence fields, writes `viz/latest.csv`, and exports Network Attribution results.
+  Reads the newest historical telemetry file, keeps the last 24 hours, adds target label/class metadata, computes hourly WAN baselines from general internet probes, adds Pattern Confidence fields, writes `viz/latest.csv`, and exports Network Attribution results.
 
 - `viz/latest.csv`
   Generated dashboard input containing the current 24-hour telemetry window.
 
 - `viz/network_attribution.json`
-  Generated machine-readable Network Attribution export for downstream tools. The legacy top-level `attribution_*` fields describe current/recent attribution for the last 15 minutes. The export also includes `current_attribution`, `window_attribution`, and per-incident `incidents` so reports can attribute sustained slowdown intervals across the 24-hour observation window.
+  Generated machine-readable Network Attribution export for downstream tools. The legacy top-level `attribution_*` fields describe current/recent attribution for the last 15 minutes. The export also includes factual `target_groups`, `internet_probe_summary`, `resolver_probe_summary`, `current_attribution`, `window_attribution`, and per-incident `incidents` so reports can attribute sustained slowdown intervals across the 24-hour observation window.
 
 - `bin/fetch_nextdns_summary.py`
   Optional local NextDNS analytics summary fetcher. Uses Python standard library only.
@@ -205,7 +213,7 @@ viz/investigate.html
   Builds a local read-only investigation JSON for a historical time window using existing telemetry files. The output is factual evidence, not interpretation. It also updates a generated investigation catalog by default.
 
 - `viz/investigation.json`
-  Generated local investigation evidence for a selected window. Wave 1 metadata is additive and includes deterministic event navigation plus factual nearby-event discovery.
+  Generated local investigation evidence for a selected window. Metadata is additive and includes target labels/classes, deterministic event navigation, and factual nearby-event discovery.
 
 - `viz/investigation_index.json`
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
@@ -222,10 +230,26 @@ Monitored LAN target:
 
 - `192.168.1.1`
 
-Monitored WAN targets:
+Monitored internet probe targets:
 
-- `1.1.1.1`
-- `9.9.9.9`
+- `1.1.1.1` - Cloudflare
+- `9.9.9.9` - Quad9
+
+Monitored resolver probe targets:
+
+- `45.90.28.134` - NextDNS primary
+- `45.90.30.134` - NextDNS secondary
+
+Target classes in generated files:
+
+- `internet_probe` for general WAN/path reachability probes
+- `resolver_probe` for configured DNS resolver path probes
+- `gateway_probe` for the local LAN gateway
+- `unknown_probe` when a target cannot be safely classified
+
+New telemetry collection includes both NextDNS resolver probes. Existing older
+telemetry files that only contain raw IP targets remain compatible; transform
+and investigation generation add target metadata when possible.
 
 Optional DNS/security context:
 

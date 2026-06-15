@@ -163,15 +163,21 @@
 
   <div class="section-title">
     <h3>WAN “bad moments” heatmap</h3>
-    <div class="legend">15‑minute buckets • dark gray = sustained • amber = turbulence • click a bucket to inspect that interval on the WAN chart</div>
+    <div class="legend">Internet probes only • 15‑minute buckets • dark gray = sustained • amber = turbulence • click a bucket to inspect that interval on the WAN chart</div>
   </div>
   <svg id="heatmap" width="1100" height="180"></svg>
 
   <div class="section-title">
-    <h3>WAN (Internet) — p95 latency (ms)</h3>
-    <div class="legend">Current path shown as solid line • alternate paths shown dashed if present • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
+    <h3>WAN — Internet probes p95 latency (ms)</h3>
+    <div class="legend">Cloudflare and Quad9 • gray bands = sustained bad buckets • amber bands = turbulence • amber ticks = isolated raw spikes • blue outline = selected interval</div>
   </div>
-  <svg id="wan" width="1100" height="300"></svg>
+  <svg id="wanInternet" width="1100" height="300"></svg>
+
+  <div class="section-title">
+    <h3>WAN — Resolver probes p95 latency (ms)</h3>
+    <div class="legend">NextDNS primary and secondary resolver path probes</div>
+  </div>
+  <svg id="wanResolver" width="1100" height="250"></svg>
 
   <div class="section-title">
     <h3>LAN (Gateway) — p95 latency (ms)</h3>
@@ -191,7 +197,14 @@
     const NEXTDNS_URL = "./nextdns_summary.json";
     const NEXTDNS_STALE_MINUTES = 60;
     const GATEWAY_HOST = "192.168.1.1";
-    const WAN_HOSTS = new Set(["1.1.1.1","9.9.9.9"]);
+    const TARGET_METADATA = {
+      "192.168.1.1": { label: "Gateway", className: "gateway_probe" },
+      "1.1.1.1": { label: "Cloudflare", className: "internet_probe" },
+      "9.9.9.9": { label: "Quad9", className: "internet_probe" },
+      "45.90.28.134": { label: "NextDNS primary", className: "resolver_probe" },
+      "45.90.30.134": { label: "NextDNS secondary", className: "resolver_probe" },
+    };
+    const WAN_CLASSES = new Set(["internet_probe", "resolver_probe"]);
     const WAN_BAD = { p95: 140, jitter: 50, loss: 1.0 };
     const WAN_BAD_PERSISTENCE = 2;
     const TURBULENCE_MIN_RAW_BAD = 4;
@@ -269,14 +282,15 @@
 
     function rerenderFromState(){
       if (!currentVizState) return;
-      renderHeatmap("#heatmap", currentVizState.wanSeriesMarked);
-      renderLine("#wan", currentVizState.wanSeriesMarked, {
-        label: "WAN p95",
+      renderHeatmap("#heatmap", currentVizState.internetSeriesMarked);
+      renderLine("#wanInternet", currentVizState.internetSeriesMarked, {
+        label: "WAN internet p95",
         badBuckets: currentVizState.badBuckets,
         turbulenceBuckets: currentVizState.turbulenceBuckets,
         rawSpikeMarkers: currentVizState.rawSpikeMarkers,
         selectedBucket: currentVizState.selectedBucket
       });
+      renderLine("#wanResolver", currentVizState.resolverSeriesMarked, { label: "WAN resolver p95" });
       renderLine("#lan", currentVizState.lanSeries, { label: "LAN p95" });
     }
 
@@ -327,8 +341,23 @@
       if (accent) el.classList.add(accent);
     }
 
-    function isGateway(host){ return host === GATEWAY_HOST; }
-    function isWanTarget(host){ return WAN_HOSTS.has(host); }
+    function fallbackTargetMetadata(host){
+      const clean = (host || "").trim();
+      const meta = TARGET_METADATA[clean];
+      if (meta) return { targetLabel: meta.label, targetClass: meta.className };
+      return { targetLabel: clean, targetClass: "unknown_probe" };
+    }
+
+    function rowTargetMetadata(row, host){
+      const fallback = fallbackTargetMetadata(host);
+      return {
+        targetLabel: (row.target_label || fallback.targetLabel || host || "").trim(),
+        targetClass: (row.target_class || fallback.targetClass || "unknown_probe").trim(),
+      };
+    }
+
+    function isGatewayClass(targetClass){ return targetClass === "gateway_probe"; }
+    function isWanClass(targetClass){ return WAN_CLASSES.has(targetClass); }
 
     function isWanBadRow(r){
       return (r.p95 > WAN_BAD.p95) || (r.jitter > WAN_BAD.jitter) || (r.loss > WAN_BAD.loss);
@@ -364,9 +393,16 @@
         const baselineDeltaPct = parseFloatSafe((r.baseline_delta_pct || "").trim(), null);
         const baselineSampleCount = parseFloatSafe((r.baseline_sample_count || "").trim(), null);
 
+        const target = rowTargetMetadata(r, host);
+
         if (!host || p95 === null) continue;
-        if (!isGateway(host) && !isWanTarget(host)) continue;
-        clean.push({ t, host, phase, p95, jitter, loss, baselineP95, baselineDeltaPct, baselineSampleCount });
+        if (!isGatewayClass(target.targetClass) && !isWanClass(target.targetClass)) continue;
+        clean.push({
+          t, host, phase, p95, jitter, loss,
+          targetLabel: target.targetLabel,
+          targetClass: target.targetClass,
+          baselineP95, baselineDeltaPct, baselineSampleCount
+        });
       }
       clean.sort((a,b)=>a.t-b.t);
       return clean;
@@ -427,21 +463,26 @@
 
     function toSeries(data){
       const lan = new Map();
-      const wan = new Map();
+      const internet = new Map();
+      const resolver = new Map();
       for (const r of data){
         const ts = r.t.getTime();
-        const key = r.phase + "|" + ts;
-        if (isGateway(r.host)){
+        const key = r.phase + "|" + r.targetClass + "|" + ts;
+        if (isGatewayClass(r.targetClass)){
           const prev = lan.get(key);
           if (!prev || r.p95 > prev.p95) lan.set(key, r);
-        } else {
-          const prev = wan.get(key);
-          if (!prev || r.p95 > prev.p95) wan.set(key, r);
+        } else if (r.targetClass === "internet_probe"){
+          const prev = internet.get(key);
+          if (!prev || r.p95 > prev.p95) internet.set(key, r);
+        } else if (r.targetClass === "resolver_probe"){
+          const prev = resolver.get(key);
+          if (!prev || r.p95 > prev.p95) resolver.set(key, r);
         }
       }
       return {
         lanSeries: Array.from(lan.values()).sort((a,b)=>a.t-b.t),
-        wanSeries: Array.from(wan.values()).sort((a,b)=>a.t-b.t),
+        internetSeries: Array.from(internet.values()).sort((a,b)=>a.t-b.t),
+        resolverSeries: Array.from(resolver.values()).sort((a,b)=>a.t-b.t),
       };
     }
 
@@ -483,6 +524,30 @@
       el.textContent = streak === 0 ? "0" : `${streak} samples (~${streak * SAMPLE_INTERVAL_MIN} min)`;
     }
 
+    function targetGroupFacts(internetSeries, resolverSeries, lanSeries){
+      const internetBad = internetSeries.some(d => d.isBad) || computeTurbulenceBuckets(internetSeries).length > 0;
+      const resolverBad = resolverSeries.some(d => d.isBad) || computeTurbulenceBuckets(resolverSeries).length > 0;
+      let wanFact = "No WAN target-group evidence is available.";
+      if (internetSeries.length && resolverSeries.length){
+        if (internetBad && !resolverBad) wanFact = "Internet probes degraded while resolver probes remained healthy.";
+        else if (resolverBad && !internetBad) wanFact = "Resolver probes degraded while internet probes remained healthy.";
+        else if (internetBad && resolverBad) wanFact = "Both internet and resolver probes degraded.";
+        else wanFact = "Internet and resolver probes both remained below degradation thresholds.";
+      } else if (internetSeries.length){
+        wanFact = "Internet probe evidence is available; resolver probe evidence is not yet available.";
+      } else if (resolverSeries.length){
+        wanFact = "Resolver probe evidence is available; internet probe evidence is not available.";
+      }
+
+      const lanElevated = lanSeries.filter(d => (d.p95 ?? 0) > LAN_BAD_P95);
+      const lanElevatedRate = lanSeries.length ? lanElevated.length / lanSeries.length : 0;
+      const lanBad = lanElevated.length >= 3 && lanElevatedRate > 0.2;
+      const lanFact = lanBad
+        ? "LAN/gateway also degraded."
+        : (lanSeries.length ? `LAN/gateway elevated samples: ${lanElevated.length}/${lanSeries.length}.` : "LAN/gateway evidence is unavailable.");
+      return [wanFact, lanFact];
+    }
+
     function computeUserNoticeability(summary){
       const scoreEl = document.getElementById("noticeScore");
       const labelEl = document.getElementById("noticeLabel");
@@ -505,7 +570,8 @@
       const labelEl = document.getElementById("attribLabel");
       labelEl.textContent = label;
       document.getElementById("attribConfidence").textContent = attribution?.confidence || "—";
-      document.getElementById("attribWhy").textContent = "Why: " + (attribution?.why || "—");
+      const facts = attribution?.facts?.length ? " " + attribution.facts.join(" ") : "";
+      document.getElementById("attribWhy").textContent = "Why: " + (attribution?.why || "—") + facts;
       let accent = null;
       if (label === "No network issue detected") accent = "ok";
       else if (label === "Likely upstream (ISP / path)" || label === "Likely local (LAN / Wi‑Fi)") accent = "risk";
@@ -665,31 +731,32 @@
       return { n: seriesArr.length, badRate, badMinPerHour, medianP95, p95ofP95, jitter95 };
     }
 
-    function renderWanHealthTable(wanSeries){
+    function renderWanHealthTable(internetSeries, resolverSeries){
       const wrap = document.getElementById("compareWrap");
       wrap.innerHTML = "";
-      const byPhase = d3.group(wanSeries, d=>d.phase || "FIBER");
-      const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
-      if (!phases.length){
+      const groups = [
+        { label: "Internet probes", rows: internetSeries },
+        { label: "Resolver probes", rows: resolverSeries },
+      ].filter(group => group.rows.length);
+      if (!groups.length){
         wrap.innerHTML = "<div class='small'>No WAN health data in window for configured targets.</div>";
         return;
       }
-      const rows = phases.map(p => ({ phase:p, stats: computeProviderStats(byPhase.get(p) || []) }));
+      const rows = groups.map(group => ({ label: group.label, stats: computeProviderStats(group.rows), hosts: group.rows }));
       const table = document.createElement("table");
       table.className = "health-table";
       table.innerHTML = `
         <thead>
           <tr>
-            <th>WAN path</th><th>p95 median</th><th>p95 95th</th><th>Jitter 95th</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
+            <th>Target group</th><th>Targets</th><th>p95 median</th><th>p95 95th</th><th>Jitter 95th</th><th>Bad rate</th><th>Bad‑min/hr</th><th>Samples</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map(r=>{
             const s = r.stats;
-            const cls = r.phase === "TMOBILE" ? "tmobile" : "fiber";
-            const label = pathTagLabel(r.phase);
-            if (!s) return `<tr><td><span class="tag ${cls}">${label}</span></td><td colspan="6" class="small">No data.</td></tr>`;
-            return `<tr><td><span class="tag ${cls}">${label}</span></td><td class="metric-strong">${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
+            const targets = Array.from(new Set(r.hosts.map(d => d.targetLabel || d.host))).join(", ");
+            if (!s) return `<tr><td><span class="tag fiber">${r.label}</span></td><td colspan="7" class="small">No data.</td></tr>`;
+            return `<tr><td><span class="tag fiber">${r.label}</span></td><td>${targets}</td><td class="metric-strong">${fmt1(s.medianP95)} ms</td><td>${fmt1(s.p95ofP95)} ms</td><td>${fmt1(s.jitter95)} ms</td><td>${fmt1(100*s.badRate)}%</td><td>${fmt1(s.badMinPerHour)}</td><td class="mono">${s.n}</td></tr>`;
           }).join("")}
         </tbody>`;
       wrap.appendChild(table);
@@ -738,7 +805,7 @@
       }).sort((a,b)=>a.t-b.t);
     }
 
-    function computeAttribution(wanSeries, lanSeries){
+    function computeAttribution(wanSeries, lanSeries, resolverSeries){
       const now = new Date();
       const cut = new Date(now.getTime() - ATTRIBUTION_CUT_MINUTES * 60000);
 
@@ -760,28 +827,29 @@
       if (!recentWan.length && !recentLan.length){
         label = "No recent data";
         confidence = "Low";
-        why = "No LAN or WAN samples in the last 15 minutes.";
+        why = "No LAN or internet probe samples in the last 15 minutes.";
       } else if (lanBad && wanBad){
         label = "Likely local (LAN / Wi‑Fi)";
         confidence = "Medium";
-        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) and WAN also shows sustained degradation.`;
+        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) and internet probes also show sustained degradation.`;
       } else if (lanBad && !wanBad && !wanTurbulence){
         label = "Likely local (LAN / Wi‑Fi)";
         confidence = "High";
-        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) while WAN remains stable.`;
+        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) while internet probes remain stable.`;
       } else if (!lanBad && (wanBad || wanTurbulence)){
         label = "Likely upstream (ISP / path)";
         confidence = wanBad ? "High" : "Medium";
         why = wanBad
-          ? `WAN shows sustained degradation while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`
-          : `WAN shows turbulence while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`;
+          ? `Internet probes show sustained degradation while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`
+          : `Internet probes show turbulence while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`;
       } else if (!lanBad && !wanBad && !wanTurbulence){
         label = "No network issue detected";
         confidence = "High";
-        why = "LAN and WAN both look stable in the last 15 minutes.";
+        why = "LAN and internet probes both look stable in the last 15 minutes.";
       }
 
-      return { label, confidence, why };
+      const recentResolver = resolverSeries.filter(d => d.t >= cut);
+      return { label, confidence, why, facts: targetGroupFacts(recentWan, recentResolver, recentLan) };
     }
 
     function renderHeatmap(svgSel, wanSeries) {
@@ -1004,7 +1072,7 @@
           let extra = '';
           if (opts.selectedBucket && d.t >= opts.selectedBucket.t && d.t < opts.selectedBucket.t2) extra = '<div class="small">Inside selected heatmap interval.</div>';
           if (d.rawBad && !d.isBad) extra += '<div class="small">Isolated raw spike.</div>';
-          const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
+          const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.targetLabel || d.host} • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                         <div><b>${opts.label || "p95"}:</b> ${fmt1(d.p95)} ms</div>
                         <div class="small">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>${extra}`;
           tipShow(html, ev.clientX, ev.clientY);
@@ -1018,24 +1086,25 @@
         updateHeader(raw);
         computeTelemetry(raw);
 
-        const { lanSeries, wanSeries } = toSeries(raw);
-        const wanSeriesMarked = markPersistentWanBad(wanSeries);
-        const noticeSummary = getNoticeabilitySummary(wanSeriesMarked);
-        const badBuckets = computeBadBuckets(wanSeriesMarked);
-        const turbulenceBuckets = computeTurbulenceBuckets(wanSeriesMarked);
-        const rawSpikeMarkers = computeRawSpikeMarkers(wanSeriesMarked);
-        const attribution = computeAttribution(wanSeriesMarked, lanSeries);
-        const selectedBucket = selectedBucketKey ? (classifyBuckets(wanSeriesMarked).find(d => d.key === selectedBucketKey) || null) : null;
+        const { lanSeries, internetSeries, resolverSeries } = toSeries(raw);
+        const internetSeriesMarked = markPersistentWanBad(internetSeries);
+        const resolverSeriesMarked = markPersistentWanBad(resolverSeries);
+        const noticeSummary = getNoticeabilitySummary(internetSeriesMarked);
+        const badBuckets = computeBadBuckets(internetSeriesMarked);
+        const turbulenceBuckets = computeTurbulenceBuckets(internetSeriesMarked);
+        const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
+        const attribution = computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked);
+        const selectedBucket = selectedBucketKey ? (classifyBuckets(internetSeriesMarked).find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
 
-        currentVizState = { lanSeries, wanSeriesMarked, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket };
+        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket };
 
-        computeSpikeStreak(wanSeriesMarked);
+        computeSpikeStreak(internetSeriesMarked);
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary);
-        updatePatternAwareness(wanSeriesMarked);
+        updatePatternAwareness(internetSeriesMarked);
         updateAttributionCard(attribution);
-        renderWanHealthTable(wanSeriesMarked);
+        renderWanHealthTable(internetSeriesMarked, resolverSeriesMarked);
         rerenderFromState();
         refreshDnsSecurity();
       } catch (e) {

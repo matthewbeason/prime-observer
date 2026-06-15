@@ -6,6 +6,8 @@ import datetime as dt
 import json
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from target_metadata import is_gateway_probe, is_wan_probe, target_metadata
 
 BASE = Path("/Users/mbeason/prime-observer")
 DATA_DIR = BASE / "data"
@@ -15,9 +17,6 @@ INDEX_OUT = VIZ_DIR / "investigation_index.json"
 NEXTDNS_SUMMARY = VIZ_DIR / "nextdns_summary.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
-GATEWAY_HOST = "192.168.1.1"
-WAN_HOSTS = {"1.1.1.1", "9.9.9.9"}
-
 WAN_BAD = {"p95": 140.0, "jitter": 50.0, "loss": 1.0}
 WAN_BAD_PERSISTENCE = 2
 TURBULENCE_MIN_RAW_BAD = 4
@@ -99,7 +98,8 @@ def row_to_sample(row, source_file):
         return None
 
     host = (row.get("host") or "").strip()
-    if host != GATEWAY_HOST and host not in WAN_HOSTS:
+    target = target_metadata(host)
+    if not is_gateway_probe(host) and not is_wan_probe(host):
         return None
 
     p95 = parse_float(row.get("p95_ms"))
@@ -116,7 +116,9 @@ def row_to_sample(row, source_file):
         "source_file": source_file,
         "phase": ((row.get("phase_label") or "").strip().upper() or "UNKNOWN"),
         "host": host,
-        "kind": "lan" if host == GATEWAY_HOST else "wan",
+        "target_label": (row.get("target_label") or target["target_label"]).strip(),
+        "target_class": (row.get("target_class") or target["target_class"]).strip(),
+        "kind": "lan" if target["target_class"] == "gateway_probe" else "wan",
         "sent": parse_float(row.get("sent")),
         "received": parse_float(row.get("received")),
         "loss_pct": loss if loss is not None else 0.0,
@@ -165,8 +167,8 @@ def is_wan_bad(sample):
 def mark_sustained_wan(samples):
     marked = []
     streaks = {}
-    for sample in sorted(samples, key=lambda item: (item["phase"], item["ts_utc"], item["host"])):
-        key = (sample["phase"], sample["host"])
+    for sample in sorted(samples, key=lambda item: (item["phase"], item["target_class"], item["ts_utc"], item["host"])):
+        key = (sample["phase"], sample["target_class"], sample["host"])
         raw_bad = is_wan_bad(sample)
         streaks[key] = streaks.get(key, 0) + 1 if raw_bad else 0
         item = dict(sample)
@@ -182,11 +184,13 @@ def classify_buckets(wan_samples):
 
     for sample in wan_samples:
         bucket_start = int(sample["ts_utc"].timestamp() // bin_seconds) * bin_seconds
+        key = (sample.get("target_class"), bucket_start)
         bucket = buckets.setdefault(
-            bucket_start,
+            key,
             {
                 "start": dt.datetime.fromtimestamp(bucket_start, tz=dt.timezone.utc),
                 "end": dt.datetime.fromtimestamp(bucket_start + bin_seconds, tz=dt.timezone.utc),
+                "target_class": sample.get("target_class") or "unknown_probe",
                 "samples": [],
             },
         )
@@ -206,6 +210,8 @@ def classify_buckets(wan_samples):
         out.append({
             "start": iso(bucket["start"]),
             "end": iso(bucket["end"]),
+            "target_class": bucket["target_class"],
+            "target_hosts": host_counts(rows),
             "sample_count": len(rows),
             "raw_bad_count": raw_bad,
             "sustained_bad_count": sustained_bad,
@@ -239,6 +245,7 @@ def summarize(samples, kind):
         marked = mark_sustained_wan(rows)
         buckets = classify_buckets(marked)
         summary.update({
+            "target_groups": target_group_summaries(marked),
             "raw_bad_count": len([row for row in marked if row["raw_bad"]]),
             "sustained_bad_count": len([row for row in marked if row["sustained_bad"]]),
             "turbulence_bucket_count": len([bucket for bucket in buckets if bucket["turbulence"]]),
@@ -246,10 +253,32 @@ def summarize(samples, kind):
         })
     else:
         summary.update({
+            "target_groups": target_group_summaries(rows),
             "elevated_p95_count": len([row for row in rows if row["p95_ms"] > 120.0]),
         })
 
     return summary
+
+
+def target_group_summaries(samples):
+    groups = {}
+    for sample in samples:
+        target_class = sample.get("target_class") or "unknown_probe"
+        group = groups.setdefault(target_class, {
+            "sample_count": 0,
+            "host_counts": {},
+            "raw_bad_count": 0,
+            "sustained_bad_count": 0,
+        })
+        group["sample_count"] += 1
+        host = sample.get("host")
+        if host:
+            group["host_counts"][host] = group["host_counts"].get(host, 0) + 1
+        if sample.get("raw_bad"):
+            group["raw_bad_count"] += 1
+        if sample.get("sustained_bad"):
+            group["sustained_bad_count"] += 1
+    return groups
 
 
 def host_counts(samples):
@@ -354,6 +383,8 @@ def build_events(periods_payload, start_utc, end_utc, window_start, window_end):
                     period_name,
                     (bucket_start, bucket_end),
                     {
+                        "target_class": bucket.get("target_class"),
+                        "target_hosts": bucket.get("target_hosts"),
                         "sample_count": bucket.get("sample_count"),
                         "raw_bad_count": bucket.get("raw_bad_count"),
                         "sustained_bad_count": bucket.get("sustained_bad_count"),
@@ -444,6 +475,8 @@ def compact_sample(sample):
         "source_file": sample["source_file"],
         "phase": sample["phase"],
         "host": sample["host"],
+        "target_label": sample["target_label"],
+        "target_class": sample["target_class"],
         "kind": sample["kind"],
         "p95_ms": rounded(sample["p95_ms"]),
         "jitter_ms": rounded(sample["jitter_ms"]),
@@ -568,6 +601,7 @@ def build_investigation(start, end, pad_minutes):
             "telemetry_files": sources,
             "nextdns_summary": str(NEXTDNS_SUMMARY.relative_to(BASE)),
         },
+        "target_groups": target_group_summaries(samples),
         "periods": periods_payload,
         "events": events,
         "navigation": navigation_payload(events),
@@ -576,7 +610,7 @@ def build_investigation(start, end, pad_minutes):
         "dns_context": dns_context(event_midpoint),
         "notes": [
             "Prime Observer investigation output is factual telemetry evidence, not interpretation.",
-            "LAN and WAN evidence are reported separately.",
+            "LAN, internet probe, and resolver probe evidence are reported separately where available.",
             "DNS context uses only the existing generated public-safe NextDNS summary.",
         ],
     }

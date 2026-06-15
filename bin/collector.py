@@ -9,7 +9,8 @@ import statistics
 import subprocess
 from pathlib import Path
 
-TARGETS = ["192.168.1.1", "1.1.1.1", "9.9.9.9"]
+from target_metadata import TARGETS, target_metadata
+
 PING_COUNT = 10
 TRACEROUTE_EVERY_MIN = 15
 SPEEDTEST_EVERY_MIN = 30
@@ -23,6 +24,8 @@ FIELDNAMES = [
     "ts",
     "phase_label",
     "host",
+    "target_label",
+    "target_class",
     "sent",
     "received",
     "loss_pct",
@@ -175,10 +178,13 @@ def main():
     with dayfile.open("a", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDNAMES)
         for host in TARGETS:
+            meta = target_metadata(host)
             row = {
                 "ts": ts,
                 "phase_label": phase,
                 "host": host,
+                "target_label": meta["target_label"],
+                "target_class": meta["target_class"],
                 "traceroute_snip": traceroute_snip(host) if do_tr else "",
                 "speedtest_down_mbps": st["down_mbps"] if st else "",
                 "speedtest_up_mbps": st["up_mbps"] if st else "",

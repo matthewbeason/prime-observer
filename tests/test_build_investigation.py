@@ -76,6 +76,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.write_rows([
             self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
             self.telemetry_row("2026-06-08T12:05:00+00:00", "9.9.9.9", 180),
+            self.telemetry_row("2026-06-08T12:06:00+00:00", "45.90.28.134", 25),
             self.telemetry_row("2026-06-08T12:10:00+00:00", "1.1.1.1", 190),
             self.telemetry_row("2026-06-08T12:15:00+00:00", "192.168.1.1", 8),
         ])
@@ -89,6 +90,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(payload["schema_version"], 1)
         self.assertIn("periods", payload)
         self.assertIn("timeline_samples", payload)
+        self.assertIn("target_groups", payload)
         self.assertIn("dns_context", payload)
         self.assertTrue(payload["id"].startswith("investigation-"))
         self.assertEqual(payload["status"], "available")
@@ -103,6 +105,19 @@ class BuildInvestigationTest(unittest.TestCase):
             "temporal_proximity" in nearby["signals"]
             for item in neighborhoods.values()
             for nearby in item["nearby_events"]
+        ))
+        by_host = {sample["host"]: sample for sample in payload["timeline_samples"]}
+        self.assertEqual(by_host["1.1.1.1"]["target_class"], "internet_probe")
+        self.assertEqual(by_host["1.1.1.1"]["target_label"], "Cloudflare")
+        self.assertEqual(by_host["45.90.28.134"]["target_class"], "resolver_probe")
+        self.assertEqual(by_host["45.90.28.134"]["target_label"], "NextDNS primary")
+        self.assertEqual(by_host["192.168.1.1"]["target_class"], "gateway_probe")
+        during_groups = payload["periods"]["during"]["wan"]["target_groups"]
+        self.assertIn("internet_probe", during_groups)
+        self.assertIn("resolver_probe", during_groups)
+        self.assertTrue(any(
+            bucket.get("target_class") == "internet_probe"
+            for bucket in payload["periods"]["during"]["wan_buckets"]
         ))
 
     def test_index_upserts_catalog_entry(self):
