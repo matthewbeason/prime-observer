@@ -97,7 +97,7 @@
     </div>
     <div class="badges">
       <a class="badge" href="./investigate.html">Investigation Evidence</a>
-      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.7.0</strong></span>
+      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.7.1</strong></span>
     </div>
   </div>
 
@@ -155,7 +155,7 @@
     <div class="card health-card">
       <h4><span>WAN Health Summary</span><span class="small">last 24h</span></h4>
       <div class="small" style="margin-bottom:8px;">
-        Current WAN experience across monitored internet targets. Use this to track latency, jitter, loss, and sustained degradation over time.
+        Current WAN experience across monitored internet and resolver target groups. Use this to track latency, jitter, loss, and sustained degradation over time.
       </div>
       <div id="compareWrap"></div>
     </div>
@@ -163,19 +163,19 @@
 
   <div class="section-title">
     <h3>WAN “bad moments” heatmap</h3>
-    <div class="legend">Internet probes only • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect that interval across WAN internet, WAN resolver, and LAN gateway charts</div>
+    <div class="legend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect that interval across WAN internet, WAN resolver, and LAN gateway charts</div>
   </div>
   <svg id="heatmap" width="1100" height="180"></svg>
 
   <div class="section-title">
     <h3>WAN — Internet probes p95 latency (ms)</h3>
-    <div class="legend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from heatmap buckets and may be driven by p95, jitter, or loss • blue outline = selected interval</div>
+    <div class="legend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval</div>
   </div>
   <svg id="wanInternet" width="1100" height="300"></svg>
 
   <div class="section-title">
     <h3>WAN — Resolver probes p95 latency (ms)</h3>
-    <div class="legend">NextDNS primary and secondary resolver path probes</div>
+    <div class="legend">NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval</div>
   </div>
   <svg id="wanResolver" width="1100" height="250"></svg>
 
@@ -216,7 +216,7 @@
 
     function bucketKey(d){
       const phase = d.phase || "FIBER";
-      const targetClass = d.targetClass || d.target_class || "internet_probe";
+      const targetClass = d.targetClass || d.target_class || "composite_wan";
       const t = d.t instanceof Date ? d.t.getTime() : new Date(d.t).getTime();
       return `${phase}|${targetClass}|${t}`;
     }
@@ -283,7 +283,7 @@
 
     function rerenderFromState(){
       if (!currentVizState) return;
-      renderHeatmap("#heatmap", currentVizState.internetSeriesMarked);
+      renderHeatmap("#heatmap", currentVizState.compositeWanBuckets);
       renderLine("#wanInternet", currentVizState.internetSeriesMarked, {
         label: "WAN internet p95",
         badBuckets: currentVizState.badBuckets,
@@ -295,6 +295,8 @@
       });
       renderLine("#wanResolver", currentVizState.resolverSeriesMarked, {
         label: "WAN resolver p95",
+        badBuckets: currentVizState.badBuckets,
+        turbulenceBuckets: currentVizState.turbulenceBuckets,
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
         xDomain: currentVizState.xDomain
@@ -563,6 +565,32 @@
       return [wanFact, lanFact];
     }
 
+    function emptyBucketGroupSummary(){
+      return { total: 0, bad: 0, rawBad: 0, p95Bad: 0, jitterBad: 0, lossBad: 0, maxRawRun: 0, isBadBucket: false, isTurbulence: false };
+    }
+
+    function compositeEvidenceLabel(bucket){
+      const internet = bucket?.groups?.internet_probe || emptyBucketGroupSummary();
+      const resolver = bucket?.groups?.resolver_probe || emptyBucketGroupSummary();
+      const degraded = [];
+      if (internet.isBadBucket) degraded.push("Internet degraded");
+      if (resolver.isBadBucket) degraded.push("Resolver degraded");
+      if (degraded.length) return degraded.join(" + ");
+
+      const turbulent = [];
+      if (internet.isTurbulence) turbulent.push("Internet turbulence");
+      if (resolver.isTurbulence) turbulent.push("Resolver turbulence");
+      if (turbulent.length) return turbulent.join(" + ");
+
+      return "No sustained WAN target-group degradation";
+    }
+
+    function targetGroupEvidenceLine(bucket, targetClass, label){
+      const group = bucket?.groups?.[targetClass] || emptyBucketGroupSummary();
+      const state = group.isBadBucket ? "sustained bad" : (group.isTurbulence ? "turbulence" : "no sustained degradation");
+      return `${label}: ${state} (${group.bad} sustained bad / ${group.rawBad} raw bad / ${group.total} total)`;
+    }
+
     function targetGroupSummary(series){
       const buckets = classifyBuckets(series);
       return {
@@ -721,13 +749,12 @@
     }
 
 
-    function getNoticeabilitySummary(wanSeries){
+    function getNoticeabilitySummary(wanSeries, compositeBuckets){
       if (!wanSeries.length) return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
       const now = new Date();
       const scoreCut = new Date(now.getTime() - 15 * 60000);
       const forecastCut = new Date(now.getTime() - 60 * 60000);
       const recent = wanSeries.filter(d => d.t >= scoreCut);
-      const recentHour = wanSeries.filter(d => d.t >= forecastCut);
       if (!recent.length) return { score: null, label: "No recent WAN data", forecast: "No recent WAN data", why: "No WAN samples in the last 15 minutes." };
 
       const p95s = recent.map(d => d.p95).filter(Number.isFinite);
@@ -756,8 +783,10 @@
       else if (score < 75) label = "Possibly noticeable";
       else if (score < 90) label = "Low risk";
 
-      const badCount60 = recentHour.filter(d => d.isBad).length;
-      const total60 = recentHour.length;
+      const recentHourBuckets = (compositeBuckets || []).filter(d => d.t2 >= forecastCut);
+      const badCount60 = recentHourBuckets.filter(d => d.isBadBucket).length;
+      const turbulenceCount60 = recentHourBuckets.filter(d => d.isTurbulence).length;
+      const total60 = recentHourBuckets.length;
       const recentBadRate = total60 ? (badCount60 / total60) : 0;
       const recentBadPct = total60 ? Math.round(recentBadRate * 100) : 0;
 
@@ -769,11 +798,11 @@
 
       let forecast = "Stable";
       if (recentBadRate >= 0.20 || wanSpikeStreak >= 3) forecast = "Risk";
-      else if (recentBadRate > 0 || wanSpikeStreak >= 1) forecast = "Watch";
+      else if (recentBadRate > 0 || turbulenceCount60 > 0 || wanSpikeStreak >= 1) forecast = "Watch";
 
-      let why = `Stable because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) and no sustained WAN spike streak.`;
-      if (forecast === "Watch") why = `Watch because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a short WAN spike streak of ${wanSpikeStreak}.`;
-      else if (forecast === "Risk") why = `Risk because last 60 min shows ${badCount60}/${total60} bad moments (${recentBadPct}%) or a sustained WAN spike streak of ${wanSpikeStreak}.`;
+      let why = `Stable because last 60 min shows ${badCount60}/${total60} composite WAN bad moment bucket(s) (${recentBadPct}%), ${turbulenceCount60} turbulence bucket(s), and no sustained WAN spike streak.`;
+      if (forecast === "Watch") why = `Watch because last 60 min shows ${badCount60}/${total60} composite WAN bad moment bucket(s) (${recentBadPct}%), ${turbulenceCount60} turbulence bucket(s), or a short WAN spike streak of ${wanSpikeStreak}.`;
+      else if (forecast === "Risk") why = `Risk because last 60 min shows ${badCount60}/${total60} composite WAN bad moment bucket(s) (${recentBadPct}%) or a sustained WAN spike streak of ${wanSpikeStreak}.`;
 
       return { score, label, forecast, why };
     }
@@ -894,6 +923,63 @@
       }).sort((a,b)=>a.t-b.t);
     }
 
+    function buildCompositeWanBuckets(internetSeries, resolverSeries){
+      const buckets = new Map();
+      for (const bucket of [...classifyBuckets(internetSeries), ...classifyBuckets(resolverSeries)]){
+        const b = bucket.t.getTime();
+        const key = `${bucket.phase || "FIBER"}|composite_wan|${b}`;
+        let obj = buckets.get(key);
+        if (!obj){
+          obj = {
+            phase: bucket.phase || "FIBER",
+            targetClass: "composite_wan",
+            t: bucket.t,
+            t2: bucket.t2,
+            groups: {},
+            total: 0,
+            bad: 0,
+            rawBad: 0,
+            p95Bad: 0,
+            jitterBad: 0,
+            lossBad: 0,
+            maxRawRun: 0,
+            recent: bucket.recent
+          };
+          buckets.set(key, obj);
+        }
+        obj.groups[bucket.targetClass] = {
+          total: bucket.total,
+          bad: bucket.bad,
+          rawBad: bucket.rawBad,
+          p95Bad: bucket.p95Bad,
+          jitterBad: bucket.jitterBad,
+          lossBad: bucket.lossBad,
+          maxRawRun: bucket.maxRawRun,
+          isBadBucket: bucket.isBadBucket,
+          isTurbulence: bucket.isTurbulence
+        };
+        obj.total += bucket.total;
+        obj.bad += bucket.bad;
+        obj.rawBad += bucket.rawBad;
+        obj.p95Bad += bucket.p95Bad;
+        obj.jitterBad += bucket.jitterBad;
+        obj.lossBad += bucket.lossBad;
+        obj.maxRawRun = Math.max(obj.maxRawRun, bucket.maxRawRun);
+        obj.recent = obj.recent || bucket.recent;
+      }
+
+      return Array.from(buckets.values()).map(bucket => {
+        bucket.isBadBucket = Boolean(bucket.groups.internet_probe?.isBadBucket || bucket.groups.resolver_probe?.isBadBucket);
+        bucket.isTurbulence = !bucket.isBadBucket && Boolean(bucket.groups.internet_probe?.isTurbulence || bucket.groups.resolver_probe?.isTurbulence);
+        bucket.rate = bucket.total ? bucket.bad / bucket.total : 0;
+        bucket.rawRate = bucket.total ? bucket.rawBad / bucket.total : 0;
+        bucket.evidenceLabel = compositeEvidenceLabel(bucket);
+        bucket.key = bucketKey(bucket);
+        bucket.selected = selectedBucketKey === bucket.key;
+        return bucket;
+      }).sort((a,b)=>a.t-b.t);
+    }
+
     function computeAttribution(wanSeries, lanSeries, resolverSeries){
       const now = new Date();
       const cut = new Date(now.getTime() - ATTRIBUTION_CUT_MINUTES * 60000);
@@ -959,7 +1045,7 @@
       return { label, confidence, why, facts: targetGroupFacts(recentWan, recentResolver, recentLan) };
     }
 
-    function renderHeatmap(svgSel, wanSeries) {
+    function renderHeatmap(svgSel, buckets) {
       const svg = d3.select(svgSel);
       svg.selectAll("*").remove();
 
@@ -970,12 +1056,11 @@
       const innerH = h - pad.t - pad.b;
       const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
 
-      if (!wanSeries.length) {
+      if (!buckets.length) {
         g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No WAN data in window for configured targets.");
         return;
       }
 
-      const buckets = classifyBuckets(wanSeries);
       const byPhase = d3.group(buckets, d=>d.phase || "FIBER");
       const phases = ["FIBER","TMOBILE"].filter(p => byPhase.get(p)?.length);
       const rows = phases.length || 1;
@@ -1007,8 +1092,8 @@
             if (d.isTurbulence) return d.recent ? "rgba(214,144,0,0.55)" : "rgba(214,144,0,0.42)";
             return `hsl(0 0% ${calmShade(d.rawRate)}%)`;
           })
-          .attr("stroke", d => d.selected ? "rgba(31,119,180,0.95)" : "#fff")
-          .attr("stroke-width", d => d.selected ? 2.5 : 0.3)
+          .attr("stroke", d => selectedBucketKey === d.key ? "rgba(31,119,180,0.95)" : "#fff")
+          .attr("stroke-width", d => selectedBucketKey === d.key ? 2.5 : 0.3)
           .style("cursor", "pointer")
           .on("click", (ev, d) => {
             ev.stopPropagation();
@@ -1024,10 +1109,13 @@
             const cls = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
             const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                           <div><b>${cls}</b></div>
-                          <div>Sustained bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
-                          <div>Raw bad rate: ${(d.rawRate*100).toFixed(1)}% (${d.rawBad}/${d.total})</div>
+                          <div>${d.evidenceLabel || compositeEvidenceLabel(d)}</div>
+                          <div>Composite sustained bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
+                          <div>Composite raw bad rate: ${(d.rawRate*100).toFixed(1)}% (${d.rawBad}/${d.total})</div>
+                          <div class="small">${targetGroupEvidenceLine(d, "internet_probe", "Internet probes")}</div>
+                          <div class="small">${targetGroupEvidenceLine(d, "resolver_probe", "Resolver probes")}</div>
                           <div class="small">Raw reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
-                          <div class="small">Max raw run: ${d.maxRawRun}</div>
+                          <div class="small">Max raw run within a WAN target group: ${d.maxRawRun}</div>
                           ${selectedBucketEvidenceHtml(currentVizState ? selectedBucketEvidence(d, currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked, currentVizState.lanSeries) : null)}
                           <div class="small">Click to highlight this interval across WAN internet, WAN resolver, and LAN gateway charts. Chart lines show p95 only.</div>`;
           tipShow(html, ev.clientX, ev.clientY);
@@ -1207,18 +1295,19 @@
         const { lanSeries, internetSeries, resolverSeries } = toSeries(raw);
         const internetSeriesMarked = markPersistentWanBad(internetSeries);
         const resolverSeriesMarked = markPersistentWanBad(resolverSeries);
-        const noticeSummary = getNoticeabilitySummary(internetSeriesMarked);
-        const badBuckets = computeBadBuckets(internetSeriesMarked);
-        const turbulenceBuckets = computeTurbulenceBuckets(internetSeriesMarked);
+        const compositeWanBuckets = buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked);
+        const noticeSummary = getNoticeabilitySummary([...internetSeriesMarked, ...resolverSeriesMarked].sort((a,b)=>a.t-b.t), compositeWanBuckets);
+        const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
+        const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
         const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
         const attribution = computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked);
-        const selectedBucket = selectedBucketKey ? (classifyBuckets(internetSeriesMarked).find(d => d.key === selectedBucketKey) || null) : null;
+        const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
         const selectedEvidence = selectedBucket ? selectedBucketEvidence(selectedBucket, internetSeriesMarked, resolverSeriesMarked, lanSeries) : null;
         const allChartTimes = [...internetSeriesMarked, ...resolverSeriesMarked, ...lanSeries].map(d => d.t);
         const xDomain = allChartTimes.length ? d3.extent(allChartTimes) : null;
 
-        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain };
+        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain };
 
         computeSpikeStreak(internetSeriesMarked);
         computeUserNoticeability(noticeSummary);

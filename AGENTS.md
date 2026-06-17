@@ -6,7 +6,7 @@ Prime Observer is a lightweight personal network observability and user-experien
 
 The goal is not simply to measure network performance. The goal is to determine whether network behavior is likely to be noticeable to users and to provide useful attribution and context.
 
-Current production release: v0.7.0
+Current production release: v0.7.1
 
 ---
 
@@ -162,6 +162,7 @@ Possible outcomes:
 - No network issue detected
 - Likely upstream (ISP / path)
 - Likely local (LAN / Wi-Fi)
+- Mixed evidence
 - Inconclusive
 
 Important principle:
@@ -169,6 +170,7 @@ Important principle:
 Do not blame LAN for isolated spikes.
 
 LAN attribution should require evidence of persistence and elevated rate.
+LAN elevation should not automatically override WAN evidence.
 
 ---
 
@@ -231,28 +233,22 @@ Rules:
 
 ---
 
-## v0.7.0 Includes
+## v0.7.1 Includes
 
-- Historical investigation workflow for selected time windows.
-- Investigation JSON generation from historical telemetry.
-- Investigation Index generation with `id`, `title`, `created_at`, `event_count`, `status`, and `path` catalog fields.
-- Historical Navigation metadata for first, previous, next, and last event movement.
-- Event Neighborhood Discovery based on temporal proximity, shared investigation membership, and shared evidence windows.
-- Static investigation evidence viewer with future Olivaw deep-link support.
+- Calibrated attribution evidence weighting.
+- Mixed Evidence attribution state.
+- Attribution evidence counts and target-group evidence exports.
+- WAN evidence no longer automatically overridden by LAN elevation.
+- Cross-chart bucket synchronization across WAN internet, WAN resolver, and LAN gateway charts.
+- Bucket evidence tooltips for internet, resolver, and LAN counts.
+- Canonical health model documentation in `docs/health-model.md`.
+- Health model audit documentation in `docs/health-model-audit.md`.
+- Composite WAN bad moments using internet and resolver target groups.
+- Heatmap aligned with the canonical WAN model.
+- User Noticeability aligned with the canonical WAN model.
+- Improved heatmap, attribution, and investigation consistency.
+- Historical investigation workflow, navigation metadata, event neighborhoods, and DNS context from v0.7.0 remain in place.
 - Architecture boundary preservation: Prime Observer evidence, Core Signal interpretation, Olivaw synthesis and navigation.
-- Target classification for `internet_probe`, `resolver_probe`, `gateway_probe`, and `unknown_probe`.
-- Resolver probe support for Cloudflare, Quad9, NextDNS primary, and NextDNS secondary targets.
-- WAN chart separation for internet probes, resolver probes, and the LAN gateway.
-- Target-group evidence exports for dashboard and investigation consumers.
-- Optional NextDNS analytics evidence ingestion and DNS context artifacts.
-- Heatmap/chart alignment audit, documented heatmap semantics, and phase-aware bucket grouping fixes.
-- Dashboard explanation improvements for target groups, turbulence, and bad-moment evidence.
-- Pattern confidence using `baseline_sample_count`.
-- Optional DNS Security card backed by local `viz/nextdns_summary.json`.
-- Visual hierarchy refinement.
-- Compact Connection card replacing the heavier Phase card.
-- WAN Health Summary refocused away from provider-comparison presentation.
-- Subtle semantic health accents for stable/watch/risk states.
 
 ---
 
@@ -363,7 +359,7 @@ These may be useful later, but they would currently increase complexity faster t
 
 ## Next Observation Period
 
-Live with v0.7.0 for several days before expanding functionality.
+Live with v0.7.1 for several days before expanding functionality.
 
 Watch for:
 

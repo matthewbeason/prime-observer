@@ -8,7 +8,7 @@ It combines telemetry, historical context, attribution, and DNS security signals
 
 It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, pattern awareness, DNS security context, and operational simplicity.
 
-Current release: **v0.7.0**
+Current release: **v0.7.1**
 
 Portfolio context: Prime Observer demonstrates local-first observability,
 user-noticeability scoring, privacy-aware DNS/security summaries, and historical
@@ -16,7 +16,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current v0.7.0 dashboard
+Current v0.7.1 dashboard
 
 Prime Observer Dashboard
 
@@ -60,7 +60,9 @@ No cloud backend, database, or heavy observability stack is required.
 
 User Noticeability is a synthesized score estimating whether current WAN conditions are likely to affect users.
 
-Inputs include recent WAN latency, persistence, bad moments, jitter, loss, and trend behavior. The score is intentionally simple and deterministic.
+Inputs include recent composite WAN latency from internet and resolver probes,
+composite WAN bad moment buckets, composite turbulence buckets, and recent
+elevated p95 streaks. The score is intentionally simple and deterministic.
 
 ### Pattern Awareness
 
@@ -89,9 +91,12 @@ Prime Observer attempts to distinguish:
 - No network issue detected
 - Likely upstream issue
 - Likely local LAN / Wi-Fi issue
+- Mixed evidence
 - Inconclusive
 
-LAN attribution requires persistent elevated LAN evidence. Isolated LAN spikes should not cause the dashboard to blame the local network.
+LAN attribution requires persistent elevated LAN evidence. Isolated LAN spikes
+should not cause the dashboard to blame the local network, and LAN elevation no
+longer automatically overrides WAN evidence.
 
 Prime Observer also records factual target classes so summaries can distinguish
 general internet probes, resolver probes, and the local gateway. These classes
@@ -108,6 +113,11 @@ Raw WAN degradation is currently defined as:
 
 Sustained degradation requires persistence across consecutive samples.
 
+A canonical WAN bad moment is a 15-minute bucket in which one or more WAN
+target groups shows sustained degradation according to these thresholds. WAN
+target groups are `internet_probe` and `resolver_probe`. LAN gateway evidence
+is not a WAN target group.
+
 ### Turbulence
 
 Turbulence represents noisy WAN degradation that does not meet sustained thresholds.
@@ -116,21 +126,26 @@ It is informational rather than operationally significant. This keeps brief inst
 
 ### Heatmap And Charts
 
-The WAN bad moments heatmap and the WAN Internet Probe chart use the same
-general internet probe evidence after target grouping. Cloudflare and Quad9
-samples are collapsed by timestamp to the worst p95 sample before the dashboard
-marks raw and sustained bad moments.
+The WAN bad moments heatmap uses composite WAN evidence from internet probes
+and resolver probes after target grouping. Within each target group, samples
+are collapsed by timestamp to the worst p95 sample before the dashboard marks
+raw and sustained bad moments.
 
 The two visualizations answer different questions:
 
-- The WAN Internet Probe chart line shows p95 latency values over time.
-- The heatmap shows 15-minute buckets of bad-moment evidence.
-- A raw bad sample is any internet probe sample with p95 latency > 140 ms,
-  jitter > 50 ms, or packet loss > 1%.
-- A dark gray bucket means at least one sample in that bucket was part of a
-  sustained bad run.
-- An amber bucket means turbulence: enough raw bad samples occurred in the
-  bucket to be notable, but they did not meet the sustained persistence rule.
+- The WAN Internet Probe and WAN Resolver Probe chart lines show p95 latency
+  values over time for their target groups.
+- The heatmap shows 15-minute composite WAN buckets.
+- A raw bad sample is any internet or resolver probe sample with p95 latency >
+  140 ms, jitter > 50 ms, or packet loss > 1%.
+- A dark gray bucket means at least one WAN target group had sustained
+  degradation in that bucket.
+- An amber bucket means turbulence: one or more WAN target groups had enough
+  raw bad samples to be notable, but did not meet the sustained persistence
+  rule.
+- Heatmap tooltips show whether internet probes, resolver probes, or both
+  contributed evidence. LAN gateway counts are shown separately for the same
+  interval.
 
 Because bad-moment evidence includes jitter and packet loss, the p95 latency
 line can appear to improve while the heatmap remains dark. That is expected
@@ -448,24 +463,25 @@ Prime Observer is not:
 
 It is a focused local dashboard for understanding whether network behavior is healthy, unusual, attributable, sustained, and likely noticeable.
 
-## Current Release Notes: v0.7.0
+## Current Release Notes: v0.7.1
 
-v0.7.0 strengthens evidence collection and investigation workflows while
-preserving Prime Observer's evidence-first responsibility boundary.
+v0.7.1 stabilizes the canonical health model and attribution evidence
+calibration introduced after v0.7.0 while preserving Prime Observer's
+evidence-first responsibility boundary.
 
-v0.7.0 includes:
+v0.7.1 includes:
 
-- Added factual target classification for `internet_probe`, `resolver_probe`, `gateway_probe`, and `unknown_probe` telemetry.
-- Added resolver probe support for Cloudflare, Quad9, NextDNS primary, and NextDNS secondary paths.
-- Separated WAN dashboard charts for internet probes, resolver probes, and the LAN gateway.
-- Added target-group evidence exports to dashboard telemetry and historical investigations.
-- Added optional NextDNS analytics evidence ingestion and DNS context artifacts for downstream local briefings.
-- Improved historical investigations with index support, navigation metadata, event neighborhoods, and clearer evidence-view UX.
-- Audited heatmap and chart alignment, documented heatmap/chart semantics, and fixed phase-aware bucket grouping.
-- Improved dashboard explanations for target groups, turbulence, and bad-moment evidence.
-- Preserved additive compatibility for existing investigation and attribution consumers.
+- Calibrated attribution evidence weighting so WAN evidence is not automatically overridden by LAN elevation.
+- Added a Mixed Evidence attribution state for balanced WAN and LAN evidence.
+- Added attribution evidence transparency through exported evidence counts and target-group summaries.
+- Added synchronized cross-chart investigation navigation from selected heatmap buckets.
+- Added factual bucket evidence summaries for internet probes, resolver probes, and LAN gateway samples.
+- Introduced canonical health model documentation in `docs/health-model.md`.
+- Documented the health-model consistency audit in `docs/health-model-audit.md`.
+- Aligned heatmap, User Noticeability, attribution, and investigations around the same WAN target-group model.
+- Improved operator trust through health-model consistency while preserving deterministic local evidence.
 - Preserved strict evidence-first architecture: Prime Observer provides observations, evidence, investigations, timelines, target classification, and external evidence collection only.
-- Excluded DNS analysis, DNS attribution, recommendations, event confidence scores, causal analysis, anomaly analysis, and interpretive conclusions.
+- Excluded DNS analysis, DNS attribution, recommendations, event confidence scores, causal analysis, anomaly analysis, interpretive conclusions, and LLM functionality.
 
 ## Future Directions
 

@@ -21,12 +21,19 @@ class DashboardNextDnsTest(unittest.TestCase):
     def test_dashboard_explains_heatmap_and_chart_semantics(self):
         html = (ROOT / "viz" / "index.html").read_text()
 
+        self.assertIn("Composite WAN evidence: internet + resolver probes", html)
+        self.assertIn('renderHeatmap("#heatmap", currentVizState.compositeWanBuckets)', html)
+        self.assertIn("function buildCompositeWanBuckets", html)
+        self.assertIn('getNoticeabilitySummary([...internetSeriesMarked, ...resolverSeriesMarked]', html)
+        self.assertIn("Internet degraded", html)
+        self.assertIn("Resolver degraded", html)
         self.assertIn("dark gray = sustained p95/jitter/loss degradation", html)
         self.assertIn("line = p95 latency only", html)
         self.assertIn("Raw reasons: p95", html)
         self.assertIn("Selected Bucket", html)
         self.assertIn("selectedBucket: currentVizState.selectedBucket", html)
         self.assertIn("WAN resolver, and LAN gateway charts", html)
+        self.assertNotIn("Internet probes only", html)
         self.assertNotIn("Number(k)", html)
 
     def test_investigation_view_renders_dns_context_without_api_access(self):
