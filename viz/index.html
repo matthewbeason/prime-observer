@@ -6,89 +6,149 @@
   <title>Prime Observer</title>
   <style>
     :root{
-      --bg:#f3f1ec; --card:#fbfaf7; --chart:#fdfbf8; --border:#ddd8cf; --muted:#6f6a62; --ink:#171512;
-      --fiber:#2b6f92; --tmobile:#9a4f43;
-      --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833;
-      --radius:14px;
+      --bg:#ece7df; --bg-wash:#f7f3ed; --card:rgba(251,248,243,.72); --card-solid:#fbf8f3; --card-strong:rgba(255,252,247,.86);
+      --chart:rgba(255,251,246,.84); --border:rgba(112,97,78,.16); --border-strong:rgba(112,97,78,.26); --muted:#6d665d; --muted-strong:#50493f; --ink:#171512;
+      --fiber:#2d6f91; --tmobile:#985140; --ok:#2e784c; --watch:#996914; --risk:#a34632; --focus:#2d6f91;
+      --shadow-soft:0 18px 48px rgba(41,34,26,.08); --shadow-card:0 8px 24px rgba(56,46,35,.08), inset 0 1px 0 rgba(255,255,255,.45);
+      --radius:22px;
     }
-    body{font-family:system-ui,-apple-system,sans-serif;margin:24px;background:var(--bg);color:var(--ink);}
-    h2{margin:0 0 10px;}
-    #status{color:var(--muted);margin:6px 0 16px;}
-    .row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;}
-    .card{background:var(--card);padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);min-width:210px;}
-    .card h4{margin:0 0 8px;font-size:13px;font-weight:750;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;}
-    .card.compact{min-width:180px;padding:10px 12px;}
-    .card.accent-ok{border-left:3px solid rgba(47,125,79,.45);}
-    .card.accent-watch{border-left:3px solid rgba(154,106,22,.45);}
-    .card.accent-risk{border-left:3px solid rgba(165,72,51,.50);}
+    *{box-sizing:border-box;}
+    body{
+      font-family:"SF Pro Text","Segoe UI Variable Text","Inter Tight","Inter",system-ui,-apple-system,sans-serif;
+      margin:0; min-height:100vh; padding:32px 24px 48px;
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,.72), transparent 34%),
+        radial-gradient(circle at top right, rgba(182,201,214,.22), transparent 28%),
+        linear-gradient(180deg, var(--bg-wash) 0%, var(--bg) 100%);
+      color:var(--ink);
+    }
+    h2,h3,h4{font-family:"SF Pro Display","Segoe UI Variable Display","Inter Tight","Inter",system-ui,sans-serif;}
+    h2{margin:0;font-size:30px;letter-spacing:-0.04em;}
+    h3{margin:0;font-size:18px;letter-spacing:-0.02em;}
+    a{color:inherit;}
+    .page-shell{max-width:1320px;margin:0 auto;}
+    #status{
+      color:var(--muted); margin:12px 0 22px; font-size:13px; line-height:1.5;
+      padding:10px 14px; border:1px solid var(--border); border-radius:999px;
+      background:rgba(255,255,255,.46); width:fit-content; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.55);
+    }
+    .row{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;}
+    .card{
+      background:var(--card); padding:16px 18px; border:1px solid var(--border); border-radius:var(--radius); min-width:210px;
+      box-shadow:var(--shadow-card); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+    }
+    .card h4{margin:0 0 10px;font-size:12px;font-weight:780;color:var(--muted-strong);display:flex;justify-content:space-between;align-items:center;letter-spacing:.04em;text-transform:uppercase;}
+    .card.compact{min-width:180px;padding:15px 16px;}
+    .card.accent-ok{border-color:rgba(46,120,76,.20); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(46,120,76,.08);}
+    .card.accent-watch{border-color:rgba(153,105,20,.22); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(153,105,20,.08);}
+    .card.accent-risk{border-color:rgba(163,70,50,.22); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(163,70,50,.08);}
     .card.egg-glow{box-shadow:0 0 0 2px rgba(154,106,22,.10), 0 8px 24px rgba(64,54,40,.08);}
-    .pill{font-size:11px;color:#34302a;background:#f0ede6;border:1px solid var(--border);padding:2px 8px;border-radius:999px;}
-    .pill.ok{color:var(--ok);border-color:rgba(47,125,79,.28);background:#fbfaf7;}
-    .pill.watch{color:var(--watch);border-color:rgba(154,106,22,.30);background:#fbfaf7;}
-    .pill.risk{color:var(--risk);border-color:rgba(165,72,51,.30);background:#fbfaf7;}
-    .small{font-size:12px;color:var(--muted);line-height:1.35;}
-    .value{font-size:22px;font-weight:800;margin-top:2px;}
+    .pill{
+      display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#312c26;
+      background:linear-gradient(180deg, rgba(255,255,255,.72), rgba(241,235,227,.72));
+      border:1px solid rgba(112,97,78,.18); padding:4px 10px; border-radius:999px;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+    }
+    .pill.ok{color:var(--ok);border-color:rgba(46,120,76,.24);background:linear-gradient(180deg, rgba(245,251,247,.9), rgba(236,247,241,.86));}
+    .pill.watch{color:var(--watch);border-color:rgba(153,105,20,.24);background:linear-gradient(180deg, rgba(252,249,240,.94), rgba(247,241,221,.88));}
+    .pill.risk{color:var(--risk);border-color:rgba(163,70,50,.24);background:linear-gradient(180deg, rgba(253,246,243,.94), rgba(248,233,228,.88));}
+    .small{font-size:12px;color:var(--muted);line-height:1.5;}
+    .value{font-size:28px;font-weight:800;margin-top:4px;letter-spacing:-0.03em;}
     .value.ok{color:var(--ok);}
     .value.watch{color:var(--watch);}
     .value.risk{color:var(--risk);}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
-    svg{background:var(--chart);border:1px solid var(--border);border-radius:var(--radius);margin-top:10px;}
-    .section-title{display:flex;align-items:baseline;justify-content:space-between;margin-top:14px;}
-    .section-title h3{margin:0;}
-    .legend{font-size:12px;color:var(--muted);}
-    .subtitle{font-size:13px;color:#8aa0b3;margin-top:-6px;margin-bottom:14px;letter-spacing:0.35px;}
-    .header {display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px;}
-    .titleblock { display:flex; flex-direction:column; gap:4px; }
-    .subtitle { font-size:13px; color:var(--muted); margin:0; }
-    .badges { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .badge {
-      font-size:11px;color:#2f2a24;background:#f0ede6;border:1px solid var(--border);
-      padding:3px 9px;border-radius:999px;white-space:nowrap;
+    svg{
+      display:block; width:100%; max-width:100%; height:auto; background:var(--chart); border:1px solid var(--border);
+      border-radius:20px; margin-top:0; box-shadow:inset 0 1px 0 rgba(255,255,255,.65);
+    }
+    .section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin:0 0 14px;}
+    .legend{font-size:12px;color:var(--muted);line-height:1.55;max-width:760px;}
+    .subtitle{font-size:14px;color:var(--muted);margin:0;letter-spacing:.01em;line-height:1.5;}
+    .header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px;}
+    .titleblock{display:flex;flex-direction:column;gap:6px;}
+    .badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+    .badge{
+      font-size:11px;color:#2f2a24;background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(242,236,229,.82));border:1px solid var(--border);
+      padding:5px 11px;border-radius:999px;white-space:nowrap;backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.62), 0 6px 18px rgba(64,54,40,.06);
     }
     a.badge{text-decoration:none;}
-    a.badge:hover{border-color:#c8bfb1;background:#f7f4ed;}
+    a.badge:hover{border-color:var(--border-strong);background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(247,243,236,.92));}
     .badge.egg-glow{box-shadow:0 0 0 2px rgba(43,111,146,.12), 0 6px 18px rgba(64,54,40,.08);}
-    .badge strong { font-weight:800; }
-    #status { margin:10px 0 16px; color:var(--muted); font-size:12px; }
+    .badge strong{font-weight:800;}
     .hmeta{display:flex;gap:6px;align-items:center;}
-    .subtle{font-size:11px;color:var(--muted);}
-    .metric-line{font-size:12px;line-height:1.45;}
+    .subtle{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+    .metric-line{font-size:13px;line-height:1.55;color:var(--muted-strong);}
     .health-card{min-width:420px;flex:1 1 520px;}
     .health-card h4{margin-bottom:6px;}
     .health-card .small{max-width:680px;}
-    .health-table{font-size:11px;}
-    .health-table th{font-size:11px;color:var(--muted);font-weight:750;background:#f6f3ed;}
-    .health-table td{padding:6px 6px;}
+    .health-table{font-size:11px;background:rgba(255,255,255,.26);border-radius:16px;overflow:hidden;}
+    .health-table th{font-size:11px;color:var(--muted);font-weight:750;background:rgba(245,239,231,.88);}
+    .health-table td{padding:8px 7px;}
     .health-table .metric-strong{font-weight:750;color:#222;}
-
     .egg-message{
       display:none;margin-top:8px;padding:6px 8px;border:1px solid rgba(154,106,22,.22);
-      border-radius:10px;background:#f7f2e8;color:#5d4f3a;font-size:12px;line-height:1.35;
+      border-radius:12px;background:rgba(247,242,232,.92);color:#5d4f3a;font-size:12px;line-height:1.45;
     }
     .egg-message.on{display:block;}
     .header-egg{margin-top:6px;max-width:420px;}
-
+    .section-stack{display:grid;gap:18px;margin-top:22px;}
+    .viz-panel{
+      background:var(--card); border:1px solid var(--border); border-radius:28px; padding:18px 18px 16px;
+      box-shadow:var(--shadow-soft); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+    }
+    .viz-panel.primary{
+      background:linear-gradient(180deg, rgba(255,252,247,.82), rgba(249,244,237,.76));
+      border-color:rgba(112,97,78,.18);
+    }
+    .panel-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
+    .panel-footer{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.5;}
     .tip{
       position:fixed; pointer-events:none; z-index:10;
-      background:#fbfaf7; border:1px solid var(--border); border-radius:12px;
-      padding:8px 10px; box-shadow:0 8px 18px rgba(64,54,40,0.10);
-      font-size:12px; color:var(--ink); line-height:1.35; max-width:300px;
+      background:rgba(255,252,247,.80); border:1px solid rgba(112,97,78,.18); border-radius:18px;
+      padding:12px 13px; box-shadow:0 18px 42px rgba(46,39,31,0.16), inset 0 1px 0 rgba(255,255,255,.62);
+      backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+      font-size:12px; color:var(--ink); line-height:1.45; max-width:340px;
       opacity:0; transform:translateY(6px);
       transition:opacity 80ms linear, transform 80ms linear;
     }
     .tip.on{opacity:1; transform:translateY(0);}
-    .tip .t{color:var(--muted);font-size:11px;margin-bottom:4px;}
-
+    .tip .t{color:var(--muted);font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;}
+    .tip .headline{font-size:13px;font-weight:780;margin-bottom:6px;letter-spacing:-0.01em;}
+    .tip .section{margin-top:8px;padding-top:8px;border-top:1px solid rgba(112,97,78,.12);}
+    .tip .section:first-of-type{margin-top:0;padding-top:0;border-top:0;}
+    .tip .list-line{color:var(--muted-strong);margin-top:2px;}
+    .tip .muted{color:var(--muted);}
+    .tip .strong{font-weight:760;}
     table{border-collapse:collapse;width:100%;font-size:12px;}
     th,td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top;}
-    th{color:#34302a;font-weight:800;background:#f6f3ed;}
-    .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#fbfaf7;}
+    th{color:#34302a;font-weight:800;background:rgba(245,239,231,.88);}
+    .tag{display:inline-block;font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,252,247,.9);}
     .tag.fiber{border-color:rgba(31,119,180,.35);}
     .tag.tmobile{border-color:rgba(221,51,51,.35);}
+    @media (max-width: 900px){
+      body{padding:22px 14px 34px;}
+      h2{font-size:26px;}
+      .value{font-size:24px;}
+      .health-card{min-width:100%;}
+      .viz-panel{padding:15px 14px 14px;border-radius:24px;}
+      .legend{max-width:none;}
+    }
+    @media (max-width: 640px){
+      .header{align-items:flex-start;}
+      #status{width:100%;}
+      .card,.card.compact{min-width:100%;}
+      .pill,.badge{font-size:10px;}
+      .metric-line{font-size:12px;}
+      .tip{max-width:min(320px, calc(100vw - 24px));}
+    }
   </style>
 </head>
 
 <body>
+  <div class="page-shell">
   <div class="header">
     <div class="titleblock">
       <h2>Prime Observer</h2>
@@ -97,7 +157,7 @@
     </div>
     <div class="badges">
       <a class="badge" href="./investigate.html">Investigation Evidence</a>
-      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.7.1</strong></span>
+      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.7.2</strong></span>
     </div>
   </div>
 
@@ -161,32 +221,47 @@
     </div>
   </div>
 
-  <div class="section-title">
-    <h3>WAN “bad moments” heatmap</h3>
-    <div class="legend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect that interval across WAN internet, WAN resolver, and LAN gateway charts</div>
-  </div>
-  <svg id="heatmap" width="1100" height="180"></svg>
+  <div class="section-stack">
+    <div class="viz-panel primary">
+      <div class="panel-kicker">Primary Evidence View</div>
+      <div class="section-title">
+        <h3>WAN “bad moments” heatmap</h3>
+        <div class="legend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect that interval across WAN internet, WAN resolver, and LAN gateway charts</div>
+      </div>
+      <svg id="heatmap" width="1100" height="180"></svg>
+      <div class="panel-footer">The heatmap remains the canonical interval view. Surrounding panels inherit selection state from the clicked bucket without changing bucket logic or evidence semantics.</div>
+    </div>
 
-  <div class="section-title">
-    <h3>WAN — Internet probes p95 latency (ms)</h3>
-    <div class="legend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval</div>
-  </div>
-  <svg id="wanInternet" width="1100" height="300"></svg>
+    <div class="viz-panel">
+      <div class="panel-kicker">Instrument Panel</div>
+      <div class="section-title">
+        <h3>WAN — Internet probes p95 latency (ms)</h3>
+        <div class="legend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval</div>
+      </div>
+      <svg id="wanInternet" width="1100" height="300"></svg>
+    </div>
 
-  <div class="section-title">
-    <h3>WAN — Resolver probes p95 latency (ms)</h3>
-    <div class="legend">NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval</div>
-  </div>
-  <svg id="wanResolver" width="1100" height="250"></svg>
+    <div class="viz-panel">
+      <div class="panel-kicker">Instrument Panel</div>
+      <div class="section-title">
+        <h3>WAN — Resolver probes p95 latency (ms)</h3>
+        <div class="legend">NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval</div>
+      </div>
+      <svg id="wanResolver" width="1100" height="250"></svg>
+    </div>
 
-  <div class="section-title">
-    <h3>LAN (Gateway) — p95 latency (ms)</h3>
-    <div class="legend">Same path styling as WAN chart</div>
+    <div class="viz-panel">
+      <div class="panel-kicker">Local Path Instrument</div>
+      <div class="section-title">
+        <h3>LAN (Gateway) — p95 latency (ms)</h3>
+        <div class="legend">Same path styling as WAN chart</div>
+      </div>
+      <svg id="lan" width="1100" height="250"></svg>
+      <div class="panel-footer">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
+    </div>
   </div>
-  <svg id="lan" width="1100" height="250"></svg>
-
-  <div class="small" style="margin-top:10px;">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
   <div id="tip" class="tip" role="tooltip" aria-hidden="true"></div>
+  </div>
 
   <script src="./d3.min.js"></script>
   <script>
@@ -651,10 +726,12 @@
 
     function selectedBucketEvidenceHtml(evidence){
       if (!evidence) return "";
-      return `<div class="small"><b>Selected Bucket</b></div>
-              <div class="small">Internet probes: ${evidence.internetSustainedBadSamples} sustained bad sample(s) (${evidence.internetRawBadSamples} raw bad / ${evidence.internetSamples} total)</div>
-              <div class="small">Resolver probes: ${evidence.resolverSustainedBadSamples} sustained bad sample(s) (${evidence.resolverRawBadSamples} raw bad / ${evidence.resolverSamples} total)</div>
-              <div class="small">LAN: ${evidence.lanElevatedSamples} elevated sample(s) / ${evidence.lanSamples} total</div>`;
+      return `<div class="section">
+                <div class="headline">Selected Bucket</div>
+                <div class="list-line">Internet probes: <span class="strong">${evidence.internetSustainedBadSamples}</span> sustained bad sample(s) (${evidence.internetRawBadSamples} raw bad / ${evidence.internetSamples} total)</div>
+                <div class="list-line">Resolver probes: <span class="strong">${evidence.resolverSustainedBadSamples}</span> sustained bad sample(s) (${evidence.resolverRawBadSamples} raw bad / ${evidence.resolverSamples} total)</div>
+                <div class="list-line">LAN: <span class="strong">${evidence.lanElevatedSamples}</span> elevated sample(s) / ${evidence.lanSamples} total</div>
+              </div>`;
     }
 
     function computeUserNoticeability(summary){
@@ -1108,16 +1185,20 @@
           .on("mousemove", (ev, d) => {
             const cls = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
             const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
-                          <div><b>${cls}</b></div>
-                          <div>${d.evidenceLabel || compositeEvidenceLabel(d)}</div>
-                          <div>Composite sustained bad rate: ${(d.rate*100).toFixed(1)}% (${d.bad}/${d.total})</div>
-                          <div>Composite raw bad rate: ${(d.rawRate*100).toFixed(1)}% (${d.rawBad}/${d.total})</div>
-                          <div class="small">${targetGroupEvidenceLine(d, "internet_probe", "Internet probes")}</div>
-                          <div class="small">${targetGroupEvidenceLine(d, "resolver_probe", "Resolver probes")}</div>
-                          <div class="small">Raw reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
-                          <div class="small">Max raw run within a WAN target group: ${d.maxRawRun}</div>
+                          <div class="headline">${cls}</div>
+                          <div class="list-line">${d.evidenceLabel || compositeEvidenceLabel(d)}</div>
+                          <div class="section">
+                            <div class="list-line">Composite sustained bad rate: <span class="strong">${(d.rate*100).toFixed(1)}%</span> (${d.bad}/${d.total})</div>
+                            <div class="list-line">Composite raw bad rate: <span class="strong">${(d.rawRate*100).toFixed(1)}%</span> (${d.rawBad}/${d.total})</div>
+                          </div>
+                          <div class="section">
+                            <div class="list-line">${targetGroupEvidenceLine(d, "internet_probe", "Internet probes")}</div>
+                            <div class="list-line">${targetGroupEvidenceLine(d, "resolver_probe", "Resolver probes")}</div>
+                            <div class="list-line muted">Raw reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
+                            <div class="list-line muted">Max raw run within a WAN target group: ${d.maxRawRun}</div>
+                          </div>
                           ${selectedBucketEvidenceHtml(currentVizState ? selectedBucketEvidence(d, currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked, currentVizState.lanSeries) : null)}
-                          <div class="small">Click to highlight this interval across WAN internet, WAN resolver, and LAN gateway charts. Chart lines show p95 only.</div>`;
+                          <div class="section"><div class="list-line muted">Click to highlight this interval across WAN internet, WAN resolver, and LAN gateway charts. Chart lines show p95 only.</div></div>`;
           tipShow(html, ev.clientX, ev.clientY);
         })
           .on("mouseleave", () => tipHide());
@@ -1275,12 +1356,12 @@
           focus.select("circle").attr("cx",cx).attr("cy",cy);
 
           let extra = '';
-          if (opts.selectedBucket && d.t >= opts.selectedBucket.t && d.t < opts.selectedBucket.t2) extra = '<div class="small">Inside selected heatmap interval.</div>';
+          if (opts.selectedBucket && d.t >= opts.selectedBucket.t && d.t < opts.selectedBucket.t2) extra = '<div class="section"><div class="list-line muted">Inside selected heatmap interval.</div></div>';
           if (opts.selectedEvidence) extra += selectedBucketEvidenceHtml(opts.selectedEvidence);
-          if (d.rawBad && !d.isBad) extra += '<div class="small">Isolated raw spike.</div>';
+          if (d.rawBad && !d.isBad) extra += '<div class="section"><div class="list-line muted">Isolated raw spike.</div></div>';
           const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.targetLabel || d.host} • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
-                        <div><b>${opts.label || "p95"}:</b> ${fmt1(d.p95)} ms</div>
-                        <div class="small">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>${extra}`;
+                        <div class="headline">${opts.label || "p95"}: ${fmt1(d.p95)} ms</div>
+                        <div class="list-line muted">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>${extra}`;
           tipShow(html, ev.clientX, ev.clientY);
         })
         .on("mouseleave", () => { focus.style("display","none"); tipHide(); });
