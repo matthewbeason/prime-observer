@@ -191,14 +191,15 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(episodes[0]["state"]["status"], "turbulence")
         self.assertEqual(episodes[0]["scope"]["target_class"], "resolver_probe")
 
-    def test_dashboard_and_investigation_do_not_depend_on_observations_projection(self):
+    def test_dashboard_consumes_observations_for_current_attribution_only(self):
         dashboard_html = INDEX_HTML_PATH.read_text()
         investigation_html = INVESTIGATE_HTML_PATH.read_text()
 
         self.assertIn("./latest.csv", dashboard_html)
+        self.assertIn("./observations.json", dashboard_html)
+        self.assertIn("./network_attribution.json", dashboard_html)
         self.assertIn("./nextdns_summary.json", dashboard_html)
         self.assertIn("./investigation.json", investigation_html)
-        self.assertNotIn("observations.json", dashboard_html)
         self.assertNotIn("observations.json", investigation_html)
 
     def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):

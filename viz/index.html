@@ -510,6 +510,8 @@
     const WINDOW_HOURS = 24;
     const HEAT_BIN_MINUTES = 15;
     const CSV_URL = "./latest.csv";
+    const OBSERVATIONS_URL = "./observations.json";
+    const NETWORK_ATTRIBUTION_URL = "./network_attribution.json";
     const NEXTDNS_URL = "./nextdns_summary.json";
     const NEXTDNS_STALE_MINUTES = 60;
     const GATEWAY_HOST = "192.168.1.1";
@@ -885,6 +887,102 @@
       }
       clean.sort((a,b)=>a.t-b.t);
       return clean;
+    }
+
+    async function loadObservationsPayload(){
+      try {
+        const res = await fetch(OBSERVATIONS_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("Observations unavailable");
+        return await res.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function loadNetworkAttributionPayload(){
+      try {
+        const res = await fetch(NETWORK_ATTRIBUTION_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("Network attribution unavailable");
+        return await res.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function normalizeAttributionConfidence(confidence){
+      if (typeof confidence !== "string" || !confidence.trim()) return null;
+      return confidence
+        .trim()
+        .split(/\s+/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(" ");
+    }
+
+    function selectCurrentAttributionObservation(payload){
+      const observations = payload?.observations;
+      if (!Array.isArray(observations)) return null;
+      return observations.find(item =>
+        item?.type === "attribution" &&
+        item?.scope?.system === "prime_observer" &&
+        item?.scope?.subject === "network" &&
+        item?.scope?.view === "current_attribution"
+      ) || null;
+    }
+
+    function adaptObservationAttribution(observation){
+      if (!observation || typeof observation !== "object") return null;
+      const label = observation?.state?.label;
+      const why = observation?.explanation;
+      if (!label && !why) return null;
+      return {
+        status: observation?.state?.status || null,
+        label: label || "—",
+        confidence: normalizeAttributionConfidence(observation?.confidence) || "—",
+        why: why || "—",
+        facts: Array.isArray(observation?.supporting_facts)
+          ? observation.supporting_facts.filter(item => typeof item === "string" && item.trim())
+          : [],
+        provenance: observation?.provenance || null,
+        evidenceReferences: Array.isArray(observation?.evidence_references) ? observation.evidence_references : [],
+        source: "observations"
+      };
+    }
+
+    function adaptLegacyCurrentAttribution(payload){
+      if (!payload || typeof payload !== "object") return null;
+      const current = payload?.current_attribution && typeof payload.current_attribution === "object"
+        ? payload.current_attribution
+        : payload;
+      const label = current?.label || payload?.attribution_label || null;
+      const why = Array.isArray(current?.evidence) && current.evidence.length
+        ? current.evidence.join(" ")
+        : (payload?.attribution_evidence?.summary || null);
+      if (!label && !why) return null;
+      const facts = Array.isArray(current?.metrics?.target_group_facts)
+        ? current.metrics.target_group_facts
+        : (Array.isArray(payload?.attribution_evidence?.target_group_facts)
+          ? payload.attribution_evidence.target_group_facts
+          : []);
+      return {
+        status: current?.status || payload?.attribution_status || null,
+        label: label || "—",
+        confidence: normalizeAttributionConfidence(current?.confidence || payload?.attribution_confidence) || "—",
+        why: why || "—",
+        facts: facts.filter(item => typeof item === "string" && item.trim()),
+        source: "network_attribution"
+      };
+    }
+
+    function resolveCurrentAttribution({ observationsPayload, networkAttributionPayload, computedAttribution }){
+      const observationAttribution = adaptObservationAttribution(
+        selectCurrentAttributionObservation(observationsPayload)
+      );
+      if (observationAttribution) return observationAttribution;
+
+      const legacyAttribution = adaptLegacyCurrentAttribution(networkAttributionPayload);
+      if (legacyAttribution) return legacyAttribution;
+
+      return computedAttribution;
     }
 
     async function loadNextDnsSummary(){
@@ -1777,7 +1875,11 @@
 
     async function tick() {
       try {
-        const raw = await loadData();
+        const [raw, observationsPayload, networkAttributionPayload] = await Promise.all([
+          loadData(),
+          loadObservationsPayload(),
+          loadNetworkAttributionPayload(),
+        ]);
         updateHeader(raw);
         computeTelemetry(raw);
 
@@ -1789,7 +1891,12 @@
         const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
         const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
         const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
-        const attribution = computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked);
+        const computedAttribution = computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked);
+        const attribution = resolveCurrentAttribution({
+          observationsPayload,
+          networkAttributionPayload,
+          computedAttribution
+        });
         const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
         const selectedEvidence = selectedBucket ? selectedBucketEvidence(selectedBucket, internetSeriesMarked, resolverSeriesMarked, lanSeries) : null;
