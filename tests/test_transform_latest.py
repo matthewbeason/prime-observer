@@ -191,13 +191,14 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(episodes[0]["state"]["status"], "turbulence")
         self.assertEqual(episodes[0]["scope"]["target_class"], "resolver_probe")
 
-    def test_dashboard_consumes_observations_for_current_attribution_only(self):
+    def test_dashboard_consumes_observations_for_attribution_and_episode_projection_only(self):
         dashboard_html = INDEX_HTML_PATH.read_text()
         investigation_html = INVESTIGATE_HTML_PATH.read_text()
 
         self.assertIn("./latest.csv", dashboard_html)
         self.assertIn("./observations.json", dashboard_html)
         self.assertIn("./network_attribution.json", dashboard_html)
+        self.assertIn("selectEpisodeObservations(observationsPayload)", dashboard_html)
         self.assertIn("./nextdns_summary.json", dashboard_html)
         self.assertIn("./investigation.json", investigation_html)
         self.assertNotIn("observations.json", investigation_html)

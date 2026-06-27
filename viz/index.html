@@ -973,6 +973,101 @@
       };
     }
 
+    function parseObservationTime(value){
+      if (typeof value !== "string" || !value.trim()) return null;
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function compareEpisodeObservations(a, b){
+      const priority = { sustained_degradation: 0, turbulence: 1 };
+      const aPriority = priority[a?.status] ?? 99;
+      const bPriority = priority[b?.status] ?? 99;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      const aStart = a?.start?.getTime?.() ?? 0;
+      const bStart = b?.start?.getTime?.() ?? 0;
+      if (aStart !== bStart) return aStart - bStart;
+      const aEnd = a?.end?.getTime?.() ?? 0;
+      const bEnd = b?.end?.getTime?.() ?? 0;
+      if (aEnd !== bEnd) return aEnd - bEnd;
+      return String(a?.id || "").localeCompare(String(b?.id || ""));
+    }
+
+    function adaptEpisodeObservation(observation){
+      if (!observation || typeof observation !== "object") return null;
+      if (observation?.type !== "episode") return null;
+      const status = observation?.state?.status;
+      if (status !== "sustained_degradation" && status !== "turbulence") return null;
+      const start = parseObservationTime(observation?.interval?.start);
+      const end = parseObservationTime(observation?.interval?.end);
+      if (!start || !end || end <= start) return null;
+      const targetClass = observation?.scope?.target_class;
+      if (targetClass !== "internet_probe" && targetClass !== "resolver_probe") return null;
+      return {
+        id: observation?.id || null,
+        status,
+        label: observation?.state?.label || (status === "sustained_degradation" ? "Sustained degradation" : "Turbulence"),
+        phase: observation?.scope?.phase || null,
+        targetClass,
+        start,
+        end,
+        explanation: typeof observation?.explanation === "string" && observation.explanation.trim()
+          ? observation.explanation.trim()
+          : null,
+        supportingFacts: Array.isArray(observation?.supporting_facts)
+          ? observation.supporting_facts.filter(item => typeof item === "string" && item.trim())
+          : [],
+        scope: observation?.scope || null,
+        source: "observations"
+      };
+    }
+
+    function selectEpisodeObservations(payload){
+      const observations = payload?.observations;
+      if (!Array.isArray(observations)) return [];
+      return observations
+        .map(adaptEpisodeObservation)
+        .filter(Boolean)
+        .sort(compareEpisodeObservations);
+    }
+
+    function intervalOverlapsBucket(intervalStart, intervalEnd, bucket){
+      return intervalStart < bucket.t2 && intervalEnd > bucket.t;
+    }
+
+    function resolveEpisodeStateForBucket(bucket, episodeObservations){
+      if (!Array.isArray(episodeObservations) || !episodeObservations.length) return null;
+      const matches = episodeObservations.filter(observation => {
+        if (observation.targetClass !== bucket.targetClass) return false;
+        if (observation.phase && observation.phase !== bucket.phase) return false;
+        return intervalOverlapsBucket(observation.start, observation.end, bucket);
+      });
+      if (!matches.length) return null;
+      matches.sort(compareEpisodeObservations);
+      return matches[0];
+    }
+
+    function applyEpisodeObservationsToBuckets(baseBuckets, episodeObservations){
+      if (!Array.isArray(baseBuckets) || !baseBuckets.length) return [];
+      if (!Array.isArray(episodeObservations) || !episodeObservations.length){
+        return baseBuckets.map(bucket => ({ ...bucket, semanticSource: "classification", episodeObservation: null }));
+      }
+      return baseBuckets.map(bucket => {
+        const episodeObservation = resolveEpisodeStateForBucket(bucket, episodeObservations);
+        if (!episodeObservation){
+          return { ...bucket, semanticSource: "classification", episodeObservation: null };
+        }
+        return {
+          ...bucket,
+          isBadBucket: episodeObservation.status === "sustained_degradation",
+          isTurbulence: episodeObservation.status === "turbulence",
+          evidenceLabel: episodeObservation.explanation || bucket.evidenceLabel,
+          semanticSource: "observations",
+          episodeObservation
+        };
+      });
+    }
+
     function resolveCurrentAttribution({ observationsPayload, networkAttributionPayload, computedAttribution }){
       const observationAttribution = adaptObservationAttribution(
         selectCurrentAttributionObservation(observationsPayload)
@@ -1500,9 +1595,11 @@
       }).sort((a,b)=>a.t-b.t);
     }
 
-    function buildCompositeWanBuckets(internetSeries, resolverSeries){
+    function buildCompositeWanBuckets(internetSeries, resolverSeries, episodeObservations=[]){
       const buckets = new Map();
-      for (const bucket of [...classifyBuckets(internetSeries), ...classifyBuckets(resolverSeries)]){
+      const internetBuckets = applyEpisodeObservationsToBuckets(classifyBuckets(internetSeries), episodeObservations);
+      const resolverBuckets = applyEpisodeObservationsToBuckets(classifyBuckets(resolverSeries), episodeObservations);
+      for (const bucket of [...internetBuckets, ...resolverBuckets]){
         const b = bucket.t.getTime();
         const key = `${bucket.phase || "FIBER"}|composite_wan|${b}`;
         let obj = buckets.get(key);
@@ -1533,7 +1630,9 @@
           lossBad: bucket.lossBad,
           maxRawRun: bucket.maxRawRun,
           isBadBucket: bucket.isBadBucket,
-          isTurbulence: bucket.isTurbulence
+          isTurbulence: bucket.isTurbulence,
+          semanticSource: bucket.semanticSource || "classification",
+          episodeObservation: bucket.episodeObservation || null
         };
         obj.total += bucket.total;
         obj.bad += bucket.bad;
@@ -1550,6 +1649,8 @@
         bucket.isTurbulence = !bucket.isBadBucket && Boolean(bucket.groups.internet_probe?.isTurbulence || bucket.groups.resolver_probe?.isTurbulence);
         bucket.rate = bucket.total ? bucket.bad / bucket.total : 0;
         bucket.rawRate = bucket.total ? bucket.rawBad / bucket.total : 0;
+        bucket.episodeObservations = [bucket.groups.internet_probe?.episodeObservation, bucket.groups.resolver_probe?.episodeObservation].filter(Boolean).sort(compareEpisodeObservations);
+        bucket.semanticSource = bucket.episodeObservations.length ? "observations" : "classification";
         bucket.evidenceLabel = compositeEvidenceLabel(bucket);
         bucket.key = bucketKey(bucket);
         bucket.selected = selectedBucketKey === bucket.key;
@@ -1682,9 +1783,18 @@
               : null;
             scheduleResponsiveRender();
             tipHide();
-          })
+        })
           .on("mousemove", (ev, d) => {
             const cls = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
+            const episodeDetails = Array.isArray(d.episodeObservations) && d.episodeObservations.length
+              ? `<div class="section">
+                   <div class="list-line muted">Episode observations:</div>
+                   ${d.episodeObservations.map(observation => {
+                      const facts = observation.supportingFacts.slice(0, 2).map(item => `<div class="list-line muted">${item}</div>`).join("");
+                      return `<div class="list-line"><span class="strong">${observation.label}</span>: ${observation.explanation || "Observation-backed interval."}</div>${facts}`;
+                    }).join("")}
+                 </div>`
+              : "";
             const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}–${d.t2.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                           <div class="headline">${cls}</div>
                           <div class="list-line">${d.evidenceLabel || compositeEvidenceLabel(d)}</div>
@@ -1698,6 +1808,7 @@
                             <div class="list-line muted">Raw reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
                             <div class="list-line muted">Max raw run within a WAN target group: ${d.maxRawRun}</div>
                           </div>
+                          ${episodeDetails}
                           ${selectedBucketEvidenceHtml(currentVizState ? selectedBucketEvidence(d, currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked, currentVizState.lanSeries) : null)}
                           <div class="section"><div class="list-line muted">Click to highlight this interval across WAN internet, WAN resolver, and LAN gateway charts. Chart lines show p95 only.</div></div>`;
           tipShow(html, ev.clientX, ev.clientY);
@@ -1886,7 +1997,8 @@
         const { lanSeries, internetSeries, resolverSeries } = toSeries(raw);
         const internetSeriesMarked = markPersistentWanBad(internetSeries);
         const resolverSeriesMarked = markPersistentWanBad(resolverSeries);
-        const compositeWanBuckets = buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked);
+        const episodeObservations = selectEpisodeObservations(observationsPayload);
+        const compositeWanBuckets = buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked, episodeObservations);
         const noticeSummary = getNoticeabilitySummary([...internetSeriesMarked, ...resolverSeriesMarked].sort((a,b)=>a.t-b.t), compositeWanBuckets);
         const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
         const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
