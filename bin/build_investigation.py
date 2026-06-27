@@ -15,6 +15,7 @@ VIZ_DIR = BASE / "viz"
 OUT = VIZ_DIR / "investigation.json"
 INDEX_OUT = VIZ_DIR / "investigation_index.json"
 NEXTDNS_SUMMARY = VIZ_DIR / "nextdns_summary.json"
+OBSERVATIONS = VIZ_DIR / "observations.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
 WAN_BAD = {"p95": 140.0, "jitter": 50.0, "loss": 1.0}
@@ -350,7 +351,103 @@ def overlaps(a_start, a_end, b_start, b_end):
     )
 
 
-def build_events(periods_payload, start_utc, end_utc, window_start, window_end):
+def read_observation_projection():
+    source_file = str(OBSERVATIONS.relative_to(BASE))
+    if not OBSERVATIONS.exists():
+        return {
+            "available": False,
+            "reason": "Observation projection file not found",
+            "source_file": source_file,
+            "observations": [],
+        }
+
+    try:
+        payload = json.loads(OBSERVATIONS.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {
+            "available": False,
+            "reason": "Observation projection file was unreadable",
+            "source_file": source_file,
+            "observations": [],
+        }
+
+    observations = payload.get("observations")
+    if not isinstance(observations, list):
+        observations = []
+
+    return {
+        "available": True,
+        "source_file": source_file,
+        "generated_at": payload.get("generated_at"),
+        "model_version": payload.get("model_version"),
+        "schema_version": payload.get("schema_version"),
+        "observations": observations,
+    }
+
+
+def observation_reference(observation):
+    provenance = observation.get("provenance") if isinstance(observation.get("provenance"), dict) else {}
+    materialization = provenance.get("materialization") if isinstance(provenance.get("materialization"), dict) else {}
+    reference = {
+        "id": observation.get("id"),
+        "type": observation.get("type"),
+        "scope": observation.get("scope") if isinstance(observation.get("scope"), dict) else {},
+        "interval": observation.get("interval") if isinstance(observation.get("interval"), dict) else {},
+    }
+    if isinstance(observation.get("state"), dict):
+        reference["state"] = observation["state"]
+    if observation.get("generated_at") is not None:
+        reference["generated_at"] = observation.get("generated_at")
+    if observation.get("model_version") is not None:
+        reference["model_version"] = observation.get("model_version")
+    if materialization:
+        reference["materialization"] = materialization
+    return reference
+
+
+def select_overlapping_observations(observations, start_utc, end_utc):
+    matches = []
+    for observation in observations:
+        if not isinstance(observation, dict):
+            continue
+        interval = observation.get("interval") if isinstance(observation.get("interval"), dict) else {}
+        if not overlaps(
+            utc_ts(interval.get("start")),
+            utc_ts(interval.get("end")),
+            start_utc,
+            end_utc,
+        ):
+            continue
+        matches.append(observation)
+
+    matches.sort(key=lambda item: (
+        (item.get("interval") or {}).get("start") or "",
+        (item.get("interval") or {}).get("end") or "",
+        item.get("id") or "",
+    ))
+    return [observation_reference(item) for item in matches]
+
+
+def matching_observation_references(observation_references, start_utc, end_utc, *, target_class=None, observation_type=None):
+    matches = []
+    for reference in observation_references:
+        interval = reference.get("interval") if isinstance(reference.get("interval"), dict) else {}
+        scope = reference.get("scope") if isinstance(reference.get("scope"), dict) else {}
+        if observation_type is not None and reference.get("type") != observation_type:
+            continue
+        if target_class is not None and scope.get("target_class") != target_class:
+            continue
+        if overlaps(
+            utc_ts(interval.get("start")),
+            utc_ts(interval.get("end")),
+            start_utc,
+            end_utc,
+        ):
+            matches.append(reference)
+    return matches
+
+
+def build_events(periods_payload, start_utc, end_utc, window_start, window_end, observation_references):
     selected_id = event_id("requested", start_utc, end_utc)
     events = [
         event_payload(
@@ -373,6 +470,24 @@ def build_events(periods_payload, start_utc, end_utc, window_start, window_end):
             bucket_end = utc_ts(bucket.get("end"))
             if bucket_start is None or bucket_end is None:
                 continue
+            details = {
+                "target_class": bucket.get("target_class"),
+                "target_hosts": bucket.get("target_hosts"),
+                "sample_count": bucket.get("sample_count"),
+                "raw_bad_count": bucket.get("raw_bad_count"),
+                "sustained_bad_count": bucket.get("sustained_bad_count"),
+                "turbulence": bucket.get("turbulence"),
+                "max_raw_bad_run": bucket.get("max_raw_bad_run"),
+            }
+            matched_observations = matching_observation_references(
+                observation_references,
+                bucket_start,
+                bucket_end,
+                target_class=bucket.get("target_class"),
+                observation_type="episode",
+            )
+            if matched_observations:
+                details["observation_references"] = matched_observations
             events.append(
                 event_payload(
                     event_id("wan-bucket", bucket_start, bucket_end),
@@ -382,15 +497,7 @@ def build_events(periods_payload, start_utc, end_utc, window_start, window_end):
                     bucket_end,
                     period_name,
                     (bucket_start, bucket_end),
-                    {
-                        "target_class": bucket.get("target_class"),
-                        "target_hosts": bucket.get("target_hosts"),
-                        "sample_count": bucket.get("sample_count"),
-                        "raw_bad_count": bucket.get("raw_bad_count"),
-                        "sustained_bad_count": bucket.get("sustained_bad_count"),
-                        "turbulence": bucket.get("turbulence"),
-                        "max_raw_bad_run": bucket.get("max_raw_bad_run"),
-                    },
+                    details,
                 )
             )
 
@@ -569,7 +676,44 @@ def build_investigation(start, end, pad_minutes):
         name: period_payload(rows, name)
         for name, rows in periods.items()
     }
-    events = build_events(periods_payload, start_utc, end_utc, window_start, window_end)
+    observation_projection = read_observation_projection()
+    observation_references = select_overlapping_observations(
+        observation_projection.get("observations", []),
+        start_utc,
+        end_utc,
+    )
+    events = build_events(
+        periods_payload,
+        start_utc,
+        end_utc,
+        window_start,
+        window_end,
+        observation_references,
+    )
+    event_neighborhoods = neighborhood_payload(events)
+    requested_window = {
+        "start": iso(start_utc),
+        "end": iso(end_utc),
+        "duration_minutes": rounded((end_utc - start_utc).total_seconds() / 60.0, 2),
+    }
+    context_window = {
+        "start": iso(window_start),
+        "end": iso(window_end),
+        "pad_minutes": pad_minutes,
+    }
+    observation_projection_info = {
+        "available": observation_projection.get("available", False),
+        "source_file": observation_projection.get("source_file"),
+        "selected_count": len(observation_references),
+    }
+    if observation_projection.get("generated_at") is not None:
+        observation_projection_info["generated_at"] = observation_projection.get("generated_at")
+    if observation_projection.get("model_version") is not None:
+        observation_projection_info["model_version"] = observation_projection.get("model_version")
+    if observation_projection.get("schema_version") is not None:
+        observation_projection_info["schema_version"] = observation_projection.get("schema_version")
+    if observation_projection.get("reason") is not None:
+        observation_projection_info["reason"] = observation_projection.get("reason")
 
     return {
         "schema_version": 1,
@@ -582,12 +726,14 @@ def build_investigation(start, end, pad_minutes):
             "end": end,
             "pad_minutes": pad_minutes,
         },
+        "requested_window": requested_window,
+        "context_window": context_window,
         "event_window": {
-            "start": iso(start_utc),
-            "end": iso(end_utc),
-            "duration_minutes": rounded((end_utc - start_utc).total_seconds() / 60.0, 2),
-            "context_start": iso(window_start),
-            "context_end": iso(window_end),
+            "start": requested_window["start"],
+            "end": requested_window["end"],
+            "duration_minutes": requested_window["duration_minutes"],
+            "context_start": context_window["start"],
+            "context_end": context_window["end"],
         },
         "thresholds": {
             "wan_bad_p95_ms": WAN_BAD["p95"],
@@ -600,18 +746,25 @@ def build_investigation(start, end, pad_minutes):
         "sources": {
             "telemetry_files": sources,
             "nextdns_summary": str(NEXTDNS_SUMMARY.relative_to(BASE)),
+            "observations": observation_projection.get("source_file"),
         },
         "target_groups": target_group_summaries(samples),
         "periods": periods_payload,
+        "observation_references": observation_references,
         "events": events,
         "navigation": navigation_payload(events),
-        "event_neighborhoods": neighborhood_payload(events),
+        "event_neighborhoods": event_neighborhoods,
         "timeline_samples": key_samples(samples),
         "dns_context": dns_context(event_midpoint),
+        "provenance": {
+            "producer": "bin/build_investigation.py",
+            "observation_projection": observation_projection_info,
+        },
         "notes": [
             "Prime Observer investigation output is factual telemetry evidence, not interpretation.",
             "LAN, internet probe, and resolver probe evidence are reported separately where available.",
             "DNS context uses only the existing generated public-safe NextDNS summary.",
+            "Observation references are additive snapshots from the current projection and do not replace investigation evidence.",
         ],
     }
 
