@@ -9,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "bin" / "transform_latest.py"
+INDEX_HTML_PATH = ROOT / "viz" / "index.html"
+INVESTIGATE_HTML_PATH = ROOT / "viz" / "investigate.html"
 
 
 def load_module():
@@ -126,9 +128,11 @@ class TransformLatestTest(unittest.TestCase):
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
         self.assertEqual(observations["schema_version"], 1)
         self.assertEqual(observations["model_version"], "prime_observer.attribution.v1")
-        self.assertEqual(len(observations["observations"]), 1)
-        self.assertEqual(observations["observations"][0]["type"], "attribution")
-        self.assertEqual(observations["observations"][0]["state"]["label"], attribution["attribution_label"])
+        self.assertEqual(len(observations["observations"]), 2)
+        self.assertEqual({item["type"] for item in observations["observations"]}, {"attribution"})
+        by_view = {item["scope"]["view"]: item for item in observations["observations"]}
+        self.assertEqual(by_view["current_attribution"]["state"]["label"], attribution["attribution_label"])
+        self.assertEqual(by_view["window_attribution"]["state"]["label"], attribution["window_attribution"]["label"])
 
     def test_main_keeps_legacy_attribution_export_and_adds_projection(self):
         now = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
@@ -151,7 +155,20 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("attribution_label", attribution)
         self.assertIn("current_attribution", attribution)
         self.assertIn("window_attribution", attribution)
-        self.assertEqual(observations["observations"][0]["evidence_references"][0]["path"], "viz/network_attribution.json")
+        self.assertEqual(len(observations["observations"]), 2)
+        by_view = {item["scope"]["view"]: item for item in observations["observations"]}
+        self.assertEqual(by_view["current_attribution"]["evidence_references"][0]["path"], "viz/network_attribution.json")
+        self.assertEqual(by_view["window_attribution"]["evidence_references"][0]["path"], "viz/network_attribution.json")
+
+    def test_dashboard_and_investigation_do_not_depend_on_observations_projection(self):
+        dashboard_html = INDEX_HTML_PATH.read_text()
+        investigation_html = INVESTIGATE_HTML_PATH.read_text()
+
+        self.assertIn("./latest.csv", dashboard_html)
+        self.assertIn("./nextdns_summary.json", dashboard_html)
+        self.assertIn("./investigation.json", investigation_html)
+        self.assertNotIn("observations.json", dashboard_html)
+        self.assertNotIn("observations.json", investigation_html)
 
     def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):
         base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
