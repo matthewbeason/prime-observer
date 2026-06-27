@@ -32,6 +32,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.VIZ_DIR = self.viz_dir
         self.module.OUT = self.viz_dir / "latest.csv"
         self.module.ATTRIBUTION_OUT = self.viz_dir / "network_attribution.json"
+        self.module.OBSERVATIONS_OUT = self.viz_dir / "observations.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -122,6 +123,35 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(attribution["internet_probe_summary"]["sample_count"], 2)
         self.assertEqual(attribution["resolver_probe_summary"]["sample_count"], 2)
         self.assertIn("target_group_facts", attribution["attribution_evidence"])
+        observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
+        self.assertEqual(observations["schema_version"], 1)
+        self.assertEqual(observations["model_version"], "prime_observer.attribution.v1")
+        self.assertEqual(len(observations["observations"]), 1)
+        self.assertEqual(observations["observations"][0]["type"], "attribution")
+        self.assertEqual(observations["observations"][0]["state"]["label"], attribution["attribution_label"])
+
+    def test_main_keeps_legacy_attribution_export_and_adds_projection(self):
+        now = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        self.write_rows([
+            self.telemetry_row((now - dt.timedelta(minutes=10)).isoformat(), "1.1.1.1", 180),
+            self.telemetry_row((now - dt.timedelta(minutes=9)).isoformat(), "1.1.1.1", 181),
+            self.telemetry_row((now - dt.timedelta(minutes=8)).isoformat(), "45.90.28.134", 28),
+            self.telemetry_row((now - dt.timedelta(minutes=7)).isoformat(), "45.90.28.134", 29),
+            self.telemetry_row((now - dt.timedelta(minutes=6)).isoformat(), "192.168.1.1", 8),
+        ])
+
+        self.module.main()
+
+        attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
+        observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
+
+        self.assertTrue(self.module.ATTRIBUTION_OUT.exists())
+        self.assertTrue(self.module.OBSERVATIONS_OUT.exists())
+        self.assertIn("attribution_status", attribution)
+        self.assertIn("attribution_label", attribution)
+        self.assertIn("current_attribution", attribution)
+        self.assertIn("window_attribution", attribution)
+        self.assertEqual(observations["observations"][0]["evidence_references"][0]["path"], "viz/network_attribution.json")
 
     def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):
         base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)

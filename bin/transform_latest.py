@@ -13,12 +13,14 @@ from target_metadata import (
     is_wan_probe,
     target_metadata,
 )
+from observation_domain import build_attribution_projection
 
 BASE = Path("/Users/mbeason/prime-observer")
 DATA_DIR = BASE / "data"
 VIZ_DIR  = BASE / "viz"
 OUT      = VIZ_DIR / "latest.csv"
 ATTRIBUTION_OUT = VIZ_DIR / "network_attribution.json"
+OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -801,9 +803,16 @@ def main():
 
     attribution = compute_network_attribution(rows_out, now)
     write_json_atomic(ATTRIBUTION_OUT, attribution)
+    observations_projection = build_attribution_projection(
+        attribution,
+        generated_at=now,
+        telemetry_source_path=f"data/{src.name}",
+    )
+    write_json_atomic(OBSERVATIONS_OUT, observations_projection)
 
     print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")
+    print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"WAN baseline files used: {', '.join(baseline_sources) if baseline_sources else 'none'}")
     print(f"WAN baseline hours available: {sorted(baseline_by_hour.keys())}")
 

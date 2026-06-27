@@ -44,5 +44,6 @@ build_hourly_baseline.py
 .env.nextdns
 viz/nextdns_summary.json
 viz/network_attribution.json
+viz/observations.json
 viz/investigation.json
 viz/investigation_index.json
