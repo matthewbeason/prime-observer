@@ -296,7 +296,7 @@
     </div>
     <div class="badges">
       <a class="badge" href="./investigate.html">Investigation Evidence</a>
-      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.8.0</strong></span>
+      <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.8.1</strong></span>
     </div>
   </div>
 
@@ -979,6 +979,40 @@
       return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
 
+    function normalizeIntervalBoundary(value){
+      if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+      if (typeof value === "string" || typeof value === "number"){
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      return null;
+    }
+
+    function normalizeBucketInterval(bucket){
+      if (!bucket || typeof bucket !== "object") return null;
+      const start = normalizeIntervalBoundary(bucket.t ?? bucket.start);
+      const end = normalizeIntervalBoundary(bucket.t2 ?? bucket.end);
+      if (!start || !end || end <= start) return null;
+      return { start, end };
+    }
+
+    function resolveSharedChartDomain(seriesCollections=[], buckets=[]){
+      const points = [];
+      for (const series of seriesCollections){
+        if (!Array.isArray(series)) continue;
+        for (const sample of series){
+          const point = normalizeIntervalBoundary(sample?.t);
+          if (point) points.push(point);
+        }
+      }
+      for (const bucket of buckets){
+        const interval = normalizeBucketInterval(bucket);
+        if (!interval) continue;
+        points.push(interval.start, interval.end);
+      }
+      return points.length ? d3.extent(points) : null;
+    }
+
     function compareEpisodeObservations(a, b){
       const priority = { sustained_degradation: 0, turbulence: 1 };
       const aPriority = priority[a?.status] ?? 99;
@@ -1299,8 +1333,9 @@
     }
 
     function selectedBucketEvidence(bucket, internetSeries, resolverSeries, lanSeries){
-      if (!bucket) return null;
-      const within = d => d.t >= bucket.t && d.t < bucket.t2;
+      const interval = normalizeBucketInterval(bucket);
+      if (!interval) return null;
+      const within = d => d.t >= interval.start && d.t < interval.end;
       const internet = internetSeries.filter(within);
       const resolver = resolverSeries.filter(within);
       const lan = lanSeries.filter(within);
@@ -1853,8 +1888,9 @@
       const innerH = h - pad.t - pad.b;
       const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
 
+      const selectedInterval = normalizeBucketInterval(opts.selectedBucket);
       const fallbackDomain = opts.xDomain || (
-        opts.selectedBucket ? [opts.selectedBucket.t, opts.selectedBucket.t2] : [new Date(Date.now() - 60 * 60000), new Date()]
+        selectedInterval ? [selectedInterval.start, selectedInterval.end] : [new Date(Date.now() - 60 * 60000), new Date()]
       );
       const xDomain = opts.xDomain || (seriesArr.length ? d3.extent(seriesArr, d=>d.t) : fallbackDomain);
       const x = d3.scaleTime().domain(xDomain).range([0, innerW]);
@@ -1893,11 +1929,11 @@
           .attr("pointer-events", "none");
       }
 
-      if (opts.selectedBucket){
+      if (selectedInterval){
         g.append("rect")
-          .attr("x", x(opts.selectedBucket.t))
+          .attr("x", x(selectedInterval.start))
           .attr("y", 0)
-          .attr("width", Math.max(2, x(opts.selectedBucket.t2) - x(opts.selectedBucket.t)))
+          .attr("width", Math.max(2, x(selectedInterval.end) - x(selectedInterval.start)))
           .attr("height", innerH)
           .attr("fill", "rgba(31,119,180,0.08)")
           .attr("stroke", "rgba(31,119,180,0.95)")
@@ -1973,7 +2009,7 @@
           focus.select("circle").attr("cx",cx).attr("cy",cy);
 
           let extra = '';
-          if (opts.selectedBucket && d.t >= opts.selectedBucket.t && d.t < opts.selectedBucket.t2) extra = '<div class="section"><div class="list-line muted">Inside selected heatmap interval.</div></div>';
+          if (selectedInterval && d.t >= selectedInterval.start && d.t < selectedInterval.end) extra = '<div class="section"><div class="list-line muted">Inside selected heatmap interval.</div></div>';
           if (opts.selectedEvidence) extra += selectedBucketEvidenceHtml(opts.selectedEvidence);
           if (d.rawBad && !d.isBad) extra += '<div class="section"><div class="list-line muted">Isolated raw spike.</div></div>';
           const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.targetLabel || d.host} • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
@@ -2012,8 +2048,10 @@
         const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
         const selectedEvidence = selectedBucket ? selectedBucketEvidence(selectedBucket, internetSeriesMarked, resolverSeriesMarked, lanSeries) : null;
-        const allChartTimes = [...internetSeriesMarked, ...resolverSeriesMarked, ...lanSeries].map(d => d.t);
-        const xDomain = allChartTimes.length ? d3.extent(allChartTimes) : null;
+        const xDomain = resolveSharedChartDomain(
+          [internetSeriesMarked, resolverSeriesMarked, lanSeries],
+          compositeWanBuckets
+        );
 
         currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain };
 

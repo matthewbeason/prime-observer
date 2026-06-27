@@ -6,7 +6,7 @@ Prime Observer is a lightweight personal network observability and user-experien
 
 The goal is not simply to measure network performance. The goal is to determine whether network behavior is likely to be noticeable to users and to provide useful attribution and context.
 
-Current production release: v0.8.0
+Current production release: v0.8.1
 
 ---
 
@@ -373,7 +373,7 @@ These may be useful later, but they would currently increase complexity faster t
 
 ## Next Observation Period
 
-Live with v0.8.0 for several days before expanding functionality.
+Live with v0.8.1 for several days before expanding functionality.
 
 Watch for:
 
