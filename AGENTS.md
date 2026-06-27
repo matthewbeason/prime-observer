@@ -6,7 +6,7 @@ Prime Observer is a lightweight personal network observability and user-experien
 
 The goal is not simply to measure network performance. The goal is to determine whether network behavior is likely to be noticeable to users and to provide useful attribution and context.
 
-Current production release: v0.7.2
+Current production release: v0.8.0
 
 ---
 
@@ -233,6 +233,20 @@ Rules:
 
 ---
 
+## v0.8.0 Includes
+
+- Observation domain model.
+- Observation materialization policy.
+- Attribution Observation projection.
+- Episode Observation projection.
+- Investigation Observation references.
+- Dashboard attribution sourced from Observations.
+- Dashboard episode state sourced from Observations.
+- Backward-compatible legacy exports.
+- Deterministic browser fallbacks.
+
+---
+
 ## v0.7.1 Includes
 
 - Calibrated attribution evidence weighting.
@@ -359,7 +373,7 @@ These may be useful later, but they would currently increase complexity faster t
 
 ## Next Observation Period
 
-Live with v0.7.2 for several days before expanding functionality.
+Live with v0.8.0 for several days before expanding functionality.
 
 Watch for:
 

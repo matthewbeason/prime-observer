@@ -1,14 +1,16 @@
 # Prime Observer
 
-**Lightweight network observability focused on user experience**
+**Local-first network experience observability engine**
 
-Prime Observer is a local-first network observability dashboard focused on whether network behavior is likely to be noticeable to real users.
+Prime Observer is a local-first network experience observability engine focused on whether network behavior is likely to be noticeable to real users.
 
-It combines telemetry, historical context, attribution, and DNS security signals into a single local-first dashboard.
+It combines measured telemetry, deterministic health modeling, Observation projection, historical investigation evidence, and optional DNS/security context into a single local-first workflow.
 
 It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, pattern awareness, DNS security context, and operational simplicity.
 
-Current release: **v0.7.2**
+Current release: **v0.8.0**
+
+Previous production release: **v0.7.2**
 
 Portfolio context: Prime Observer demonstrates local-first observability,
 user-noticeability scoring, privacy-aware DNS/security summaries, and historical
@@ -16,7 +18,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current v0.7.2 dashboard
+Current v0.8.0 dashboard
 
 Prime Observer Dashboard
 
@@ -50,9 +52,21 @@ Prime Observer is more opinionated:
 - It can include optional DNS/security context without becoming a DNS analytics platform.
 - It runs locally with flat CSV and JSON files.
 - Optional integrations fail safely.
-- Deterministic telemetry remains the source of truth.
+- Evidence remains the source of truth for measured facts.
+- Observation projection is the source of truth for deterministic interpretation that Prime Observer owns.
 
 No cloud backend, database, or heavy observability stack is required.
+
+## Evidence Model
+
+Prime Observer now separates four concerns:
+
+- Evidence: measured telemetry rows, generated factual summaries, and source-file references.
+- Observation: deterministic Prime Observer conclusions derived from Evidence, such as current attribution and episode state.
+- Investigation: historical evidence packages that organize Evidence and overlapping Observations for a requested window.
+- Projection: local JSON artifacts consumed by the dashboard and investigation viewer.
+
+This keeps Prime Observer evidence-first while reducing browser-side reasoning drift. The dashboard is increasingly a projection consumer rather than the sole reasoning engine.
 
 ## Major Concepts
 
@@ -185,10 +199,11 @@ data/bakeoff_YYYYMMDD.csv
         v
 bin/transform_latest.py
         |
-        v
-viz/latest.csv
+        +--> viz/latest.csv
         |
         +--> viz/network_attribution.json
+        |
+        +--> viz/observations.json
         |
         v
 viz/index.html
@@ -219,12 +234,21 @@ bin/build_investigation.py
         |
         +--> viz/investigation_index.json
         |
+        +--> reads viz/observations.json
+        |
         v
 viz/investigation.json
         |
         v
 viz/investigate.html
 ```
+
+Projection roles:
+
+- `viz/latest.csv` remains the dashboard telemetry window and factual chart input.
+- `viz/network_attribution.json` remains the backward-compatible legacy export.
+- `viz/observations.json` is the authoritative Observation projection for deterministic attribution and episode semantics owned by Prime Observer.
+- `viz/investigation.json` organizes factual evidence and additive Observation references for a requested historical window.
 
 ### Key Files
 
@@ -240,6 +264,9 @@ viz/investigate.html
 - `viz/network_attribution.json`
   Generated machine-readable Network Attribution export for downstream tools. The legacy top-level `attribution_*` fields describe current/recent attribution for the last 15 minutes. The export also includes factual `target_groups`, `internet_probe_summary`, `resolver_probe_summary`, `current_attribution`, `window_attribution`, and per-incident `incidents` so reports can attribute sustained slowdown intervals across the 24-hour observation window.
 
+- `viz/observations.json`
+  Generated Observation projection. This is Prime Observer's authoritative local projection for deterministic interpretation it owns, including attribution observations and episode observations, while preserving legacy compatibility exports for downstream consumers.
+
 - `bin/fetch_nextdns_summary.py`
   Optional local NextDNS analytics summary fetcher. Uses Python standard library only.
 
@@ -247,10 +274,10 @@ viz/investigate.html
   Generated local DNS summary. It may include aggregate top-N domain names from analytics endpoints, but must not contain API keys, raw logs, client IPs, device names, per-query records, or full profile IDs.
 
 - `bin/build_investigation.py`
-  Builds a local read-only investigation JSON for a historical time window using existing telemetry files. The output is factual evidence, not interpretation. It also updates a generated investigation catalog by default.
+  Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. The output remains evidence-first and does not move Core Signal interpretation into Prime Observer. It also updates a generated investigation catalog by default.
 
 - `viz/investigation.json`
-  Generated local investigation evidence for a selected window. Metadata is additive and includes target labels/classes, deterministic event navigation, and factual nearby-event discovery.
+  Generated local investigation evidence for a selected window. Metadata is additive and includes target labels/classes, deterministic event navigation, factual nearby-event discovery, and overlapping Observation references from the current projection when available.
 
 - `viz/investigation_index.json`
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
@@ -313,6 +340,12 @@ Generate the latest telemetry window:
 python3 bin/transform_latest.py
 ```
 
+This refreshes:
+
+- `viz/latest.csv`
+- `viz/network_attribution.json`
+- `viz/observations.json`
+
 If using NextDNS, generate the optional DNS summary:
 
 ```bash
@@ -337,7 +370,7 @@ Open the investigation view through the local server, not directly from disk.
 Direct `file://` access can prevent the browser from loading
 `investigation.json`.
 
-See `docs/investigation-workflow.md` for details and future Olivaw deep-link shape.
+See `docs/investigation-workflow.md` for details.
 
 The investigation workflow also maintains an optional generated Investigation
 Index at `viz/investigation_index.json`. The index is a local catalog of
@@ -433,11 +466,14 @@ Security rules:
 Prime Observer favors:
 
 - deterministic local logic
+- deterministic health modeling
 - simple heuristics
 - transparent calculations
 - flat CSV/JSON files
 - small, reviewable changes
 - graceful failure of optional features
+- evidence-first architecture
+- privacy-first local execution
 - user-experience context over raw metric volume
 
 Prime Observer avoids:
@@ -463,6 +499,33 @@ Prime Observer is not:
 
 It is a focused local dashboard for understanding whether network behavior is healthy, unusual, attributable, sustained, and likely noticeable.
 
+## Release Notes: v0.8.0
+
+v0.8.0 prepares Prime Observer's initial public Observation architecture release without changing deferred areas such as Noticeability, Pattern Awareness, health summaries, or selected-bucket evidence.
+
+v0.8.0 includes:
+
+- Introduced the Observation domain model for deterministic Prime Observer interpretation.
+- Added Observation materialization policy and stable projection metadata.
+- Added attribution Observation projection backed by `viz/observations.json`.
+- Added episode Observation projection for sustained-degradation and turbulence intervals.
+- Added additive Observation references to historical investigations.
+- Updated the dashboard to source attribution from Observations first, with legacy export and browser fallbacks preserved.
+- Updated the dashboard to source episode state from Observations first, with deterministic browser classification retained as fallback.
+- Preserved backward-compatible legacy exports for downstream consumers.
+- Kept Evidence authoritative for measured facts and Investigations authoritative for evidence organization.
+- Continued to exclude Core Signal interpretation, recommendations, causal claims, cloud dependencies, and browser-side secrets.
+
+## Release Notes: v0.7.2
+
+v0.7.2 refined the dashboard presentation and production-scanning experience before the Observation release.
+
+v0.7.2 included:
+
+- Refreshed the dashboard and investigation UI for a clearer observability-focused experience.
+- Improved mobile dashboard scanning and compact current-state presentation.
+- Preserved the deterministic health model, evidence-first investigation workflow, and local-first DNS summary boundaries.
+
 ## Release Notes: v0.7.1
 
 v0.7.1 stabilizes the canonical health model and attribution evidence
@@ -483,30 +546,15 @@ v0.7.1 includes:
 - Preserved strict evidence-first architecture: Prime Observer provides observations, evidence, investigations, timelines, target classification, and external evidence collection only.
 - Excluded DNS analysis, DNS attribution, recommendations, event confidence scores, causal analysis, anomaly analysis, interpretive conclusions, and LLM functionality.
 
-## Future Directions
+## Release Boundaries
 
-Near-term work should be guided by real-world observation rather than feature expansion.
+v0.8.0 intentionally does not migrate or expand:
 
-Areas to watch:
-
-- stable-but-noticeable false negatives
-- noisy-but-masked false positives
-- whether Pattern Confidence feels trustworthy
-- whether DNS Security adds context or clutter
-- whether turbulence is informative or distracting
-- whether attribution confidence matches lived experience
-
-Possible future improvements, only if justified by usage:
-
-- current vs typical WAN context in tooltips
-- clearer baseline explanations
-- modest portability improvements
-- small test coverage around scoring and attribution thresholds
-
-Explicitly deferred for now:
-
+- User Noticeability semantics
+- Pattern Awareness semantics
+- WAN Health Summary semantics
+- selected-bucket evidence behavior
 - raw DNS logs
-- domain lists
 - device-level DNS analytics
 - alerts and notifications
 - weather, power, or ISP status correlation
