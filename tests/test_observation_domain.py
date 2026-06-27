@@ -9,10 +9,14 @@ sys.path.insert(0, str(ROOT / "bin"))
 
 from observation_domain import (  # noqa: E402
     ATTRIBUTION_OBSERVATION_MODEL_VERSION,
+    EPISODE_OBSERVATION_MODEL_VERSION,
     Observation,
+    OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observation,
     build_attribution_observations,
     build_attribution_projection,
+    build_episode_observations,
+    build_projection,
     generate_observation_id,
 )
 
@@ -67,6 +71,59 @@ class ObservationDomainTest(unittest.TestCase):
                 "start": "2026-06-25T12:00:00+00:00",
                 "end": "2026-06-26T12:00:00+00:00",
             },
+        }
+
+    def sample_incident_run(self):
+        return [
+            {
+                "t": dt.datetime(2026, 6, 26, 11, 45, tzinfo=dt.timezone.utc),
+                "phase": "FIBER",
+                "target_class": "internet_probe",
+                "host": "1.1.1.1",
+                "raw_bad": True,
+                "is_bad": False,
+            },
+            {
+                "t": dt.datetime(2026, 6, 26, 11, 46, tzinfo=dt.timezone.utc),
+                "phase": "FIBER",
+                "target_class": "internet_probe",
+                "host": "1.1.1.1",
+                "raw_bad": True,
+                "is_bad": True,
+            },
+        ]
+
+    def sample_incident(self):
+        return {
+            "start": "2026-06-26T11:45:00+00:00",
+            "end": "2026-06-26T11:46:00+00:00",
+            "status": "likely_upstream",
+            "label": "Likely upstream (ISP / path)",
+            "confidence": "high",
+            "evidence": ["internet_probe degradation", "local gateway stable"],
+            "metrics": {
+                "wan_samples": 2,
+                "wan_raw_bad_samples": 2,
+                "wan_sustained_bad_samples": 1,
+                "lan_samples": 2,
+                "lan_elevated_samples": 0,
+                "lan_elevated_rate_pct": 0.0,
+                "target_class": "internet_probe",
+                "target_hosts": {"1.1.1.1": 2},
+            },
+        }
+
+    def sample_turbulence_bucket(self):
+        return {
+            "phase": "FIBER",
+            "target_class": "resolver_probe",
+            "t": dt.datetime(2026, 6, 26, 11, 30, tzinfo=dt.timezone.utc),
+            "t2": dt.datetime(2026, 6, 26, 11, 45, tzinfo=dt.timezone.utc),
+            "total": 4,
+            "bad": 0,
+            "raw_bad": 4,
+            "max_raw_run": 1,
+            "is_turbulence": True,
         }
 
     def test_observation_model_serialization_omits_optional_fields(self):
@@ -195,6 +252,88 @@ class ObservationDomainTest(unittest.TestCase):
         self.assertEqual(projection["model_version"], ATTRIBUTION_OBSERVATION_MODEL_VERSION)
         self.assertEqual(len(projection["observations"]), 2)
         self.assertEqual(projection["observations"][0]["model_version"], ATTRIBUTION_OBSERVATION_MODEL_VERSION)
+
+    def test_build_episode_observations_maps_sustained_and_turbulence_intervals(self):
+        generated_at = dt.datetime(2026, 6, 26, 12, 0, tzinfo=dt.timezone.utc)
+
+        observations = build_episode_observations(
+            incident_runs=[self.sample_incident_run()],
+            incidents=[self.sample_incident()],
+            turbulence_buckets=[self.sample_turbulence_bucket()],
+            generated_at=generated_at,
+            telemetry_source_path="data/bakeoff_20260626.csv",
+        )
+        payloads = [observation.to_dict() for observation in observations]
+        sustained = next(item for item in payloads if item["state"]["status"] == "sustained_degradation")
+        turbulence = next(item for item in payloads if item["state"]["status"] == "turbulence")
+
+        self.assertEqual(sustained["type"], "episode")
+        self.assertEqual(sustained["interval"]["start"], "2026-06-26T11:45:00+00:00")
+        self.assertEqual(sustained["interval"]["end"], "2026-06-26T11:46:00+00:00")
+        self.assertEqual(sustained["scope"]["target_class"], "internet_probe")
+        self.assertEqual(sustained["evidence_references"][0]["path"], "viz/latest.csv")
+        self.assertEqual(sustained["evidence_references"][-1]["path"], "viz/network_attribution.json")
+        self.assertEqual(sustained["model_version"], EPISODE_OBSERVATION_MODEL_VERSION)
+        self.assertIn("sustained degradation observed", sustained["explanation"].lower())
+
+        self.assertEqual(turbulence["type"], "episode")
+        self.assertEqual(turbulence["interval"]["start"], "2026-06-26T11:30:00+00:00")
+        self.assertEqual(turbulence["interval"]["end"], "2026-06-26T11:45:00+00:00")
+        self.assertEqual(turbulence["scope"]["target_class"], "resolver_probe")
+        self.assertEqual(turbulence["evidence_references"][-1]["kind"], "turbulence_bucket")
+        self.assertIn("no sustained run", turbulence["explanation"].lower())
+
+    def test_episode_observation_ids_are_deterministic(self):
+        generated_at = dt.datetime(2026, 6, 26, 12, 0, tzinfo=dt.timezone.utc)
+        first = [
+            item.to_dict()["id"]
+            for item in build_episode_observations(
+                incident_runs=[self.sample_incident_run()],
+                incidents=[self.sample_incident()],
+                turbulence_buckets=[self.sample_turbulence_bucket()],
+                generated_at=generated_at,
+                telemetry_source_path="data/bakeoff_20260626.csv",
+            )
+        ]
+        second = [
+            item.to_dict()["id"]
+            for item in build_episode_observations(
+                incident_runs=[self.sample_incident_run()],
+                incidents=[self.sample_incident()],
+                turbulence_buckets=[self.sample_turbulence_bucket()],
+                generated_at=generated_at,
+                telemetry_source_path="data/bakeoff_20260626.csv",
+            )
+        ]
+
+        self.assertEqual(first, second)
+        self.assertTrue(all(item.startswith("observation-episode-") for item in first))
+
+    def test_projection_can_include_attribution_and_episode_observations(self):
+        generated_at = dt.datetime(2026, 6, 26, 12, 0, tzinfo=dt.timezone.utc)
+        attribution_observations = build_attribution_observations(
+            self.sample_attribution_payload(),
+            generated_at=generated_at,
+            telemetry_source_path="data/bakeoff_20260626.csv",
+        )
+        episode_observations = build_episode_observations(
+            incident_runs=[self.sample_incident_run()],
+            incidents=[self.sample_incident()],
+            turbulence_buckets=[self.sample_turbulence_bucket()],
+            generated_at=generated_at,
+            telemetry_source_path="data/bakeoff_20260626.csv",
+        )
+
+        projection = build_projection(
+            attribution_observations + episode_observations,
+            model_version=OBSERVATION_PROJECTION_MODEL_VERSION,
+            generated_at=generated_at,
+        )
+
+        self.assertEqual(projection["model_version"], OBSERVATION_PROJECTION_MODEL_VERSION)
+        self.assertEqual(len(projection["observations"]), 4)
+        self.assertEqual([item["type"] for item in projection["observations"][:2]], ["attribution", "attribution"])
+        self.assertEqual({item["type"] for item in projection["observations"]}, {"attribution", "episode"})
 
 
 if __name__ == "__main__":

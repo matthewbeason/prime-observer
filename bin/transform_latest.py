@@ -13,7 +13,12 @@ from target_metadata import (
     is_wan_probe,
     target_metadata,
 )
-from observation_domain import build_attribution_projection
+from observation_domain import (
+    OBSERVATION_PROJECTION_MODEL_VERSION,
+    build_attribution_observations,
+    build_episode_observations,
+    build_projection,
+)
 
 BASE = Path("/Users/mbeason/prime-observer")
 DATA_DIR = BASE / "data"
@@ -691,10 +696,8 @@ def compute_network_attribution(rows, generated_at):
     lan_series, wan_series = to_dashboard_series(rows)
     wan_series_marked = mark_persistent_wan_bad(wan_series)
     current = compute_recent_attribution(lan_series, wan_series_marked, generated_at)
-    incidents = [
-        classify_incident(run, lan_series)
-        for run in find_sustained_wan_incidents(wan_series_marked)
-    ]
+    incident_runs = find_sustained_wan_incidents(wan_series_marked)
+    incidents = [classify_incident(run, lan_series) for run in incident_runs]
     window_attribution = compute_window_attribution(incidents, lan_series, wan_series_marked)
     all_groups = target_group_summary(wan_series_marked)
 
@@ -803,10 +806,27 @@ def main():
 
     attribution = compute_network_attribution(rows_out, now)
     write_json_atomic(ATTRIBUTION_OUT, attribution)
-    observations_projection = build_attribution_projection(
+    lan_series, wan_series = to_dashboard_series(rows_out)
+    wan_series_marked = mark_persistent_wan_bad(wan_series)
+    incident_runs = find_sustained_wan_incidents(wan_series_marked)
+    incidents = [classify_incident(run, lan_series) for run in incident_runs]
+    turbulence_buckets = [bucket for bucket in classify_buckets(wan_series_marked) if bucket.get("is_turbulence")]
+    attribution_observations = build_attribution_observations(
         attribution,
         generated_at=now,
         telemetry_source_path=f"data/{src.name}",
+    )
+    episode_observations = build_episode_observations(
+        incident_runs=incident_runs,
+        incidents=incidents,
+        turbulence_buckets=turbulence_buckets,
+        generated_at=now,
+        telemetry_source_path=f"data/{src.name}",
+    )
+    observations_projection = build_projection(
+        attribution_observations + episode_observations,
+        model_version=OBSERVATION_PROJECTION_MODEL_VERSION,
+        generated_at=now,
     )
     write_json_atomic(OBSERVATIONS_OUT, observations_projection)
 

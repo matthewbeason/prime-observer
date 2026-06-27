@@ -127,7 +127,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("target_group_facts", attribution["attribution_evidence"])
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
         self.assertEqual(observations["schema_version"], 1)
-        self.assertEqual(observations["model_version"], "prime_observer.attribution.v1")
+        self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
         self.assertEqual(len(observations["observations"]), 2)
         self.assertEqual({item["type"] for item in observations["observations"]}, {"attribution"})
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
@@ -135,7 +135,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(by_view["window_attribution"]["state"]["label"], attribution["window_attribution"]["label"])
 
     def test_main_keeps_legacy_attribution_export_and_adds_projection(self):
-        now = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         self.write_rows([
             self.telemetry_row((now - dt.timedelta(minutes=10)).isoformat(), "1.1.1.1", 180),
             self.telemetry_row((now - dt.timedelta(minutes=9)).isoformat(), "1.1.1.1", 181),
@@ -155,10 +155,41 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("attribution_label", attribution)
         self.assertIn("current_attribution", attribution)
         self.assertIn("window_attribution", attribution)
-        self.assertEqual(len(observations["observations"]), 2)
+        self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
+        self.assertEqual(len(observations["observations"]), 3)
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
         self.assertEqual(by_view["current_attribution"]["evidence_references"][0]["path"], "viz/network_attribution.json")
         self.assertEqual(by_view["window_attribution"]["evidence_references"][0]["path"], "viz/network_attribution.json")
+        episodes = [item for item in observations["observations"] if item["type"] == "episode"]
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["state"]["status"], "sustained_degradation")
+        self.assertEqual(episodes[0]["interval"]["start"], attribution["incidents"][0]["start"])
+        self.assertEqual(episodes[0]["interval"]["end"], attribution["incidents"][0]["end"])
+
+    def test_main_adds_turbulence_episode_observation_without_changing_legacy_exports(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        bucket_base = (now - dt.timedelta(minutes=20)).replace(minute=((now - dt.timedelta(minutes=20)).minute // 15) * 15)
+        self.write_rows([
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=1)).isoformat(), "45.90.28.134", 180),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=2)).isoformat(), "45.90.28.134", 30),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=3)).isoformat(), "45.90.28.134", 181),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=4)).isoformat(), "45.90.28.134", 31),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=5)).isoformat(), "45.90.28.134", 182),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=6)).isoformat(), "45.90.28.134", 32),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=7)).isoformat(), "45.90.28.134", 183),
+            self.telemetry_row((bucket_base + dt.timedelta(minutes=7)).isoformat(), "192.168.1.1", 8),
+        ])
+
+        self.module.main()
+
+        attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
+        observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
+
+        self.assertIn("window_attribution", attribution)
+        episodes = [item for item in observations["observations"] if item["type"] == "episode"]
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["state"]["status"], "turbulence")
+        self.assertEqual(episodes[0]["scope"]["target_class"], "resolver_probe")
 
     def test_dashboard_and_investigation_do_not_depend_on_observations_projection(self):
         dashboard_html = INDEX_HTML_PATH.read_text()
