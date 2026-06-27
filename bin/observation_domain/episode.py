@@ -4,6 +4,7 @@ import datetime as dt
 from typing import Any
 
 from .model import Observation
+from .policy import OBSERVATION_POLICY, ObservationCandidate, materialization_metadata
 
 
 EPISODE_OBSERVATION_MODEL_VERSION = "prime_observer.episode.v1"
@@ -50,7 +51,7 @@ def _build_sustained_episode_observation(
     telemetry_source_path: str | None,
     telemetry_export_path: str,
     attribution_export_path: str,
-) -> Observation:
+) -> Observation | None:
     start = incident["start"]
     end = incident["end"]
     metrics = incident.get("metrics", {}) or {}
@@ -77,9 +78,9 @@ def _build_sustained_episode_observation(
         "source_export": "incidents",
         "index": incident_index,
     })
-
-    return Observation.create(
+    candidate = ObservationCandidate(
         observation_type="episode",
+        conclusion_kind="sustained_episode",
         scope={
             "system": "prime_observer",
             "subject": "network",
@@ -88,6 +89,16 @@ def _build_sustained_episode_observation(
             "target_class": target_class,
         },
         interval={"start": start, "end": end},
+        evidence_references=evidence_references,
+    )
+    decision = OBSERVATION_POLICY.decide(candidate)
+    if not decision.should_materialize:
+        return None
+
+    return Observation.create(
+        observation_type="episode",
+        scope=candidate.scope,
+        interval=candidate.interval,
         state={
             "status": "sustained_degradation",
             "label": "Sustained degradation",
@@ -107,6 +118,7 @@ def _build_sustained_episode_observation(
             "source_export": "episode_observations",
             "source_logic": "find_sustained_wan_incidents",
             "evidence_artifacts": [telemetry_export_path, attribution_export_path],
+            "materialization": materialization_metadata(candidate, decision),
         },
         model_version=EPISODE_OBSERVATION_MODEL_VERSION,
         generated_at=generated_at,
@@ -120,7 +132,7 @@ def _build_turbulence_episode_observation(
     generated_at: dt.datetime,
     telemetry_source_path: str | None,
     telemetry_export_path: str,
-) -> Observation:
+) -> Observation | None:
     start = bucket["t"].isoformat()
     end = bucket["t2"].isoformat()
     target_class = bucket.get("target_class") or "unknown_probe"
@@ -139,9 +151,9 @@ def _build_turbulence_episode_observation(
         "target_class": target_class,
         "index": bucket_index,
     })
-
-    return Observation.create(
+    candidate = ObservationCandidate(
         observation_type="episode",
+        conclusion_kind="turbulence_episode",
         scope={
             "system": "prime_observer",
             "subject": "network",
@@ -150,6 +162,16 @@ def _build_turbulence_episode_observation(
             "target_class": target_class,
         },
         interval={"start": start, "end": end},
+        evidence_references=evidence_references,
+    )
+    decision = OBSERVATION_POLICY.decide(candidate)
+    if not decision.should_materialize:
+        return None
+
+    return Observation.create(
+        observation_type="episode",
+        scope=candidate.scope,
+        interval=candidate.interval,
         state={
             "status": "turbulence",
             "label": "Turbulence",
@@ -172,6 +194,7 @@ def _build_turbulence_episode_observation(
             "source_export": "episode_observations",
             "source_logic": "classify_buckets",
             "evidence_artifacts": [telemetry_export_path],
+            "materialization": materialization_metadata(candidate, decision),
         },
         model_version=EPISODE_OBSERVATION_MODEL_VERSION,
         generated_at=generated_at,
@@ -210,4 +233,4 @@ def build_episode_observations(
         )
         for index, bucket in enumerate(turbulence_buckets)
     )
-    return observations
+    return [observation for observation in observations if observation is not None]

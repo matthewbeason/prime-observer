@@ -10,7 +10,12 @@ sys.path.insert(0, str(ROOT / "bin"))
 from observation_domain import (  # noqa: E402
     ATTRIBUTION_OBSERVATION_MODEL_VERSION,
     EPISODE_OBSERVATION_MODEL_VERSION,
+    LIFECYCLE_FINALIZED,
+    LIFECYCLE_ROLLING,
+    OBSERVATION_MATERIALIZATION_POLICY_VERSION,
+    OBSERVATION_POLICY,
     Observation,
+    ObservationCandidate,
     OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observation,
     build_attribution_observations,
@@ -195,6 +200,11 @@ class ObservationDomainTest(unittest.TestCase):
         self.assertEqual(payload["interval"]["start"], "2026-06-26T11:45:00+00:00")
         self.assertEqual(payload["interval"]["end"], "2026-06-26T12:00:00+00:00")
         self.assertEqual(payload["evidence_references"][-1]["path"], "data/bakeoff_20260626.csv")
+        self.assertEqual(
+            payload["provenance"]["materialization"]["policy_version"],
+            OBSERVATION_MATERIALIZATION_POLICY_VERSION,
+        )
+        self.assertEqual(payload["provenance"]["materialization"]["lifecycle"], LIFECYCLE_ROLLING)
 
     def test_build_attribution_observations_includes_current_and_window_views(self):
         generated_at = dt.datetime(2026, 6, 26, 12, 0, tzinfo=dt.timezone.utc)
@@ -274,6 +284,7 @@ class ObservationDomainTest(unittest.TestCase):
         self.assertEqual(sustained["evidence_references"][0]["path"], "viz/latest.csv")
         self.assertEqual(sustained["evidence_references"][-1]["path"], "viz/network_attribution.json")
         self.assertEqual(sustained["model_version"], EPISODE_OBSERVATION_MODEL_VERSION)
+        self.assertEqual(sustained["provenance"]["materialization"]["lifecycle"], LIFECYCLE_FINALIZED)
         self.assertIn("sustained degradation observed", sustained["explanation"].lower())
 
         self.assertEqual(turbulence["type"], "episode")
@@ -281,6 +292,7 @@ class ObservationDomainTest(unittest.TestCase):
         self.assertEqual(turbulence["interval"]["end"], "2026-06-26T11:45:00+00:00")
         self.assertEqual(turbulence["scope"]["target_class"], "resolver_probe")
         self.assertEqual(turbulence["evidence_references"][-1]["kind"], "turbulence_bucket")
+        self.assertEqual(turbulence["provenance"]["materialization"]["lifecycle"], LIFECYCLE_FINALIZED)
         self.assertIn("no sustained run", turbulence["explanation"].lower())
 
     def test_episode_observation_ids_are_deterministic(self):
@@ -308,6 +320,76 @@ class ObservationDomainTest(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertTrue(all(item.startswith("observation-episode-") for item in first))
+        self.assertEqual(first, ["observation-episode-ef7a7f690d8cd6852d6e", "observation-episode-7c421a8d6d7926f2ef30"])
+
+    def test_attribution_observation_ids_remain_unchanged(self):
+        generated_at = dt.datetime(2026, 6, 26, 12, 0, tzinfo=dt.timezone.utc)
+        observations = build_attribution_observations(
+            self.sample_attribution_payload(),
+            generated_at=generated_at,
+            telemetry_source_path="data/bakeoff_20260626.csv",
+        )
+        ids_by_view = {item.scope["view"]: item.id for item in observations}
+
+        self.assertEqual(ids_by_view["current_attribution"], "observation-attribution-5a2b4ed3ecf2946ca35e")
+        self.assertEqual(ids_by_view["window_attribution"], "observation-attribution-4b69af4b886cea590e9a")
+
+    def test_policy_materializes_supported_conclusions(self):
+        candidate = ObservationCandidate(
+            observation_type="episode",
+            conclusion_kind="sustained_episode",
+            scope={"system": "prime_observer", "subject": "network", "view": "episode"},
+            interval={"start": "2026-06-26T11:45:00+00:00", "end": "2026-06-26T11:46:00+00:00"},
+            evidence_references=[{"kind": "artifact", "path": "viz/latest.csv"}],
+        )
+
+        decision = OBSERVATION_POLICY.decide(candidate)
+
+        self.assertTrue(decision.should_materialize)
+        self.assertEqual(decision.lifecycle, LIFECYCLE_FINALIZED)
+
+    def test_policy_does_not_materialize_raw_bucket(self):
+        candidate = ObservationCandidate(
+            observation_type="episode",
+            conclusion_kind="raw_bucket",
+            scope={"system": "prime_observer", "subject": "network", "view": "bucket"},
+            interval={"start": "2026-06-26T11:30:00+00:00", "end": "2026-06-26T11:45:00+00:00"},
+            evidence_references=[{"kind": "artifact", "path": "viz/latest.csv"}],
+        )
+
+        decision = OBSERVATION_POLICY.decide(candidate)
+
+        self.assertFalse(decision.should_materialize)
+        self.assertEqual(decision.reason, "implementation_detail")
+
+    def test_policy_does_not_materialize_target_group_summary(self):
+        candidate = ObservationCandidate(
+            observation_type="attribution",
+            conclusion_kind="target_group_summary",
+            scope={"system": "prime_observer", "subject": "network", "view": "summary"},
+            interval={"start": "2026-06-25T12:00:00+00:00", "end": "2026-06-26T12:00:00+00:00"},
+            evidence_references=[{"kind": "artifact", "path": "viz/network_attribution.json"}],
+        )
+
+        decision = OBSERVATION_POLICY.decide(candidate)
+
+        self.assertFalse(decision.should_materialize)
+        self.assertEqual(decision.reason, "implementation_detail")
+
+    def test_policy_decisions_are_deterministic(self):
+        candidate = ObservationCandidate(
+            observation_type="attribution",
+            conclusion_kind="current_attribution",
+            scope={"system": "prime_observer", "subject": "network", "view": "current_attribution"},
+            interval={"start": "2026-06-26T11:45:00+00:00", "end": "2026-06-26T12:00:00+00:00"},
+            evidence_references=[{"kind": "artifact", "path": "viz/network_attribution.json"}],
+        )
+
+        first = OBSERVATION_POLICY.decide(candidate)
+        second = OBSERVATION_POLICY.decide(candidate)
+
+        self.assertEqual(first, second)
+        self.assertEqual(first.lifecycle, LIFECYCLE_ROLLING)
 
     def test_projection_can_include_attribution_and_episode_observations(self):
         generated_at = dt.datetime(2026, 6, 26, 12, 0, tzinfo=dt.timezone.utc)

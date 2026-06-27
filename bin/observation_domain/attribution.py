@@ -4,6 +4,7 @@ import datetime as dt
 from typing import Any
 
 from .model import Observation, build_projection
+from .policy import OBSERVATION_POLICY, ObservationCandidate, materialization_metadata
 
 
 ATTRIBUTION_OBSERVATION_MODEL_VERSION = "prime_observer.attribution.v1"
@@ -46,7 +47,7 @@ def _build_current_attribution_observation(
     telemetry_source_path: str | None,
     attribution_export_path: str,
     telemetry_export_path: str,
-) -> Observation:
+) -> Observation | None:
     current = attribution_payload.get("current_attribution", {}) or {}
     attribution_evidence = attribution_payload.get("attribution_evidence", {}) or {}
     lookback_minutes = int(attribution_evidence.get("lookback_minutes", 15) or 15)
@@ -71,6 +72,16 @@ def _build_current_attribution_observation(
         telemetry_export_path=telemetry_export_path,
         lookback_minutes=lookback_minutes,
     )
+    candidate = ObservationCandidate(
+        observation_type="attribution",
+        conclusion_kind="current_attribution",
+        scope=scope,
+        interval=interval,
+        evidence_references=evidence_references,
+    )
+    decision = OBSERVATION_POLICY.decide(candidate)
+    if not decision.should_materialize:
+        return None
 
     return Observation.create(
         observation_type="attribution",
@@ -85,6 +96,7 @@ def _build_current_attribution_observation(
             "producer": "bin/transform_latest.py",
             "source_export": "current_attribution",
             "evidence_artifacts": [attribution_export_path, telemetry_export_path],
+            "materialization": materialization_metadata(candidate, decision),
         },
         model_version=ATTRIBUTION_OBSERVATION_MODEL_VERSION,
         generated_at=generated_at,
@@ -98,7 +110,7 @@ def _build_window_attribution_observation(
     telemetry_source_path: str | None,
     attribution_export_path: str,
     telemetry_export_path: str,
-) -> Observation:
+) -> Observation | None:
     window = attribution_payload.get("window_attribution", {}) or {}
     observation_window = attribution_payload.get("observation_window", {}) or {}
     interval = {
@@ -118,6 +130,16 @@ def _build_window_attribution_observation(
         attribution_export_path=attribution_export_path,
         telemetry_export_path=telemetry_export_path,
     )
+    candidate = ObservationCandidate(
+        observation_type="attribution",
+        conclusion_kind="window_attribution",
+        scope=scope,
+        interval=interval,
+        evidence_references=evidence_references,
+    )
+    decision = OBSERVATION_POLICY.decide(candidate)
+    if not decision.should_materialize:
+        return None
 
     return Observation.create(
         observation_type="attribution",
@@ -135,6 +157,7 @@ def _build_window_attribution_observation(
             "producer": "bin/transform_latest.py",
             "source_export": "window_attribution",
             "evidence_artifacts": [attribution_export_path, telemetry_export_path],
+            "materialization": materialization_metadata(candidate, decision),
         },
         model_version=ATTRIBUTION_OBSERVATION_MODEL_VERSION,
         generated_at=generated_at,
@@ -149,7 +172,7 @@ def build_attribution_observations(
     attribution_export_path: str = "viz/network_attribution.json",
     telemetry_export_path: str = "viz/latest.csv",
 ) -> list[Observation]:
-    return [
+    observations = [
         _build_current_attribution_observation(
             attribution_payload,
             generated_at=generated_at,
@@ -165,6 +188,7 @@ def build_attribution_observations(
             telemetry_export_path=telemetry_export_path,
         ),
     ]
+    return [observation for observation in observations if observation is not None]
 
 
 def build_attribution_observation(

@@ -28,6 +28,10 @@ def generate_observation_id(
     model_version: str,
     evidence_references: list[dict[str, Any]],
 ) -> str:
+    # Identity is intentionally limited to durable conclusion inputs so
+    # regenerated observations keep the same ID when the underlying evidence is
+    # unchanged. Volatile metadata such as generated_at, provenance, and
+    # lifecycle are excluded on purpose.
     stable_identity = {
         "type": observation_type,
         "scope": scope,
