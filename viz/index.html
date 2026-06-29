@@ -34,6 +34,8 @@
       box-shadow:inset 0 1px 0 rgba(255,255,255,.55);
     }
     .row{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;}
+    .dashboard-overview .card:not(.health-card){flex:1 1 220px;}
+    .dashboard-overview .card.compact{flex:1 1 200px;}
     .mobile-only{display:none;}
     .card{
       background:var(--card); padding:16px 18px; border:1px solid var(--border); border-radius:var(--radius); min-width:210px;
@@ -104,6 +106,10 @@
     .viz-panel.primary{
       background:linear-gradient(180deg, rgba(255,252,247,.82), rgba(249,244,237,.76));
       border-color:rgba(112,97,78,.18);
+    }
+    .viz-panel.primary.has-selection{
+      border-color:rgba(45,111,145,.28);
+      box-shadow:var(--shadow-soft), inset 0 0 0 1px rgba(45,111,145,.08);
     }
     .panel-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
     .panel-footer{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.5;}
@@ -375,7 +381,9 @@
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
+  </div>
 
+  <div class="row dashboard-overview" style="margin-top:16px;">
     <div class="card health-card">
       <h4><span>WAN Health Summary</span><span class="small">last 24h</span></h4>
       <div class="small" style="margin-bottom:8px;">
@@ -390,19 +398,19 @@
       <div class="panel-kicker">Primary Evidence View</div>
       <div class="section-title">
         <h3>WAN “bad moments” heatmap</h3>
-        <div class="legend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect that interval across WAN internet, WAN resolver, and LAN gateway charts</div>
+        <div class="legend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts</div>
       </div>
       <div class="heatmap-scroll">
         <svg id="heatmap" width="1100" height="180"></svg>
       </div>
-      <div class="panel-footer">The heatmap remains the canonical interval view. Surrounding panels inherit selection state from the clicked bucket without changing bucket logic or evidence semantics.</div>
+      <div class="panel-footer">Click a bucket to pin a 15-minute interval. That same interval is outlined in blue across all three charts below.</div>
     </div>
 
     <div class="viz-panel primary" id="selectedBucketPanel">
-      <div class="panel-kicker">Selected Bucket Details</div>
+      <div class="panel-kicker">Selected Interval Evidence</div>
       <div class="section-title">
         <h3 id="selectedBucketHeadline">Select a heatmap bucket</h3>
-        <div class="legend" id="selectedBucketLegend">Tap or click a WAN heatmap bucket to keep that interval pinned while you inspect the WAN internet, WAN resolver, and LAN gateway charts.</div>
+        <div class="legend" id="selectedBucketLegend">Tap or click a WAN heatmap bucket to review that same 15-minute interval across the evidence chips and all three charts.</div>
       </div>
       <div class="selected-bucket-grid">
         <div class="detail-chip">
@@ -411,7 +419,7 @@
           <div class="detail-line" id="selectedBucketPath">No interval selected.</div>
         </div>
         <div class="detail-chip">
-          <h4>Composite Evidence</h4>
+          <h4>Why This Interval</h4>
           <div class="value-inline" id="selectedBucketState">No selection</div>
           <div class="detail-line" id="selectedBucketSummary">Choose a heatmap bucket to pin the same interval across all three charts.</div>
         </div>
@@ -431,6 +439,7 @@
           <div class="detail-line" id="selectedBucketLanDetail">No interval selected.</div>
         </div>
       </div>
+      <div class="panel-footer">Need event-level tables or nearby context? Open <a href="./investigate.html">Historical Evidence</a>.</div>
     </div>
 
     <div class="viz-panel">
@@ -643,6 +652,7 @@
     }
 
     function updateSelectedBucketPanel(bucket, evidence){
+      const panel = document.getElementById("selectedBucketPanel");
       const headline = document.getElementById("selectedBucketHeadline");
       const legend = document.getElementById("selectedBucketLegend");
       const interval = document.getElementById("selectedBucketInterval");
@@ -660,8 +670,9 @@
       [state, internet, resolver, lan].forEach(resetValue);
 
       if (!bucket || !evidence){
+        panel.classList.remove("has-selection");
         headline.textContent = "Select a heatmap bucket";
-        legend.textContent = "Tap or click a WAN heatmap bucket to pin that interval while you inspect the WAN internet, WAN resolver, and LAN gateway charts.";
+        legend.textContent = "Tap or click a WAN heatmap bucket to review that same 15-minute interval across the evidence chips and all three charts.";
         interval.textContent = "—";
         path.textContent = "No interval selected.";
         state.textContent = "No selection";
@@ -675,10 +686,11 @@
         return;
       }
 
+      panel.classList.add("has-selection");
       const stateLabel = bucket.isBadBucket ? "Sustained bad" : (bucket.isTurbulence ? "Turbulence" : "Calm");
       const stateClass = bucket.isBadBucket ? "risk" : (bucket.isTurbulence ? "watch" : "ok");
       headline.textContent = `${stateLabel} interval selected`;
-      legend.textContent = "The selected interval stays pinned across all three charts until you tap the bucket again or click outside the heatmap.";
+      legend.textContent = "This 15-minute interval stays pinned across the evidence chips and all three charts until you tap it again or click outside the heatmap.";
       interval.textContent = `${toShortTime(bucket.t)} – ${toShortTime(bucket.t2)}`;
       path.textContent = `${pathTagLabel(bucket.phase)} • 15-minute bucket`;
       state.textContent = stateLabel;

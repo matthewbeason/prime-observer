@@ -45,6 +45,10 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn("No selection", html)
         self.assertIn("Choose a heatmap bucket to pin the same interval across all three charts.", html)
         self.assertIn("Additional Detail Cards", html)
+        self.assertIn("Selected Interval Evidence", html)
+        self.assertIn("Click a bucket to pin a 15-minute interval.", html)
+        self.assertIn("review that same 15-minute interval across the evidence chips and all three charts", html)
+        self.assertIn("Why This Interval", html)
 
     def test_investigation_view_renders_dns_context_without_api_access(self):
         html = (ROOT / "viz" / "investigate.html").read_text()
