@@ -36,6 +36,16 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertNotIn("Internet probes only", html)
         self.assertNotIn("Number(k)", html)
 
+    def test_dashboard_ux_copy_uses_clearer_local_loading_and_selection_states(self):
+        html = (ROOT / "viz" / "index.html").read_text()
+
+        self.assertIn("Loading latest telemetry", html)
+        self.assertIn("Waiting for recent telemetry", html)
+        self.assertIn("Historical Evidence", html)
+        self.assertIn("No selection", html)
+        self.assertIn("Choose a heatmap bucket to pin the same interval across all three charts.", html)
+        self.assertIn("Additional Detail Cards", html)
+
     def test_investigation_view_renders_dns_context_without_api_access(self):
         html = (ROOT / "viz" / "investigate.html").read_text()
 

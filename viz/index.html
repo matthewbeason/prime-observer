@@ -160,6 +160,7 @@
       font-size:12px;
       line-height:1.45;
       color:var(--muted-strong);
+      overflow-wrap:anywhere;
     }
     .mobile-state-card{
       background:rgba(255,255,255,.52);
@@ -295,12 +296,12 @@
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
-      <a class="badge" href="./investigate.html">Investigation Evidence</a>
+      <a class="badge" href="./investigate.html">Historical Evidence</a>
       <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.8.1</strong></span>
     </div>
   </div>
 
-  <div id="status">Loading…</div>
+  <div id="status">Loading latest telemetry…</div>
 
   <div class="viz-panel primary mobile-only">
     <div class="panel-kicker">Current Network State</div>
@@ -411,8 +412,8 @@
         </div>
         <div class="detail-chip">
           <h4>Composite Evidence</h4>
-          <div class="value-inline" id="selectedBucketState">Waiting</div>
-          <div class="detail-line" id="selectedBucketSummary">Selection preserves the existing evidence semantics and highlights the same interval across all charts.</div>
+          <div class="value-inline" id="selectedBucketState">No selection</div>
+          <div class="detail-line" id="selectedBucketSummary">Choose a heatmap bucket to pin the same interval across all three charts.</div>
         </div>
         <div class="detail-chip">
           <h4>Internet Probes</h4>
@@ -461,7 +462,7 @@
     </div>
 
     <details class="mobile-secondary-details mobile-only">
-      <summary>Secondary Summary Cards</summary>
+      <summary>Additional Detail Cards</summary>
       <div class="mobile-secondary-body">
         <div class="mobile-secondary-card">
           <h4>Telemetry</h4>
@@ -660,11 +661,11 @@
 
       if (!bucket || !evidence){
         headline.textContent = "Select a heatmap bucket";
-        legend.textContent = "Tap or click a WAN heatmap bucket to keep that interval pinned while you inspect the WAN internet, WAN resolver, and LAN gateway charts.";
+        legend.textContent = "Tap or click a WAN heatmap bucket to pin that interval while you inspect the WAN internet, WAN resolver, and LAN gateway charts.";
         interval.textContent = "—";
         path.textContent = "No interval selected.";
-        state.textContent = "Waiting";
-        summary.textContent = "Selection preserves the existing evidence semantics and highlights the same interval across all charts.";
+        state.textContent = "No selection";
+        summary.textContent = "Choose a heatmap bucket to pin the same interval across all three charts.";
         internet.textContent = "—";
         internetDetail.textContent = "No interval selected.";
         resolver.textContent = "—";
@@ -677,7 +678,7 @@
       const stateLabel = bucket.isBadBucket ? "Sustained bad" : (bucket.isTurbulence ? "Turbulence" : "Calm");
       const stateClass = bucket.isBadBucket ? "risk" : (bucket.isTurbulence ? "watch" : "ok");
       headline.textContent = `${stateLabel} interval selected`;
-      legend.textContent = "The selected interval remains pinned across all three charts until you tap the bucket again or click outside the heatmap.";
+      legend.textContent = "The selected interval stays pinned across all three charts until you tap the bucket again or click outside the heatmap.";
       interval.textContent = `${toShortTime(bucket.t)} – ${toShortTime(bucket.t2)}`;
       path.textContent = `${pathTagLabel(bucket.phase)} • 15-minute bucket`;
       state.textContent = stateLabel;
@@ -1214,7 +1215,7 @@
       const windowEl = document.getElementById("windowHours");
       if (windowEl) windowEl.textContent = WINDOW_HOURS;
       if (!data.length) {
-        status.textContent = "Waiting for data…";
+        status.textContent = "Waiting for recent telemetry…";
         return;
       }
       status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
@@ -2070,7 +2071,7 @@
         refreshDnsSecurity();
       } catch (e) {
         console.error(e);
-        document.getElementById("status").textContent = "Error loading data (check console).";
+        document.getElementById("status").textContent = "Unable to load local telemetry files. Serve viz/ over HTTP and confirm the generated artifacts are present.";
       }
     }
 
