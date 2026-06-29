@@ -54,7 +54,7 @@ class DashboardAttributionObservationStaticTest(unittest.TestCase):
         self.assertIn("loadObservationsPayload()", self.html)
         self.assertIn("loadNetworkAttributionPayload()", self.html)
         self.assertIn("resolveCurrentAttribution({", self.html)
-        self.assertIn("computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked)", self.html)
+        self.assertIn("computeFallbackAttribution: () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked)", self.html)
         self.assertIn('return await res.json();', self.html)
         self.assertIn('return null;', self.html)
 
@@ -213,6 +213,59 @@ class DashboardAttributionObservationBehaviorTest(unittest.TestCase):
         self.assertEqual(result["confidence"], "High")
         self.assertEqual(result["why"], "LAN is elevated while WAN target groups remain stable.")
         self.assertEqual(result["facts"], ["LAN/gateway also degraded."])
+
+    def test_does_not_invoke_browser_fallback_when_observation_exists(self):
+        result = self.run_js(
+            """
+            let fallbackCalls = 0;
+            const resolved = resolveCurrentAttribution({
+              observationsPayload: {
+                observations: [
+                  {
+                    type: "attribution",
+                    scope: { system: "prime_observer", subject: "network", view: "current_attribution" },
+                    state: { status: "likely_upstream", label: "Likely upstream (ISP / path)" },
+                    confidence: "high",
+                    explanation: "Observation-backed attribution.",
+                    supporting_facts: ["Observation fact"]
+                  }
+                ]
+              },
+              networkAttributionPayload: null,
+              computeFallbackAttribution: () => {
+                fallbackCalls += 1;
+                return { label: "Computed", confidence: "Low", why: "Computed fallback", facts: [] };
+              }
+            });
+            return { resolved, fallbackCalls };
+            """
+        )
+        self.assertEqual(result["resolved"]["source"], "observations")
+        self.assertEqual(result["fallbackCalls"], 0)
+
+    def test_invokes_browser_fallback_only_when_generated_sources_are_unavailable(self):
+        result = self.run_js(
+            """
+            let fallbackCalls = 0;
+            const resolved = resolveCurrentAttribution({
+              observationsPayload: null,
+              networkAttributionPayload: null,
+              computeFallbackAttribution: () => {
+                fallbackCalls += 1;
+                return {
+                  label: "Likely local (LAN / Wi-Fi)",
+                  confidence: "High",
+                  why: "Computed fallback",
+                  facts: ["Computed fact"],
+                  source: "computed"
+                };
+              }
+            });
+            return { resolved, fallbackCalls };
+            """
+        )
+        self.assertEqual(result["resolved"]["source"], "computed")
+        self.assertEqual(result["fallbackCalls"], 1)
 
 
 if __name__ == "__main__":

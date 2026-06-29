@@ -1102,7 +1102,7 @@
       });
     }
 
-    function resolveCurrentAttribution({ observationsPayload, networkAttributionPayload, computedAttribution }){
+    function resolveCurrentAttribution({ observationsPayload, networkAttributionPayload, computedAttribution, computeFallbackAttribution }){
       const observationAttribution = adaptObservationAttribution(
         selectCurrentAttributionObservation(observationsPayload)
       );
@@ -1111,7 +1111,11 @@
       const legacyAttribution = adaptLegacyCurrentAttribution(networkAttributionPayload);
       if (legacyAttribution) return legacyAttribution;
 
-      return computedAttribution;
+      if (computedAttribution) return computedAttribution;
+      if (typeof computeFallbackAttribution === "function"){
+        return computeFallbackAttribution();
+      }
+      return null;
     }
 
     async function loadNextDnsSummary(){
@@ -2039,11 +2043,10 @@
         const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
         const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
         const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
-        const computedAttribution = computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked);
         const attribution = resolveCurrentAttribution({
           observationsPayload,
           networkAttributionPayload,
-          computedAttribution
+          computeFallbackAttribution: () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked)
         });
         const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
