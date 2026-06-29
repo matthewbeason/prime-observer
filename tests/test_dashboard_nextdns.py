@@ -49,6 +49,16 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn("Click a bucket to pin a 15-minute interval.", html)
         self.assertIn("review that same 15-minute interval across the evidence chips and all three charts", html)
         self.assertIn("Why This Interval", html)
+        self.assertIn('id="clearSelectionButton"', html)
+        self.assertIn("Clear selection", html)
+        self.assertIn("Historical Evidence (Selected)", html)
+        self.assertIn("Open Historical Evidence for this interval", html)
+        self.assertIn('window.addEventListener("keydown", ev => {', html)
+        self.assertIn('ev.key === "Escape"', html)
+        self.assertIn('attr("tabindex", 0)', html)
+        self.assertIn('attr("role", "button")', html)
+        self.assertIn('attr("aria-pressed"', html)
+        self.assertIn('function buildInvestigationHref(bucket)', html)
 
     def test_investigation_view_renders_dns_context_without_api_access(self):
         html = (ROOT / "viz" / "investigate.html").read_text()

@@ -113,6 +113,33 @@
     }
     .panel-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
     .panel-footer{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.5;}
+    .panel-actions{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px;
+      margin-top:12px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+    .button-link{
+      appearance:none;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(242,236,229,.82));
+      color:var(--ink);
+      cursor:pointer;
+      font:inherit;
+      font-weight:700;
+      padding:7px 12px;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.62);
+    }
+    .button-link:hover{border-color:var(--border-strong);}
+    .button-link:focus-visible{
+      outline:2px solid rgba(45,111,145,.70);
+      outline-offset:2px;
+    }
     .heatmap-scroll{
       overflow-x:auto;
       overflow-y:hidden;
@@ -302,7 +329,7 @@
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
-      <a class="badge" href="./investigate.html">Historical Evidence</a>
+      <a class="badge" id="historicalEvidenceBadge" href="./investigate.html">Historical Evidence</a>
       <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.8.1</strong></span>
     </div>
   </div>
@@ -439,7 +466,11 @@
           <div class="detail-line" id="selectedBucketLanDetail">No interval selected.</div>
         </div>
       </div>
-      <div class="panel-footer">Need event-level tables or nearby context? Open <a href="./investigate.html">Historical Evidence</a>.</div>
+      <div class="panel-actions">
+        <span id="selectedBucketActionCopy">Need event-level tables or nearby context?</span>
+        <a id="selectedBucketInvestigationLink" href="./investigate.html">Historical Evidence</a>
+        <button type="button" class="button-link" id="clearSelectionButton" hidden>Clear selection</button>
+      </div>
     </div>
 
     <div class="viz-panel">
@@ -665,6 +696,7 @@
       const resolverDetail = document.getElementById("selectedBucketResolverDetail");
       const lan = document.getElementById("selectedBucketLan");
       const lanDetail = document.getElementById("selectedBucketLanDetail");
+      syncInvestigationLinks(bucket);
 
       const resetValue = el => { el.className = "value-inline"; };
       [state, internet, resolver, lan].forEach(resetValue);
@@ -714,6 +746,55 @@
 
     function updateMobileDnsSummary(opts = {}){
       document.getElementById("mobileDnsUnavailable").style.display = opts.unavailable ? "block" : "none";
+    }
+
+    function buildInvestigationHref(bucket){
+      const url = new URL("./investigate.html", window.location.href);
+      if (bucket?.t) url.searchParams.set("start", bucket.t.toISOString());
+      if (bucket?.t2) url.searchParams.set("end", bucket.t2.toISOString());
+      return `${url.pathname}${url.search}`;
+    }
+
+    function syncInvestigationLinks(bucket){
+      const href = buildInvestigationHref(bucket);
+      const badge = document.getElementById("historicalEvidenceBadge");
+      const panelLink = document.getElementById("selectedBucketInvestigationLink");
+      if (badge){
+        badge.href = href;
+        badge.textContent = bucket ? "Historical Evidence (Selected)" : "Historical Evidence";
+      }
+      if (panelLink){
+        panelLink.href = href;
+        panelLink.textContent = bucket ? "Open Historical Evidence for this interval" : "Historical Evidence";
+      }
+      const actionCopy = document.getElementById("selectedBucketActionCopy");
+      if (actionCopy){
+        actionCopy.textContent = bucket
+          ? "Carry this exact 15-minute interval into Historical Evidence."
+          : "Need event-level tables or nearby context?";
+      }
+      const clearButton = document.getElementById("clearSelectionButton");
+      if (clearButton) clearButton.hidden = !bucket;
+    }
+
+    function clearSelectedBucket(){
+      selectedBucketKey = null;
+      if (currentVizState){
+        currentVizState.selectedBucket = null;
+        currentVizState.selectedEvidence = null;
+      }
+      scheduleResponsiveRender();
+      tipHide();
+    }
+
+    function applySelectedBucket(bucket){
+      selectedBucketKey = (selectedBucketKey === bucket.key) ? null : bucket.key;
+      if (currentVizState) currentVizState.selectedBucket = selectedBucketKey ? bucket : null;
+      if (currentVizState) currentVizState.selectedEvidence = currentVizState.selectedBucket
+        ? selectedBucketEvidence(currentVizState.selectedBucket, currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked, currentVizState.lanSeries)
+        : null;
+      scheduleResponsiveRender();
+      tipHide();
     }
 
     function measureSvg(svgSel, options = {}){
@@ -1809,6 +1890,10 @@
         const maxRate = d3.max(values, d => Math.max(d.rate, d.rawRate)) || 1;
         const calmShade = d3.scaleLinear().domain([0, maxRate]).range([92, 82]);
         const rectW = Math.max(1, innerW / Math.max(values.length,1));
+        const bucketAriaLabel = d => {
+          const state = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
+          return `${pathTagLabel(d.phase)}, ${toShortTime(d.t)} to ${toShortTime(d.t2)}, ${state}. ${d.evidenceLabel || compositeEvidenceLabel(d)}.`;
+        };
 
         g.selectAll(`rect.bin-${phase}`)
           .data(values)
@@ -1825,17 +1910,22 @@
           })
           .attr("stroke", d => selectedBucketKey === d.key ? "rgba(31,119,180,0.95)" : "#fff")
           .attr("stroke-width", d => selectedBucketKey === d.key ? 2.5 : 0.3)
+          .attr("tabindex", 0)
+          .attr("role", "button")
+          .attr("aria-label", d => bucketAriaLabel(d))
+          .attr("aria-pressed", d => selectedBucketKey === d.key ? "true" : "false")
           .style("cursor", "pointer")
           .on("click", (ev, d) => {
             ev.stopPropagation();
-            selectedBucketKey = (selectedBucketKey === d.key) ? null : d.key;
-            if (currentVizState) currentVizState.selectedBucket = selectedBucketKey ? d : null;
-            if (currentVizState) currentVizState.selectedEvidence = currentVizState.selectedBucket
-              ? selectedBucketEvidence(currentVizState.selectedBucket, currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked, currentVizState.lanSeries)
-              : null;
-            scheduleResponsiveRender();
-            tipHide();
-        })
+            applySelectedBucket(d);
+          })
+          .on("keydown", (ev, d) => {
+            if (ev.key === "Enter" || ev.key === " "){
+              ev.preventDefault();
+              ev.stopPropagation();
+              applySelectedBucket(d);
+            }
+          })
           .on("mousemove", (ev, d) => {
             const cls = d.isBadBucket ? "Sustained bad" : (d.isTurbulence ? "Turbulence" : "Calm");
             const episodeDetails = Array.isArray(d.episodeObservations) && d.episodeObservations.length
@@ -1873,13 +1963,7 @@
 
       phases.forEach((p,i)=>drawRow(p,i));
       svg.on("click", () => {
-        if (selectedBucketKey !== null) {
-          selectedBucketKey = null;
-          if (currentVizState) currentVizState.selectedBucket = null;
-          if (currentVizState) currentVizState.selectedEvidence = null;
-          scheduleResponsiveRender();
-          tipHide();
-        }
+        if (selectedBucketKey !== null) clearSelectedBucket();
       });
 
       g.append("g").attr("transform", `translate(0,${innerH})`).call(axis).selectAll("text").attr("fill","#666");
@@ -2089,6 +2173,10 @@
 
     initEasterEggs();
     initResponsiveRendering();
+    document.getElementById("clearSelectionButton")?.addEventListener("click", () => clearSelectedBucket());
+    window.addEventListener("keydown", ev => {
+      if (ev.key === "Escape" && selectedBucketKey !== null) clearSelectedBucket();
+    });
     tick();
     setInterval(tick, REFRESH_MS);
   </script>
