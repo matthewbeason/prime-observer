@@ -59,6 +59,13 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn('attr("role", "button")', html)
         self.assertIn('attr("aria-pressed"', html)
         self.assertIn('function buildInvestigationHref(bucket)', html)
+        self.assertIn("<h1>Prime Observer</h1>", html)
+        self.assertIn('role="status" aria-live="polite" aria-atomic="true"', html)
+        self.assertIn('setAttribute("aria-label", bucket ? "Open Historical Evidence for the selected interval" : "Open Historical Evidence")', html)
+        self.assertIn('setAttribute("aria-label", bucket ? "Open Historical Evidence for this interval" : "Open Historical Evidence")', html)
+        self.assertIn('role="img" aria-labelledby="wanInternetHeading wanInternetLegend"', html)
+        self.assertIn('role="group" aria-labelledby="heatmapHeading heatmapLegend"', html)
+        self.assertIn('svg [role="button"]:focus-visible', html)
 
     def test_investigation_view_renders_dns_context_without_api_access(self):
         html = (ROOT / "viz" / "investigate.html").read_text()
@@ -67,6 +74,7 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn("data.dns_context", html)
         self.assertIn("Total queries", html)
         self.assertIn("Blocked", html)
+        self.assertIn('role="status" aria-live="polite" aria-atomic="true"', html)
         self.assertNotIn("api.nextdns.io", html)
         self.assertNotIn("X-Api-Key", html)
 

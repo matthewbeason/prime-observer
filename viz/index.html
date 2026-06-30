@@ -22,8 +22,8 @@
         linear-gradient(180deg, var(--bg-wash) 0%, var(--bg) 100%);
       color:var(--ink);
     }
-    h2,h3,h4{font-family:"SF Pro Display","Segoe UI Variable Display","Inter Tight","Inter",system-ui,sans-serif;}
-    h2{margin:0;font-size:30px;letter-spacing:-0.04em;}
+    h1,h2,h3,h4{font-family:"SF Pro Display","Segoe UI Variable Display","Inter Tight","Inter",system-ui,sans-serif;}
+    h1{margin:0;font-size:30px;letter-spacing:-0.04em;}
     h3{margin:0;font-size:18px;letter-spacing:-0.02em;}
     a{color:inherit;}
     .page-shell{max-width:1320px;margin:0 auto;}
@@ -77,8 +77,15 @@
       padding:5px 11px;border-radius:999px;white-space:nowrap;backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.62), 0 6px 18px rgba(64,54,40,.06);
     }
-    a.badge{text-decoration:none;}
+    a.badge{
+      text-decoration:none;
+      cursor:pointer;
+    }
     a.badge:hover{border-color:var(--border-strong);background:linear-gradient(180deg, rgba(255,255,255,.86), rgba(247,243,236,.92));}
+    a.badge:focus-visible{
+      outline:2px solid rgba(45,111,145,.70);
+      outline-offset:3px;
+    }
     .badge.egg-glow{box-shadow:0 0 0 2px rgba(43,111,146,.12), 0 6px 18px rgba(64,54,40,.08);}
     .badge strong{font-weight:800;}
     .hmeta{display:flex;gap:6px;align-items:center;}
@@ -116,7 +123,7 @@
     .panel-actions{
       display:flex;
       flex-wrap:wrap;
-      align-items:center;
+      align-items:flex-start;
       gap:10px;
       margin-top:12px;
       color:var(--muted);
@@ -124,6 +131,9 @@
       line-height:1.5;
     }
     .button-link{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
       appearance:none;
       border:1px solid var(--border);
       border-radius:999px;
@@ -132,13 +142,25 @@
       cursor:pointer;
       font:inherit;
       font-weight:700;
+      min-height:40px;
       padding:7px 12px;
+      text-decoration:none;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.62);
     }
     .button-link:hover{border-color:var(--border-strong);}
     .button-link:focus-visible{
       outline:2px solid rgba(45,111,145,.70);
       outline-offset:2px;
+    }
+    .button-link[hidden],
+    .button-link:disabled{
+      cursor:default;
+      opacity:.55;
+    }
+    summary:focus-visible,
+    svg [role="button"]:focus-visible{
+      outline:2px solid rgba(45,111,145,.70);
+      outline-offset:3px;
     }
     .heatmap-scroll{
       overflow-x:auto;
@@ -280,7 +302,7 @@
     .tag.tmobile{border-color:rgba(221,51,51,.35);}
     @media (max-width: 900px){
       body{padding:22px 14px 34px;}
-      h2{font-size:26px;}
+      h1{font-size:26px;}
       .value{font-size:24px;}
       .health-card{min-width:100%;}
       .viz-panel{padding:15px 14px 14px;border-radius:24px;}
@@ -296,7 +318,7 @@
     }
     @media (max-width: 767px){
       body{padding:16px 12px 28px;}
-      h2{font-size:23px;}
+      h1{font-size:23px;}
       .subtitle{font-size:13px;}
       .badges{gap:6px;}
       #status{
@@ -314,6 +336,7 @@
       .section-title{gap:10px;margin-bottom:10px;}
       .legend{font-size:11px;line-height:1.45;}
       .panel-footer{margin-top:10px;font-size:11px;}
+      .panel-actions{gap:8px;}
       .mobile-state-grid{grid-template-columns:repeat(2, minmax(0, 1fr));}
       .selected-bucket-grid{grid-template-columns:1fr;}
     }
@@ -324,7 +347,7 @@
   <div class="page-shell">
   <div class="header">
     <div class="titleblock">
-      <h2>Prime Observer</h2>
+      <h1>Prime Observer</h1>
       <div class="subtitle" id="subtitle">Network Observability &amp; Experience Engine</div>
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
@@ -334,7 +357,7 @@
     </div>
   </div>
 
-  <div id="status">Loading latest telemetry…</div>
+  <div id="status" role="status" aria-live="polite" aria-atomic="true">Loading latest telemetry…</div>
 
   <div class="viz-panel primary mobile-only">
     <div class="panel-kicker">Current Network State</div>
@@ -424,16 +447,16 @@
     <div class="viz-panel primary">
       <div class="panel-kicker">Primary Evidence View</div>
       <div class="section-title">
-        <h3>WAN “bad moments” heatmap</h3>
-        <div class="legend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts</div>
+        <h3 id="heatmapHeading">WAN “bad moments” heatmap</h3>
+        <div class="legend" id="heatmapLegend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts</div>
       </div>
       <div class="heatmap-scroll">
-        <svg id="heatmap" width="1100" height="180"></svg>
+        <svg id="heatmap" width="1100" height="180" role="group" aria-labelledby="heatmapHeading heatmapLegend"></svg>
       </div>
       <div class="panel-footer">Click a bucket to pin a 15-minute interval. That same interval is outlined in blue across all three charts below.</div>
     </div>
 
-    <div class="viz-panel primary" id="selectedBucketPanel">
+    <div class="viz-panel primary" id="selectedBucketPanel" aria-live="polite" aria-atomic="true">
       <div class="panel-kicker">Selected Interval Evidence</div>
       <div class="section-title">
         <h3 id="selectedBucketHeadline">Select a heatmap bucket</h3>
@@ -468,7 +491,7 @@
       </div>
       <div class="panel-actions">
         <span id="selectedBucketActionCopy">Need event-level tables or nearby context?</span>
-        <a id="selectedBucketInvestigationLink" href="./investigate.html">Historical Evidence</a>
+        <a id="selectedBucketInvestigationLink" class="button-link" href="./investigate.html">Historical Evidence</a>
         <button type="button" class="button-link" id="clearSelectionButton" hidden>Clear selection</button>
       </div>
     </div>
@@ -476,28 +499,28 @@
     <div class="viz-panel">
       <div class="panel-kicker">Instrument Panel</div>
       <div class="section-title">
-        <h3>WAN — Internet probes p95 latency (ms)</h3>
-        <div class="legend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval</div>
+        <h3 id="wanInternetHeading">WAN — Internet probes p95 latency (ms)</h3>
+        <div class="legend" id="wanInternetLegend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval</div>
       </div>
-      <svg id="wanInternet" width="1100" height="300"></svg>
+      <svg id="wanInternet" width="1100" height="300" role="img" aria-labelledby="wanInternetHeading wanInternetLegend"></svg>
     </div>
 
     <div class="viz-panel">
       <div class="panel-kicker">Instrument Panel</div>
       <div class="section-title">
-        <h3>WAN — Resolver probes p95 latency (ms)</h3>
-        <div class="legend">NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval</div>
+        <h3 id="wanResolverHeading">WAN — Resolver probes p95 latency (ms)</h3>
+        <div class="legend" id="wanResolverLegend">NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval</div>
       </div>
-      <svg id="wanResolver" width="1100" height="250"></svg>
+      <svg id="wanResolver" width="1100" height="250" role="img" aria-labelledby="wanResolverHeading wanResolverLegend"></svg>
     </div>
 
     <div class="viz-panel">
       <div class="panel-kicker">Local Path Instrument</div>
       <div class="section-title">
-        <h3>LAN (Gateway) — p95 latency (ms)</h3>
-        <div class="legend">Same path styling as WAN chart</div>
+        <h3 id="lanHeading">LAN (Gateway) — p95 latency (ms)</h3>
+        <div class="legend" id="lanLegend">Same path styling as WAN chart</div>
       </div>
-      <svg id="lan" width="1100" height="250"></svg>
+      <svg id="lan" width="1100" height="250" role="img" aria-labelledby="lanHeading lanLegend"></svg>
       <div class="panel-footer">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
     </div>
 
@@ -762,10 +785,12 @@
       if (badge){
         badge.href = href;
         badge.textContent = bucket ? "Historical Evidence (Selected)" : "Historical Evidence";
+        badge.setAttribute("aria-label", bucket ? "Open Historical Evidence for the selected interval" : "Open Historical Evidence");
       }
       if (panelLink){
         panelLink.href = href;
         panelLink.textContent = bucket ? "Open Historical Evidence for this interval" : "Historical Evidence";
+        panelLink.setAttribute("aria-label", bucket ? "Open Historical Evidence for this interval" : "Open Historical Evidence");
       }
       const actionCopy = document.getElementById("selectedBucketActionCopy");
       if (actionCopy){
@@ -774,7 +799,10 @@
           : "Need event-level tables or nearby context?";
       }
       const clearButton = document.getElementById("clearSelectionButton");
-      if (clearButton) clearButton.hidden = !bucket;
+      if (clearButton) {
+        clearButton.hidden = !bucket;
+        clearButton.setAttribute("aria-controls", "selectedBucketPanel");
+      }
     }
 
     function clearSelectedBucket(){
@@ -1914,6 +1942,7 @@
           .attr("role", "button")
           .attr("aria-label", d => bucketAriaLabel(d))
           .attr("aria-pressed", d => selectedBucketKey === d.key ? "true" : "false")
+          .attr("focusable", "true")
           .style("cursor", "pointer")
           .on("click", (ev, d) => {
             ev.stopPropagation();
@@ -1957,8 +1986,8 @@
         })
           .on("mouseleave", () => tipHide());
 
-        g.append("text").attr("x", 0).attr("y", y0 - 4).attr("fill", "#34302a").attr("font-size", 12).attr("font-weight", 800).text(pathLabel(phase));
-        g.append("line").attr("x1", 0).attr("x2", innerW).attr("y1", y0 + rowH - 8).attr("y2", y0 + rowH - 8).attr("stroke", "#eee");
+        g.append("text").attr("x", 0).attr("y", y0 - 4).attr("fill", "#34302a").attr("font-size", 12).attr("font-weight", 800).attr("aria-hidden", "true").text(pathLabel(phase));
+        g.append("line").attr("x1", 0).attr("x2", innerW).attr("y1", y0 + rowH - 8).attr("y2", y0 + rowH - 8).attr("stroke", "#eee").attr("aria-hidden", "true");
       }
 
       phases.forEach((p,i)=>drawRow(p,i));
@@ -1966,8 +1995,8 @@
         if (selectedBucketKey !== null) clearSelectedBucket();
       });
 
-      g.append("g").attr("transform", `translate(0,${innerH})`).call(axis).selectAll("text").attr("fill","#666");
-      g.selectAll(".domain, .tick line").attr("stroke","#ddd");
+      g.append("g").attr("transform", `translate(0,${innerH})`).attr("aria-hidden", "true").call(axis).selectAll("text").attr("fill","#666");
+      g.selectAll(".domain, .tick line").attr("stroke","#ddd").attr("aria-hidden", "true");
     }
 
     function computeBadBuckets(wanSeries){ return classifyBuckets(wanSeries).filter(d => d.isBadBucket); }
@@ -2014,6 +2043,7 @@
           .attr("width", d => Math.max(2, x(d.t2) - x(d.t)))
           .attr("height", innerH)
           .attr("fill", d => d.recent ? "rgba(214,144,0,0.12)" : "rgba(214,144,0,0.08)")
+          .attr("aria-hidden", "true")
           .attr("pointer-events", "none");
       }
 
@@ -2027,6 +2057,7 @@
           .attr("width", d => Math.max(2, x(d.t2) - x(d.t)))
           .attr("height", innerH)
           .attr("fill", d => d.recent ? "rgba(0,0,0,0.16)" : "rgba(0,0,0,0.10)")
+          .attr("aria-hidden", "true")
           .attr("pointer-events", "none");
       }
 
@@ -2039,12 +2070,13 @@
           .attr("fill", "rgba(31,119,180,0.08)")
           .attr("stroke", "rgba(31,119,180,0.95)")
           .attr("stroke-width", 2.5)
+          .attr("aria-hidden", "true")
           .attr("pointer-events", "none");
       }
 
       g.append("g").attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(8).tickFormat(d => d.toLocaleTimeString(undefined,{hour12:true,hour:"numeric"})).tickSizeOuter(0)).selectAll("text").attr("fill","var(--muted)");
       if (seriesArr.length) g.append("g").call(d3.axisLeft(y).ticks(6).tickSizeOuter(0)).selectAll("text").attr("fill","var(--muted)");
-      g.selectAll(".domain, .tick line").attr("stroke", "var(--border)");
+      g.selectAll(".domain, .tick line").attr("stroke", "var(--border)").attr("aria-hidden", "true");
 
       if (!seriesArr.length) return;
 
@@ -2056,7 +2088,7 @@
         const pts = byPhase.get(phase);
         if (!pts || !pts.length) continue;
         const stroke = (phase === "TMOBILE") ? "var(--tmobile)" : "var(--fiber)";
-        g.append("path").datum(pts).attr("fill","none").attr("stroke", stroke).attr("stroke-width", 2).attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null).attr("d", line);
+        g.append("path").datum(pts).attr("fill","none").attr("stroke", stroke).attr("stroke-width", 2).attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null).attr("d", line).attr("aria-hidden", "true");
       }
 
       if (opts.rawSpikeMarkers && opts.rawSpikeMarkers.length){
@@ -2071,6 +2103,7 @@
           .attr("stroke", "rgba(214, 144, 0, 0.95)")
           .attr("stroke-width", 3)
           .attr("stroke-linecap", "round")
+          .attr("aria-hidden", "true")
           .attr("pointer-events", "none");
 
         g.selectAll(".raw-spike-dot")
@@ -2081,20 +2114,23 @@
           .attr("cy", d => y(d.p95))
           .attr("r", 2.5)
           .attr("fill", "rgba(214, 144, 0, 0.95)")
+          .attr("aria-hidden", "true")
           .attr("pointer-events", "none");
       }
 
       const allPts = seriesArr.slice().sort((a,b)=>a.t-b.t);
       const bisect = d3.bisector(d => d.t).left;
-      const focus = g.append("g").style("display","none");
-      focus.append("line").attr("y1",0).attr("y2",innerH).attr("stroke","#bbb").attr("stroke-dasharray","3 4");
-      focus.append("circle").attr("r",3).attr("fill","#111").attr("opacity",0.8);
+      const focus = g.append("g").style("display","none").attr("aria-hidden", "true");
+      focus.append("line").attr("y1",0).attr("y2",innerH).attr("stroke","#bbb").attr("stroke-dasharray","3 4").attr("aria-hidden", "true");
+      focus.append("circle").attr("r",3).attr("fill","#111").attr("opacity",0.8).attr("aria-hidden", "true");
 
       svg.append("rect")
         .attr("transform", `translate(${pad.l},${pad.t})`)
         .attr("width", innerW)
         .attr("height", innerH)
         .attr("fill","transparent")
+        .attr("aria-hidden", "true")
+        .attr("focusable", "false")
         .on("mousemove", (ev) => {
           const [mx] = d3.pointer(ev, svg.node());
           const t = x.invert(mx - pad.l);

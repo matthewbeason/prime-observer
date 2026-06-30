@@ -25,6 +25,10 @@
     h1{font-size:30px;margin:0;letter-spacing:-0.03em;}
     h2{font-size:18px;margin:0 0 8px;letter-spacing:-0.02em;}
     h3{font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-strong);}
+    a:focus-visible{
+      outline:2px solid rgba(45,111,145,.70);
+      outline-offset:3px;
+    }
     .page-shell{max-width:1320px;margin:0 auto;}
     .header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;}
     .subtitle{font-size:14px;color:var(--muted);margin-top:6px;line-height:1.5;}
@@ -86,8 +90,8 @@
     <span class="pill">Evidence only</span>
   </div>
 
-  <div id="status" class="status">Loading investigation.json...</div>
-  <div id="deepLink" class="status"></div>
+  <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
+  <div id="deepLink" class="status" aria-live="polite" aria-atomic="true"></div>
 
   <div class="row" id="eventCards"></div>
 
