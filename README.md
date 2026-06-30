@@ -373,13 +373,13 @@ If using NextDNS, generate the optional DNS summary:
 python3 bin/fetch_nextdns_summary.py
 ```
 
-For automated NextDNS summary refresh on macOS, use the LaunchAgent documented in `docs/nextdns-launchagent.md`.
-
 If using Cloudflare Radar, generate the optional Internet Conditions summary:
 
 ```bash
 python3 bin/fetch_cloudflare_radar.py
 ```
+
+For automated macOS refresh of both optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context and Cloudflare Radar Internet Conditions without storing tokens in the plist.
 
 Generate a historical investigation:
 
@@ -524,7 +524,7 @@ Usage notes:
 - Do not commit `.env.cloudflare`.
 - Do not put Cloudflare tokens in browser code or generated artifacts.
 - If the token is missing, `bin/fetch_cloudflare_radar.py` writes an `unavailable` `viz/internet_conditions.json` artifact and exits successfully.
-- If you schedule the script with `launchd` or another runner later, the token can come from the repo `.env.cloudflare` file loaded by the script or from explicit launcher environment configuration.
+- The scheduled macOS refresh path also works with the repo-local `.env.cloudflare` file because `bin/fetch_cloudflare_radar.py` loads it directly. Do not put the token in a plist or shell profile just for Prime Observer.
 
 ## Design Principles
 

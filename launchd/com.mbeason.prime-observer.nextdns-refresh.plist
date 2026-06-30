@@ -10,7 +10,7 @@
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>./bin/fetch_nextdns_summary.py || true</string>
+    <string>./bin/refresh_optional_context.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
