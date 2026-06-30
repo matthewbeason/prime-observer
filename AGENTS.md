@@ -17,6 +17,7 @@ Primary dashboard and transforms:
 - `viz/index.html` - static dashboard, scoring, attribution, charts, DNS Security card, and visual hierarchy.
 - `bin/transform_latest.py` - converts recent historical telemetry into `viz/latest.csv` and adds pattern baseline fields.
 - `bin/fetch_nextdns_summary.py` - optional local NextDNS summary fetcher.
+- `bin/fetch_cloudflare_radar.py` - optional local Cloudflare Radar Internet Conditions summary fetcher.
 - `bin/build_investigation.py` - builds read-only historical investigation evidence JSON.
 - `viz/investigate.html` - static historical investigation evidence view.
 - `launchd/` - macOS LaunchAgent definitions.
@@ -31,6 +32,9 @@ Generated/local runtime files:
 - `viz/investigation.json` - generated historical investigation evidence for a selected window.
 - `viz/investigation_index.json` - generated catalog of local investigation evidence files.
 - `viz/nextdns_summary.json` - generated public-safe NextDNS summary consumed by the dashboard.
+- `viz/internet_conditions.json` - generated public-safe Cloudflare Radar Internet Conditions summary consumed by the dashboard.
+- `.env.cloudflare` - local Cloudflare Radar token/config; must not be committed.
+- `.env.example` - placeholder Cloudflare Radar config; safe to commit.
 - `.env.nextdns` - local NextDNS secrets/config; must not be committed.
 - `.env.nextdns.example` - placeholder example config; safe to commit.
 
@@ -49,10 +53,12 @@ Prime Observer uses a lightweight local CSV/JSON flow:
 1. Historical telemetry lives in `data/bakeoff_YYYYMMDD.csv`.
 2. `bin/transform_latest.py` reads the newest telemetry file, keeps the last 24 hours, computes WAN baseline context, and writes `viz/latest.csv`.
 3. `bin/fetch_nextdns_summary.py`, when configured, reads NextDNS analytics locally and writes `viz/nextdns_summary.json`.
-4. `bin/build_investigation.py`, when requested, reads historical telemetry and writes `viz/investigation.json`.
-5. `viz/index.html` and `viz/investigate.html` read local generated files with `cache: "no-store"` and render dashboard or investigation views.
+4. `bin/fetch_cloudflare_radar.py`, when configured, reads Cloudflare Radar outage annotations locally and writes `viz/internet_conditions.json`.
+5. `bin/build_investigation.py`, when requested, reads historical telemetry and writes `viz/investigation.json`.
+6. `viz/index.html` and `viz/investigate.html` read local generated files with `cache: "no-store"` and render dashboard or investigation views.
 
 The dashboard must continue functioning if optional features fail, including missing, stale, invalid, or unavailable NextDNS data.
+The dashboard must continue functioning if optional features fail, including missing, stale, invalid, or unavailable Cloudflare Radar data.
 
 No heavy observability stack, database, cloud service, or framework is required.
 
@@ -81,6 +87,12 @@ Optional DNS/security context:
 - NextDNS analytics summary, generated locally by `bin/fetch_nextdns_summary.py`.
 - NextDNS is optional, read-only, and summary-only.
 - Do not call raw logs endpoints for the dashboard.
+
+Optional external Internet Conditions context:
+
+- Cloudflare Radar outage summary, generated locally by `bin/fetch_cloudflare_radar.py`.
+- Cloudflare Radar is optional, read-only, and summary-only.
+- Do not call the Cloudflare API directly from the dashboard.
 
 Key metrics and context:
 
@@ -231,6 +243,19 @@ Rules:
 - DNS domain-name export defaults to enabled for local downstream briefings; `NEXTDNS_EXPORT_DOMAIN_NAMES=0` must keep aggregate domain names redacted while preserving counts and shares.
 - The dashboard must display an unavailable/stale state without affecting network telemetry.
 
+### Internet Conditions
+
+The Cloudflare Radar integration adds optional external context without changing Prime Observer semantics.
+
+Rules:
+
+- Cloudflare Radar data is fetched only by `bin/fetch_cloudflare_radar.py`, never directly by `viz/index.html`.
+- The script uses local configuration from environment variables or `.env.cloudflare`.
+- `CLOUDFLARE_API_TOKEN` is secret/config and must never be committed.
+- `.env.example` must contain placeholder values only.
+- `viz/internet_conditions.json` is generated local/private output.
+- If the token is missing or the API is unavailable, the script must write an unavailable artifact without affecting network telemetry.
+
 ---
 
 ## v0.8.0 Includes
@@ -327,9 +352,11 @@ The dashboard should continue functioning even if optional features fail.
 
 ## Security Rules
 
+- Never commit `.env.cloudflare`.
 - Never commit `.env.nextdns`.
 - Never commit API keys or local secrets.
 - Never put secrets in `viz/index.html`.
+- Never fetch the Cloudflare API directly from browser code.
 - Never fetch the NextDNS API directly from browser code.
 - Only expose public-safe generated summaries to the dashboard.
 - Keep `.gitignore` protecting local secrets and generated telemetry outputs.

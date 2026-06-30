@@ -16,6 +16,7 @@
     body{
       font-family:"SF Pro Text","Segoe UI Variable Text","Inter Tight","Inter",system-ui,-apple-system,sans-serif;
       margin:0; min-height:100vh; padding:32px 24px 48px;
+      overflow-x:hidden;
       background:
         radial-gradient(circle at top left, rgba(255,255,255,.72), transparent 34%),
         radial-gradient(circle at top right, rgba(182,201,214,.22), transparent 28%),
@@ -431,6 +432,17 @@
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
+
+    <div class="card" style="min-width:240px;" id="internetConditionsCard">
+      <h4><span>Internet Conditions</span><span class="hmeta"><span class="pill">Cloudflare Radar</span></span></h4>
+      <div class="value" style="font-size:20px;" id="internetConditionsValue">—</div>
+      <div id="internetConditionsDetails">
+        <div id="internetConditionsSummary">—</div>
+        <div><b>Updated:</b> <span id="internetConditionsUpdated">—</span></div>
+        <div><b>Source:</b> <span id="internetConditionsSource">Cloudflare Radar</span></div>
+      </div>
+      <div class="small" id="internetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
+    </div>
   </div>
 
   <div class="row dashboard-overview" style="margin-top:16px;">
@@ -557,6 +569,14 @@
           <div class="detail-line"><b>Last update:</b> <span id="mobileDnsLastUpdate">—</span></div>
           <div class="detail-line" id="mobileDnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
         </div>
+        <div class="mobile-secondary-card" id="mobileInternetConditionsCard">
+          <h4>Internet Conditions</h4>
+          <div class="detail-line"><b>Status:</b> <span id="mobileInternetConditionsValue">—</span></div>
+          <div class="detail-line" id="mobileInternetConditionsSummary">—</div>
+          <div class="detail-line"><b>Updated:</b> <span id="mobileInternetConditionsUpdated">—</span></div>
+          <div class="detail-line"><b>Source:</b> <span id="mobileInternetConditionsSource">Cloudflare Radar</span></div>
+          <div class="detail-line" id="mobileInternetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
+        </div>
         <div class="mobile-secondary-card">
           <h4>WAN Health Summary</h4>
           <div class="small" style="margin-bottom:8px;">Current WAN experience across monitored internet and resolver target groups.</div>
@@ -577,6 +597,7 @@
     const OBSERVATIONS_URL = "./observations.json";
     const NETWORK_ATTRIBUTION_URL = "./network_attribution.json";
     const NEXTDNS_URL = "./nextdns_summary.json";
+    const INTERNET_CONDITIONS_URL = "./internet_conditions.json";
     const NEXTDNS_STALE_MINUTES = 60;
     const GATEWAY_HOST = "192.168.1.1";
     const TARGET_METADATA = {
@@ -771,6 +792,10 @@
       document.getElementById("mobileDnsUnavailable").style.display = opts.unavailable ? "block" : "none";
     }
 
+    function updateMobileInternetConditionsSummary(opts = {}){
+      document.getElementById("mobileInternetConditionsUnavailable").style.display = opts.unavailable ? "block" : "none";
+    }
+
     function buildInvestigationHref(bucket){
       const url = new URL("./investigate.html", window.location.href);
       if (bucket?.t) url.searchParams.set("start", bucket.t.toISOString());
@@ -935,6 +960,18 @@
     }
     function toShortTime(d){
       return d.toLocaleString(undefined, { hour12:true, hour:"numeric", minute:"2-digit" });
+    }
+    function toRelativeAge(d){
+      if (!(d instanceof Date) || isNaN(d.getTime())) return "—";
+      const deltaMs = Math.max(0, Date.now() - d.getTime());
+      const minutes = Math.floor(deltaMs / 60000);
+      if (minutes <= 1) return "just now";
+      if (minutes < 60) return `${minutes} minutes ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours === 1) return "1 hour ago";
+      if (hours < 24) return `${hours} hours ago`;
+      const days = Math.floor(hours / 24);
+      return days === 1 ? "1 day ago" : `${days} days ago`;
     }
     function setAccent(el, accent){
       if (!el) return;
@@ -1246,6 +1283,12 @@
       return await res.json();
     }
 
+    async function loadInternetConditions(){
+      const res = await fetch(INTERNET_CONDITIONS_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error("Internet Conditions unavailable");
+      return await res.json();
+    }
+
     function setDnsUnavailable(){
       document.getElementById("dnsValue").textContent = "Unavailable";
       document.getElementById("dnsDetails").style.display = "none";
@@ -1302,6 +1345,69 @@
         updateDnsSecurityCard(data);
       } catch (e) {
         setDnsUnavailable();
+      }
+    }
+
+    function setInternetConditionsUnavailable(){
+      document.getElementById("internetConditionsValue").textContent = "Unavailable";
+      document.getElementById("internetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
+      document.getElementById("internetConditionsUpdated").textContent = "—";
+      document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
+      document.getElementById("internetConditionsDetails").style.display = "none";
+      document.getElementById("internetConditionsUnavailable").style.display = "block";
+      setAccent(document.getElementById("internetConditionsCard"), null);
+      setAccent(document.getElementById("internetConditionsValue"), null);
+      document.getElementById("mobileInternetConditionsValue").textContent = "Unavailable";
+      document.getElementById("mobileInternetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
+      document.getElementById("mobileInternetConditionsUpdated").textContent = "—";
+      document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
+      updateMobileInternetConditionsSummary({ unavailable: true });
+    }
+
+    function updateInternetConditionsCard(data){
+      if (!data || data.provider !== "cloudflare_radar" || data.status === "unavailable"){
+        setInternetConditionsUnavailable();
+        return;
+      }
+
+      const generatedAt = parseTs(data.generated_at || "");
+      const summary = String(data.summary || "").trim() || "No regional Internet disruptions detected.";
+      const status = String(data.status || "normal").trim().toLowerCase();
+      let label = "Normal";
+      let cardAccent = "accent-ok";
+      let valueAccent = "ok";
+
+      if (status === "advisory"){
+        label = "Advisory";
+        cardAccent = "accent-watch";
+        valueAccent = "watch";
+      } else if (status === "disruption"){
+        label = "Disruption";
+        cardAccent = "accent-risk";
+        valueAccent = "risk";
+      }
+
+      document.getElementById("internetConditionsValue").textContent = label;
+      document.getElementById("internetConditionsSummary").textContent = summary;
+      document.getElementById("internetConditionsUpdated").textContent = toRelativeAge(generatedAt);
+      document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
+      document.getElementById("internetConditionsDetails").style.display = "block";
+      document.getElementById("internetConditionsUnavailable").style.display = "none";
+      setAccent(document.getElementById("internetConditionsCard"), cardAccent);
+      setAccent(document.getElementById("internetConditionsValue"), valueAccent);
+      document.getElementById("mobileInternetConditionsValue").textContent = label;
+      document.getElementById("mobileInternetConditionsSummary").textContent = summary;
+      document.getElementById("mobileInternetConditionsUpdated").textContent = toRelativeAge(generatedAt);
+      document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
+      updateMobileInternetConditionsSummary({ unavailable: false });
+    }
+
+    async function refreshInternetConditions(){
+      try {
+        const data = await loadInternetConditions();
+        updateInternetConditionsCard(data);
+      } catch (e) {
+        setInternetConditionsUnavailable();
       }
     }
 
@@ -2201,6 +2307,7 @@
         updateMobileTelemetrySummary();
         scheduleResponsiveRender();
         refreshDnsSecurity();
+        refreshInternetConditions();
       } catch (e) {
         console.error(e);
         document.getElementById("status").textContent = "Unable to load local telemetry files. Serve viz/ over HTTP and confirm the generated artifacts are present.";

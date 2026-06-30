@@ -224,6 +224,21 @@ viz/nextdns_summary.json
 viz/index.html
 ```
 
+Optional Internet Conditions context:
+
+```text
+.env.cloudflare or environment variables
+        |
+        v
+bin/fetch_cloudflare_radar.py
+        |
+        v
+viz/internet_conditions.json
+        |
+        v
+viz/index.html
+```
+
 Historical investigation:
 
 ```text
@@ -272,6 +287,12 @@ Projection roles:
 
 - `viz/nextdns_summary.json`
   Generated local DNS summary. It may include aggregate top-N domain names from analytics endpoints, but must not contain API keys, raw logs, client IPs, device names, per-query records, or full profile IDs.
+
+- `bin/fetch_cloudflare_radar.py`
+  Optional local Cloudflare Radar outage-summary fetcher. Uses Python standard library only and can load `CLOUDFLARE_API_TOKEN` from the process environment or a local `.env.cloudflare` file.
+
+- `viz/internet_conditions.json`
+  Generated local Internet Conditions summary for dashboard context. If the token is missing or Cloudflare Radar is unavailable, the script writes an `unavailable` artifact instead of failing the dashboard.
 
 - `bin/build_investigation.py`
   Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. The output remains evidence-first and does not move Core Signal interpretation into Prime Observer. It also updates a generated investigation catalog by default.
@@ -353,6 +374,12 @@ python3 bin/fetch_nextdns_summary.py
 ```
 
 For automated NextDNS summary refresh on macOS, use the LaunchAgent documented in `docs/nextdns-launchagent.md`.
+
+If using Cloudflare Radar, generate the optional Internet Conditions summary:
+
+```bash
+python3 bin/fetch_cloudflare_radar.py
+```
 
 Generate a historical investigation:
 
@@ -460,6 +487,44 @@ Security rules:
 - Do not include raw DNS logs, client IPs, device names, per-query records, user attribution, or full profile IDs.
 - Use NextDNS analytics endpoints only; the dashboard must not call the NextDNS API directly.
 - The dashboard must continue working if NextDNS data is missing, stale, invalid, or unavailable.
+
+## Optional Cloudflare Radar Configuration
+
+Cloudflare Radar support is optional.
+
+Configuration can come from process environment variables or a local `.env.cloudflare` file. Process environment values win over `.env.cloudflare`.
+
+Create a token in Cloudflare:
+
+1. Log into Cloudflare.
+2. Open API Tokens.
+3. Create a Custom Token.
+4. Add permission: Account -> Radar -> Read.
+5. Scope it to the current account or the smallest scope Cloudflare allows.
+6. Optionally set a TTL and restrict client IPs if practical.
+7. Copy the token once and store it locally.
+
+Required:
+
+```bash
+CLOUDFLARE_API_TOKEN=replace-with-token
+```
+
+Optional:
+
+```bash
+CLOUDFLARE_RADAR_DATE_RANGE=7d
+CLOUDFLARE_RADAR_TIMEOUT_SECONDS=8
+CLOUDFLARE_RADAR_LIMIT=10
+```
+
+Usage notes:
+
+- `.env.example` contains placeholder values only. Copy it to `.env.cloudflare` for local use.
+- Do not commit `.env.cloudflare`.
+- Do not put Cloudflare tokens in browser code or generated artifacts.
+- If the token is missing, `bin/fetch_cloudflare_radar.py` writes an `unavailable` `viz/internet_conditions.json` artifact and exits successfully.
+- If you schedule the script with `launchd` or another runner later, the token can come from the repo `.env.cloudflare` file loaded by the script or from explicit launcher environment configuration.
 
 ## Design Principles
 

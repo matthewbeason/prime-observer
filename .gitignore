@@ -14,7 +14,7 @@ __pycache__/
 *.pyc
 
 # Secrets
-.env
+.env.cloudflare
 secrets.json
 
 # Local logs
@@ -30,6 +30,7 @@ __pycache__/
 
 # --- Prime Observer local/generated ---
 logs/
+.env.cloudflare
 viz/latest.csv
 viz/*.csv
 
@@ -42,7 +43,9 @@ __pycache__/
 .venv/
 build_hourly_baseline.py
 .env.nextdns
+.env.cloudflare
 viz/nextdns_summary.json
+viz/internet_conditions.json
 viz/network_attribution.json
 viz/observations.json
 viz/investigation.json
