@@ -438,6 +438,15 @@
       <div class="value" style="font-size:20px;" id="internetConditionsValue">—</div>
       <div id="internetConditionsDetails">
         <div id="internetConditionsSummary">—</div>
+        <div><b>Scope:</b> <span id="internetConditionsScope">—</span></div>
+        <div>
+          <b>Signals checked:</b>
+          <div id="internetConditionsSignalsChecked">—</div>
+        </div>
+        <div id="internetConditionsItemsWrap" style="display:none;">
+          <b>Details:</b>
+          <ul id="internetConditionsItems"></ul>
+        </div>
         <div><b>Updated:</b> <span id="internetConditionsUpdated">—</span></div>
         <div><b>Source:</b> <span id="internetConditionsSource">Cloudflare Radar</span></div>
       </div>
@@ -573,6 +582,15 @@
           <h4>Internet Conditions</h4>
           <div class="detail-line"><b>Status:</b> <span id="mobileInternetConditionsValue">—</span></div>
           <div class="detail-line" id="mobileInternetConditionsSummary">—</div>
+          <div class="detail-line"><b>Scope:</b> <span id="mobileInternetConditionsScope">—</span></div>
+          <div class="detail-line">
+            <b>Signals checked:</b>
+            <div id="mobileInternetConditionsSignalsChecked">—</div>
+          </div>
+          <div class="detail-line" id="mobileInternetConditionsItemsWrap" style="display:none;">
+            <b>Details:</b>
+            <ul id="mobileInternetConditionsItems"></ul>
+          </div>
           <div class="detail-line"><b>Updated:</b> <span id="mobileInternetConditionsUpdated">—</span></div>
           <div class="detail-line"><b>Source:</b> <span id="mobileInternetConditionsSource">Cloudflare Radar</span></div>
           <div class="detail-line" id="mobileInternetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
@@ -794,6 +812,36 @@
 
     function updateMobileInternetConditionsSummary(opts = {}){
       document.getElementById("mobileInternetConditionsUnavailable").style.display = opts.unavailable ? "block" : "none";
+    }
+
+    function renderSimpleList(targetId, values){
+      const target = document.getElementById(targetId);
+      target.replaceChildren();
+      if (!values.length){
+        target.textContent = "—";
+        return;
+      }
+      for (const value of values){
+        const line = document.createElement("div");
+        line.textContent = value;
+        target.appendChild(line);
+      }
+    }
+
+    function renderInternetConditionItems(wrapId, listId, items){
+      const wrap = document.getElementById(wrapId);
+      const list = document.getElementById(listId);
+      list.replaceChildren();
+      if (!items.length){
+        wrap.style.display = "none";
+        return;
+      }
+      for (const item of items){
+        const li = document.createElement("li");
+        li.textContent = String(item.description || "").trim();
+        list.appendChild(li);
+      }
+      wrap.style.display = "block";
     }
 
     function buildInvestigationHref(bucket){
@@ -1351,6 +1399,9 @@
     function setInternetConditionsUnavailable(){
       document.getElementById("internetConditionsValue").textContent = "Unavailable";
       document.getElementById("internetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
+      document.getElementById("internetConditionsScope").textContent = "—";
+      renderSimpleList("internetConditionsSignalsChecked", []);
+      renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", []);
       document.getElementById("internetConditionsUpdated").textContent = "—";
       document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
       document.getElementById("internetConditionsDetails").style.display = "none";
@@ -1359,6 +1410,9 @@
       setAccent(document.getElementById("internetConditionsValue"), null);
       document.getElementById("mobileInternetConditionsValue").textContent = "Unavailable";
       document.getElementById("mobileInternetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
+      document.getElementById("mobileInternetConditionsScope").textContent = "—";
+      renderSimpleList("mobileInternetConditionsSignalsChecked", []);
+      renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", []);
       document.getElementById("mobileInternetConditionsUpdated").textContent = "—";
       document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
       updateMobileInternetConditionsSummary({ unavailable: true });
@@ -1373,6 +1427,11 @@
       const generatedAt = parseTs(data.generated_at || "");
       const summary = String(data.summary || "").trim() || "No regional Internet disruptions detected.";
       const status = String(data.status || "normal").trim().toLowerCase();
+      const scopeLabel = String((data.scope && data.scope.label) || "").trim() || "—";
+      const signalsChecked = Array.isArray(data.signals_checked)
+        ? data.signals_checked.map(value => String(value || "").trim()).filter(Boolean)
+        : [];
+      const items = Array.isArray(data.items) ? data.items.slice(0, 3) : [];
       let label = "Normal";
       let cardAccent = "accent-ok";
       let valueAccent = "ok";
@@ -1389,6 +1448,9 @@
 
       document.getElementById("internetConditionsValue").textContent = label;
       document.getElementById("internetConditionsSummary").textContent = summary;
+      document.getElementById("internetConditionsScope").textContent = scopeLabel;
+      renderSimpleList("internetConditionsSignalsChecked", signalsChecked);
+      renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", items);
       document.getElementById("internetConditionsUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
       document.getElementById("internetConditionsDetails").style.display = "block";
@@ -1397,6 +1459,9 @@
       setAccent(document.getElementById("internetConditionsValue"), valueAccent);
       document.getElementById("mobileInternetConditionsValue").textContent = label;
       document.getElementById("mobileInternetConditionsSummary").textContent = summary;
+      document.getElementById("mobileInternetConditionsScope").textContent = scopeLabel;
+      renderSimpleList("mobileInternetConditionsSignalsChecked", signalsChecked);
+      renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", items);
       document.getElementById("mobileInternetConditionsUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
       updateMobileInternetConditionsSummary({ unavailable: false });

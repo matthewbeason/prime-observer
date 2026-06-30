@@ -45,7 +45,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
     def test_build_payload_normalizes_current_disruptions(self):
         now = self.module.parse_ts("2026-06-29T18:00:00Z")
 
-        def fake_fetch(api_token, date_range, timeout, limit):
+        def fake_outages_fetch(api_token, date_range, timeout, limit):
             self.assertEqual(api_token, "test-token")
             self.assertEqual(date_range, "7d")
             self.assertEqual(timeout, 1)
@@ -78,16 +78,50 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                 },
             }
 
-        payload = self.module.build_payload(self.config(), now=now, fetcher=fake_fetch)
+        def fake_traffic_fetch(api_token, date_range, timeout, limit):
+            self.assertEqual(api_token, "test-token")
+            self.assertEqual(date_range, "7d")
+            self.assertEqual(timeout, 1)
+            self.assertEqual(limit, 10)
+            return {
+                "success": True,
+                "result": {
+                    "trafficAnomalies": [
+                        {
+                            "startDate": "2026-06-29T16:30:00Z",
+                            "endDate": "2026-06-29T17:00:00Z",
+                            "locationDetails": {"code": "US", "name": "United States"},
+                            "status": "UNVERIFIED",
+                            "type": "LOCATION",
+                            "uuid": "traffic-1",
+                        }
+                    ]
+                },
+            }
+
+        payload = self.module.build_payload(
+            self.config(),
+            now=now,
+            outages_fetcher=fake_outages_fetch,
+            traffic_fetcher=fake_traffic_fetch,
+        )
 
         self.assertEqual(payload["provider"], "cloudflare_radar")
+        self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["status"], "disruption")
-        self.assertEqual(payload["summary"], "Regional Internet disruption reported in Arizona and 1 more location(s).")
-        self.assertEqual(len(payload["items"]), 2)
+        self.assertEqual(payload["scope"]["country"], "US")
+        self.assertIsNone(payload["scope"]["region"])
+        self.assertEqual(payload["scope"]["label"], "United States context")
+        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["summary"], "United States Internet outage reported in Arizona and 2 more location(s).")
+        self.assertEqual(len(payload["items"]), 3)
         self.assertEqual(payload["items"][0]["region"], "Arizona")
+        self.assertEqual(payload["items"][0]["signal"], "outage")
         self.assertEqual(payload["items"][0]["description"], "Regional packet loss event")
         self.assertEqual(payload["items"][1]["region"], "United States")
         self.assertEqual(payload["items"][1]["description"], "regional power issue")
+        self.assertEqual(payload["items"][2]["signal"], "traffic_anomaly")
+        self.assertEqual(payload["items"][2]["description"], "Elevated traffic anomaly detected in United States")
 
     def test_build_payload_returns_normal_when_no_recent_annotations(self):
         now = self.module.parse_ts("2026-06-29T18:00:00Z")
@@ -95,7 +129,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         payload = self.module.build_payload(
             self.config(),
             now=now,
-            fetcher=lambda *_: {
+            outages_fetcher=lambda *_: {
                 "success": True,
                 "result": {
                     "annotations": [
@@ -107,11 +141,78 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                     ]
                 },
             },
+            traffic_fetcher=lambda *_: {
+                "success": True,
+                "result": {
+                    "trafficAnomalies": [
+                        {
+                            "startDate": "2026-06-20T10:00:00Z",
+                            "endDate": "2026-06-20T11:00:00Z",
+                            "locationDetails": {"code": "US", "name": "United States"},
+                            "status": "UNVERIFIED",
+                        }
+                    ]
+                },
+            },
         )
 
         self.assertEqual(payload["status"], "normal")
-        self.assertEqual(payload["summary"], "No regional Internet disruptions detected.")
+        self.assertEqual(payload["summary"], "No United States Internet outages or traffic anomalies detected.")
+        self.assertEqual(payload["scope"]["label"], "United States context")
+        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
         self.assertEqual(payload["items"], [])
+
+    def test_build_payload_limits_items_to_first_three_meaningful_entries(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+
+        payload = self.module.build_payload(
+            self.config(),
+            now=now,
+            outages_fetcher=lambda *_: {
+                "success": True,
+                "result": {
+                    "annotations": [
+                        {
+                            "startDate": "2026-06-29T17:55:00Z",
+                            "scope": "Arizona",
+                            "description": "Arizona outage",
+                        },
+                        {
+                            "startDate": "2026-06-29T17:50:00Z",
+                            "scope": "United States",
+                            "description": "National outage",
+                        },
+                    ]
+                },
+            },
+            traffic_fetcher=lambda *_: {
+                "success": True,
+                "result": {
+                    "trafficAnomalies": [
+                        {
+                            "startDate": "2026-06-29T17:45:00Z",
+                            "locationDetails": {"code": "US", "name": "United States"},
+                            "status": "VERIFIED",
+                        },
+                        {
+                            "startDate": "2026-06-29T17:40:00Z",
+                            "locationDetails": {"code": "US", "name": "United States"},
+                            "status": "UNVERIFIED",
+                        },
+                    ]
+                },
+            },
+        )
+
+        self.assertEqual(len(payload["items"]), 3)
+        self.assertEqual(
+            [item["description"] for item in payload["items"]],
+            [
+                "Arizona outage",
+                "National outage",
+                "Verified traffic anomaly detected in United States",
+            ],
+        )
 
     def test_missing_token_writes_unavailable_summary(self):
         config = self.config()
@@ -124,6 +225,9 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["scope"]["label"], "United States context")
+        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
         self.assertEqual(payload["items"], [])
 
     def test_load_config_uses_process_environment_token(self):
@@ -205,6 +309,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
+        self.assertEqual(payload["scope"]["label"], "United States context")
 
     def test_json_generation_is_atomic_and_parseable(self):
         payload = self.module.unavailable_payload()
@@ -213,6 +318,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         written = json.loads(self.module.OUT.read_text())
         self.assertEqual(written["provider"], "cloudflare_radar")
         self.assertEqual(written["status"], "unavailable")
+        self.assertEqual(written["schema_version"], 2)
 
     def test_dotenv_example_exists_and_uses_placeholder_only(self):
         env_example = ROOT / ".env.example"

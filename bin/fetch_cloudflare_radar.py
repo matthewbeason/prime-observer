@@ -16,12 +16,21 @@ OUT = VIZ_DIR / "internet_conditions.json"
 ENV_FILE = BASE / ".env.cloudflare"
 
 API_BASE = "https://api.cloudflare.com/client/v4"
-API_PATH = "/radar/annotations/outages"
+OUTAGES_API_PATH = "/radar/annotations/outages"
+TRAFFIC_ANOMALIES_API_PATH = "/radar/traffic_anomalies"
 USER_AGENT = "PrimeObserver/0.8.2"
 DEFAULT_DATE_RANGE = "7d"
 DEFAULT_TIMEOUT_SECONDS = 8
 DEFAULT_LIMIT = 10
 RECENT_WINDOW_HOURS = 24
+MAX_ITEMS = 3
+TARGET_LOCATION = "US"
+TARGET_SCOPE = {
+    "country": "US",
+    "region": None,
+    "label": "United States context",
+}
+SIGNALS_CHECKED = ["Outages", "Traffic anomalies"]
 
 
 def utc_now():
@@ -124,11 +133,13 @@ def load_config():
 
 def base_payload(status, summary):
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": iso_utc(utc_now()),
         "provider": "cloudflare_radar",
         "status": status,
         "summary": summary,
+        "scope": dict(TARGET_SCOPE),
+        "signals_checked": list(SIGNALS_CHECKED),
         "items": [],
     }
 
@@ -142,15 +153,8 @@ def write_json_atomic(payload):
     tmp.replace(OUT)
 
 
-def fetch_outages(api_token, date_range, timeout, limit):
-    query = urllib.parse.urlencode(
-        {
-            "dateRange": date_range,
-            "format": "json",
-            "limit": limit,
-        }
-    )
-    url = f"{API_BASE}{API_PATH}?{query}"
+def fetch_json(api_token, path, query, timeout):
+    url = f"{API_BASE}{path}?{urllib.parse.urlencode(query)}"
     req = urllib.request.Request(
         url,
         headers={
@@ -164,6 +168,38 @@ def fetch_outages(api_token, date_range, timeout, limit):
         return json.loads(body)
 
 
+def fetch_outages(api_token, date_range, timeout, limit):
+    query = urllib.parse.urlencode(
+        {
+            "dateRange": date_range,
+            "format": "json",
+            "limit": limit,
+            "location": TARGET_LOCATION,
+        }
+    )
+    return fetch_json(
+        api_token,
+        OUTAGES_API_PATH,
+        urllib.parse.parse_qsl(query),
+        timeout,
+    )
+
+
+def fetch_traffic_anomalies(api_token, date_range, timeout, limit):
+    return fetch_json(
+        api_token,
+        TRAFFIC_ANOMALIES_API_PATH,
+        {
+            "dateRange": date_range,
+            "format": "json",
+            "limit": limit,
+            "location": TARGET_LOCATION,
+            "type": "LOCATION",
+        },
+        timeout,
+    )
+
+
 def response_annotations(payload):
     if not isinstance(payload, dict) or payload.get("success") is not True:
         return []
@@ -172,6 +208,16 @@ def response_annotations(payload):
         return []
     annotations = result.get("annotations")
     return annotations if isinstance(annotations, list) else []
+
+
+def response_traffic_anomalies(payload):
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return []
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return []
+    anomalies = result.get("trafficAnomalies")
+    return anomalies if isinstance(anomalies, list) else []
 
 
 def is_ongoing(annotation):
@@ -210,6 +256,30 @@ def region_label(annotation):
     return "Unknown region"
 
 
+def anomaly_region_label(anomaly):
+    location_details = anomaly.get("locationDetails")
+    if isinstance(location_details, dict):
+        label = str(location_details.get("name") or "").strip()
+        if label:
+            return label
+
+    asn_details = anomaly.get("asnDetails")
+    if isinstance(asn_details, dict):
+        location = asn_details.get("location") or asn_details.get("locations")
+        if isinstance(location, dict):
+            label = str(location.get("name") or "").strip()
+            if label:
+                return label
+
+    origin_details = anomaly.get("originDetails")
+    if isinstance(origin_details, dict):
+        label = str(origin_details.get("name") or "").strip()
+        if label:
+            return label
+
+    return "Unknown region"
+
+
 def description_label(annotation):
     description = str(annotation.get("description") or "").strip()
     if description:
@@ -227,10 +297,27 @@ def description_label(annotation):
     return event_type or "outage"
 
 
+def anomaly_description(anomaly):
+    region = anomaly_region_label(anomaly)
+    status = str(anomaly.get("status") or "").strip().lower()
+    qualifier = "Elevated"
+    if status == "verified":
+        qualifier = "Verified"
+
+    origin_details = anomaly.get("originDetails")
+    if isinstance(origin_details, dict):
+        origin_name = str(origin_details.get("name") or "").strip()
+        if origin_name:
+            return f"{qualifier} traffic anomaly linked to {origin_name}"
+
+    return f"{qualifier} traffic anomaly detected in {region}"
+
+
 def normalize_item(annotation):
     started = parse_ts(annotation.get("startDate"))
     reference = str(annotation.get("linkedUrl") or "").strip()
     return {
+        "signal": "outage",
         "region": region_label(annotation),
         "started": iso_utc(started) if started else None,
         "description": description_label(annotation),
@@ -238,27 +325,58 @@ def normalize_item(annotation):
     }
 
 
+def normalize_anomaly(anomaly):
+    started = parse_ts(anomaly.get("startDate"))
+    return {
+        "signal": "traffic_anomaly",
+        "region": anomaly_region_label(anomaly),
+        "started": iso_utc(started) if started else None,
+        "description": anomaly_description(anomaly),
+        "reference": "",
+    }
+
+
+def item_sort_key(item):
+    started = parse_ts(item.get("started"))
+    signal_priority = 1 if item.get("signal") == "outage" else 0
+    return (
+        signal_priority,
+        started or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+        item.get("region") or "",
+    )
+
+
 def summarize(status, items):
     if status == "normal":
-        return "No regional Internet disruptions detected."
+        return "No United States Internet outages or traffic anomalies detected."
 
     lead_region = items[0]["region"] if items else "an observed region"
     extra_count = max(0, len(items) - 1)
-    prefix = "Regional Internet disruption reported"
+    lead_signal = "outage" if items and items[0].get("signal") == "outage" else "traffic anomaly"
+    prefix = "United States Internet outage reported" if lead_signal == "outage" else "United States traffic anomaly detected"
     if status == "advisory":
-        prefix = "Recent regional Internet disruption reported"
+        prefix = "Recent United States Internet outage reported" if lead_signal == "outage" else "Recent United States traffic anomaly detected"
 
     if extra_count == 0:
         return f"{prefix} in {lead_region}."
     return f"{prefix} in {lead_region} and {extra_count} more location(s)."
 
 
-def build_payload(config, now=None, fetcher=None):
+def build_payload(config, now=None, outages_fetcher=None, traffic_fetcher=None):
     now = now or utc_now()
-    fetcher = fetcher or fetch_outages
+    outages_fetcher = outages_fetcher or fetch_outages
+    traffic_fetcher = traffic_fetcher or fetch_traffic_anomalies
 
     annotations = response_annotations(
-        fetcher(
+        outages_fetcher(
+            config["CLOUDFLARE_API_TOKEN"],
+            config["CLOUDFLARE_RADAR_DATE_RANGE"],
+            config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"],
+            config["CLOUDFLARE_RADAR_LIMIT"],
+        )
+    )
+    anomalies = response_traffic_anomalies(
+        traffic_fetcher(
             config["CLOUDFLARE_API_TOKEN"],
             config["CLOUDFLARE_RADAR_DATE_RANGE"],
             config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"],
@@ -266,19 +384,30 @@ def build_payload(config, now=None, fetcher=None):
         )
     )
 
-    relevant = [item for item in annotations if is_ongoing(item) or is_recent(item, now)]
-    relevant.sort(
+    relevant_annotations = [item for item in annotations if is_ongoing(item) or is_recent(item, now)]
+    relevant_annotations.sort(
         key=lambda item: (
             parse_ts(item.get("startDate")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
             region_label(item),
         ),
         reverse=True,
     )
+    relevant_anomalies = [item for item in anomalies if is_ongoing(item) or is_recent(item, now)]
+    relevant_anomalies.sort(
+        key=lambda item: (
+            parse_ts(item.get("startDate")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+            anomaly_region_label(item),
+        ),
+        reverse=True,
+    )
 
-    items = [normalize_item(item) for item in relevant]
+    items = [normalize_item(item) for item in relevant_annotations]
+    items.extend(normalize_anomaly(item) for item in relevant_anomalies)
+    items.sort(key=item_sort_key, reverse=True)
+    items = items[:MAX_ITEMS]
     status = "normal"
     if items:
-        status = "disruption" if any(is_ongoing(item) for item in relevant) else "advisory"
+        status = "disruption" if any(is_ongoing(item) for item in relevant_annotations + relevant_anomalies) else "advisory"
 
     payload = base_payload(status, summarize(status, items))
     payload["items"] = items
