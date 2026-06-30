@@ -16,7 +16,7 @@ OUT = VIZ_DIR / "nextdns_summary.json"
 ENV_FILE = BASE / ".env.nextdns"
 
 API_BASE = "https://api.nextdns.io"
-USER_AGENT = "PrimeObserver/0.8.2"
+USER_AGENT = "PrimeObserver/0.9.0"
 DEFAULT_WINDOW = "-24h"
 DEFAULT_TIMEOUT_SECONDS = 8
 DEFAULT_EXPORT_DOMAIN_NAMES = "1"

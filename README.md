@@ -8,7 +8,7 @@ It combines measured telemetry, deterministic health modeling, Observation proje
 
 It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, pattern awareness, DNS security context, and operational simplicity.
 
-Current release: **v0.8.2**
+Current release: **v0.9.0**
 
 Previous production release: **v0.7.2**
 
@@ -18,7 +18,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current v0.8.2 dashboard
+Current v0.9.0 dashboard
 
 Prime Observer Dashboard
 
