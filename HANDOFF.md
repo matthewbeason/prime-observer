@@ -31,6 +31,11 @@ Recent commits before `v0.9.0` show this sequence:
 - enriched the Internet Conditions artifact and dashboard presentation
 - prepared the `v0.9.0` release
 
+Next conceptual milestone:
+
+- define Environmental Context architecture before evaluating additional
+  providers
+
 ## Current Architecture State
 
 Current artifact flow:

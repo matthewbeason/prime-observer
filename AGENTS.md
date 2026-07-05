@@ -20,6 +20,8 @@ See:
 - `DECISIONS.md` for settled architectural decisions
 - `docs/health-model.md` for canonical health-model semantics
 - `docs/investigation-workflow.md` for historical evidence workflow
+- `docs/environmental-context.md` for Environmental Context boundaries and
+  provider guidance
 
 ## Source Of Truth
 

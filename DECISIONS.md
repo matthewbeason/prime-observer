@@ -54,6 +54,23 @@ NextDNS and Cloudflare Radar are optional, read-only, summary-only integrations.
 If configuration is missing or the provider is unavailable, the repository
 expects generated `unavailable` artifacts rather than dashboard failure.
 
+### Environmental Context Providers Contribute Evidence Only
+
+Environmental Context providers are external-context integrations that may add
+bounded evidence about systems outside the local home network.
+
+They must:
+
+- contribute evidence only
+- remain separate from Observation and Attribution logic
+- avoid prediction claims
+- use independent additive generated artifacts
+- degrade safely when unavailable
+- preserve renderer-only browser consumption from generated artifacts
+
+They must not turn provider summaries into deterministic Prime Observer
+conclusions or stronger causal claims than the evidence supports.
+
 ### Browser Code Must Consume Generated Artifacts, Not Secrets
 
 The dashboard reads generated local JSON/CSV artifacts. The repository

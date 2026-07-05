@@ -48,6 +48,22 @@ observation period.
 
 `Needs Matthew Review`
 
+Before implementing additional external providers, the next conceptual
+architecture step is to clarify Environmental Context boundaries and evaluate
+Environmental Context evidence domains and candidate providers against them.
+
+Future provider evaluation may consider domains such as:
+
+- Internet infrastructure
+- ISP infrastructure
+- Power infrastructure
+- Weather
+- Regional hazards
+- regional service disruptions
+
+APS may be considered only as a future candidate for the Power Infrastructure
+evidence domain. It is not an approved implementation commitment.
+
 ## Deferred Or Explicitly Avoided Areas
 
 The repository explicitly says not to expand into these areas yet:
