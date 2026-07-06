@@ -32,6 +32,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.module.OUT = self.viz_dir / "investigation.json"
         self.module.INDEX_OUT = self.viz_dir / "investigation_index.json"
         self.module.NEXTDNS_SUMMARY = self.viz_dir / "nextdns_summary.json"
+        self.module.INTERNET_CONDITIONS = self.viz_dir / "internet_conditions.json"
         self.module.OBSERVATIONS = self.viz_dir / "observations.json"
 
     def tearDown(self):
@@ -82,6 +83,24 @@ class BuildInvestigationTest(unittest.TestCase):
         }
         self.module.OBSERVATIONS.write_text(json.dumps(payload))
 
+    def write_internet_conditions(self, **overrides):
+        payload = {
+            "schema_version": 2,
+            "generated_at": "2026-06-08T12:08:00Z",
+            "provider": "cloudflare_radar",
+            "status": "normal",
+            "summary": "No United States Internet outages or traffic anomalies detected.",
+            "scope": {
+                "country": "US",
+                "region": None,
+                "label": "United States context",
+            },
+            "signals_checked": ["Outages", "Traffic anomalies"],
+            "items": [],
+        }
+        payload.update(overrides)
+        self.module.INTERNET_CONDITIONS.write_text(json.dumps(payload))
+
     def test_investigation_metadata_is_additive(self):
         self.write_rows([
             self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
@@ -103,6 +122,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertIn("target_groups", payload)
         self.assertIn("dns_context", payload)
         self.assertFalse(payload["dns_context"]["available"])
+        self.assertNotIn("internet_conditions_context", payload)
         self.assertTrue(payload["id"].startswith("investigation-"))
         self.assertEqual(payload["status"], "available")
         self.assertGreaterEqual(len(payload["events"]), 2)
@@ -211,6 +231,103 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(dns["summary"]["block_rate_pct"], 5.0)
         self.assertEqual(dns["summary"]["encrypted_rate_pct"], 60.0)
         self.assertIn("not a historical DNS log", dns["note"])
+
+    def test_internet_conditions_context_is_copied_from_generated_artifact(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.write_internet_conditions(
+            generated_at="2026-06-08T12:04:00Z",
+            status="disruption",
+            summary="United States Internet outage reported in Arizona and 1 more location(s).",
+            items=[
+                {
+                    "signal": "outage",
+                    "region": "Arizona",
+                    "started": "2026-06-08T11:50:00Z",
+                    "description": "Regional packet loss event",
+                    "reference": "https://radar.cloudflare.com/outage/az",
+                    "ignored_field": "ignored",
+                },
+                {
+                    "signal": "traffic_anomaly",
+                    "region": "United States",
+                    "started": "2026-06-08T11:40:00Z",
+                    "description": "Elevated traffic anomaly detected in United States",
+                    "reference": "",
+                },
+            ],
+        )
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["internet_conditions_context"]
+        self.assertTrue(context["available"])
+        self.assertEqual(context["provider"], "cloudflare_radar")
+        self.assertEqual(context["status"], "disruption")
+        self.assertEqual(context["summary"], "United States Internet outage reported in Arizona and 1 more location(s).")
+        self.assertEqual(context["scope"]["label"], "United States context")
+        self.assertEqual(context["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(context["items"][0]["region"], "Arizona")
+        self.assertNotIn("ignored_field", context["items"][0])
+        self.assertEqual(context["minutes_from_event_midpoint"], 4.0)
+        self.assertIn("not historical proof or attribution", context["note"])
+
+    def test_internet_conditions_context_preserves_unavailable_status_without_affecting_schema(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.write_internet_conditions(
+            status="unavailable",
+            summary="Unable to retrieve current Internet conditions.",
+            items=[],
+        )
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["internet_conditions_context"]
+        self.assertFalse(context["available"])
+        self.assertEqual(context["status"], "unavailable")
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["status"], "available")
+
+    def test_internet_conditions_context_is_omitted_when_artifact_missing(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        self.assertNotIn("internet_conditions_context", payload)
+
+    def test_internet_conditions_context_marks_malformed_artifact_unavailable(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.module.INTERNET_CONDITIONS.write_text("{not-json")
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["internet_conditions_context"]
+        self.assertFalse(context["available"])
+        self.assertEqual(context["reason"], "Internet Conditions artifact was unreadable")
+        self.assertEqual(context["source_file"], "viz/internet_conditions.json")
 
     def test_select_overlapping_observations_is_deterministic(self):
         observations = [

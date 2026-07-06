@@ -298,7 +298,7 @@ Projection roles:
   Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. The output remains evidence-first and does not move Core Signal interpretation into Prime Observer. It also updates a generated investigation catalog by default.
 
 - `viz/investigation.json`
-  Generated local investigation evidence for a selected window. Metadata is additive and includes target labels/classes, deterministic event navigation, factual nearby-event discovery, and overlapping Observation references from the current projection when available.
+  Generated local investigation evidence for a selected window. Metadata is additive and includes target labels/classes, deterministic event navigation, factual nearby-event discovery, overlapping Observation references from the current projection when available, and optional copied provider-specific context such as local DNS summary or Internet Conditions evidence snapshots.
 
 - `viz/investigation_index.json`
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
@@ -525,6 +525,12 @@ Usage notes:
 - Do not put Cloudflare tokens in browser code or generated artifacts.
 - If the token is missing, `bin/fetch_cloudflare_radar.py` writes an `unavailable` `viz/internet_conditions.json` artifact and exits successfully.
 - The scheduled macOS refresh path also works with the repo-local `.env.cloudflare` file because `bin/fetch_cloudflare_radar.py` loads it directly. Do not put the token in a plist or shell profile just for Prime Observer.
+
+Historical investigations may also copy a factual `internet_conditions_context`
+from this generated file when it is available. That context is the closest
+locally generated Environmental Context snapshot only; it does not provide
+historical proof, attribution, noticeability, health changes, or investigation
+scoring.
 
 ## Design Principles
 

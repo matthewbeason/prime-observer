@@ -79,6 +79,7 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 - factual nearby-event metadata
 - representative timeline samples
 - local generated NextDNS context, when available
+- local generated Internet Conditions context, when available
 - telemetry source files used
 
 ## Deep-Link Shape
@@ -127,6 +128,7 @@ The JSON uses this high-level structure:
   "event_neighborhoods": [],
   "timeline_samples": [],
   "dns_context": {},
+  "internet_conditions_context": {},
   "sources": {}
 }
 ```
@@ -186,6 +188,17 @@ redacted or aggregate top-domain rows, generation time, window, and profile ID
 suffix. It must not include threat analysis, suspicious-activity labels,
 recommendations, confidence assessments, or causal explanation.
 
+Internet Conditions context, when present, is copied only from the existing
+generated `viz/internet_conditions.json` fields. It represents the closest
+available locally generated Environmental Context snapshot, not historical
+proof of what happened during the event window.
+
+The copied Internet Conditions context is supporting evidence only. It may
+include provider, generated time, status, summary, scope, signals checked,
+bounded items, source file, and minutes from the event midpoint. It must not
+change attribution, health calculations, noticeability, or investigation
+scoring, and it must not be described as causal proof.
+
 ## Boundary Rules
 
 Allowed wording for consumers:
@@ -196,6 +209,7 @@ Allowed wording for consumers:
 - LAN samples remained below threshold.
 - Packet loss was 0% during the window.
 - DNS summary closest to the event showed X total queries.
+- Internet Conditions closest to the event reported a United States outage advisory.
 - A WAN bucket observation was near the requested investigation window.
 - Two events share the same generated investigation file.
 

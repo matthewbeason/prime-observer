@@ -15,6 +15,7 @@ VIZ_DIR = BASE / "viz"
 OUT = VIZ_DIR / "investigation.json"
 INDEX_OUT = VIZ_DIR / "investigation_index.json"
 NEXTDNS_SUMMARY = VIZ_DIR / "nextdns_summary.json"
+INTERNET_CONDITIONS = VIZ_DIR / "internet_conditions.json"
 OBSERVATIONS = VIZ_DIR / "observations.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
@@ -653,6 +654,68 @@ def dns_context(event_midpoint_utc):
     }
 
 
+def internet_conditions_context(event_midpoint_utc):
+    if not INTERNET_CONDITIONS.exists():
+        return None
+
+    source_file = str(INTERNET_CONDITIONS.relative_to(BASE))
+    try:
+        payload = json.loads(INTERNET_CONDITIONS.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {
+            "available": False,
+            "source_file": source_file,
+            "reason": "Internet Conditions artifact was unreadable",
+            "note": "Internet Conditions reflects the closest available Environmental Context snapshot generated locally; it is not historical proof or attribution.",
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "available": False,
+            "source_file": source_file,
+            "reason": "Internet Conditions artifact was invalid",
+            "note": "Internet Conditions reflects the closest available Environmental Context snapshot generated locally; it is not historical proof or attribution.",
+        }
+
+    generated_at = utc_ts(payload.get("generated_at"))
+    scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+    signals_checked = payload.get("signals_checked") if isinstance(payload.get("signals_checked"), list) else []
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    status = payload.get("status")
+
+    return {
+        "available": status not in {"unavailable", None},
+        "source_file": source_file,
+        "provider": payload.get("provider"),
+        "generated_at": payload.get("generated_at"),
+        "status": status,
+        "summary": payload.get("summary"),
+        "scope": {
+            "country": scope.get("country"),
+            "region": scope.get("region"),
+            "label": scope.get("label"),
+        },
+        "signals_checked": [str(item) for item in signals_checked[:5]],
+        "items": [
+            {
+                "signal": item.get("signal"),
+                "region": item.get("region"),
+                "started": item.get("started"),
+                "description": item.get("description"),
+                "reference": item.get("reference"),
+            }
+            for item in items[:3]
+            if isinstance(item, dict)
+        ],
+        "minutes_from_event_midpoint": (
+            rounded(abs((generated_at - event_midpoint_utc).total_seconds()) / 60.0)
+            if generated_at is not None
+            else None
+        ),
+        "note": "Internet Conditions reflects the closest available Environmental Context snapshot generated locally; it is not historical proof or attribution.",
+    }
+
+
 def build_investigation(start, end, pad_minutes):
     start_utc = utc_ts(start)
     end_utc = utc_ts(end)
@@ -714,8 +777,9 @@ def build_investigation(start, end, pad_minutes):
         observation_projection_info["schema_version"] = observation_projection.get("schema_version")
     if observation_projection.get("reason") is not None:
         observation_projection_info["reason"] = observation_projection.get("reason")
+    internet_context = internet_conditions_context(event_midpoint)
 
-    return {
+    payload = {
         "schema_version": 1,
         "generated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
         "id": event_id("investigation", start_utc, end_utc),
@@ -746,6 +810,7 @@ def build_investigation(start, end, pad_minutes):
         "sources": {
             "telemetry_files": sources,
             "nextdns_summary": str(NEXTDNS_SUMMARY.relative_to(BASE)),
+            "internet_conditions": str(INTERNET_CONDITIONS.relative_to(BASE)),
             "observations": observation_projection.get("source_file"),
         },
         "target_groups": target_group_summaries(samples),
@@ -764,9 +829,13 @@ def build_investigation(start, end, pad_minutes):
             "Prime Observer investigation output is factual telemetry evidence, not interpretation.",
             "LAN, internet probe, and resolver probe evidence are reported separately where available.",
             "DNS context uses only the existing generated public-safe NextDNS summary.",
+            "Internet Conditions context uses only the closest available generated Environmental Context snapshot and does not affect attribution, health, noticeability, or scoring.",
             "Observation references are additive snapshots from the current projection and do not replace investigation evidence.",
         ],
     }
+    if internet_context is not None:
+        payload["internet_conditions_context"] = internet_context
+    return payload
 
 
 def write_json(path, payload):

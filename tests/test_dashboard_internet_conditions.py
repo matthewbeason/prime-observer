@@ -51,7 +51,10 @@ class DashboardInternetConditionsTest(unittest.TestCase):
         html = (ROOT / "viz" / "investigate.html").read_text()
 
         self.assertNotIn("./internet_conditions.json", html)
-        self.assertNotIn("Internet Conditions", html)
+        self.assertIn('id="internetConditionsSection"', html)
+        self.assertIn("data.internet_conditions_context", html)
+        self.assertIn("section.style.display = \"none\";", html)
+        self.assertIn("section.style.display = \"block\";", html)
 
 
 if __name__ == "__main__":

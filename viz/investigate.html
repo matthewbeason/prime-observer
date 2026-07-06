@@ -65,7 +65,7 @@
       border:1px solid var(--border); box-shadow:var(--shadow-card); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
     }
     .section-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
-    #dnsContext{background:rgba(255,252,247,.54);}
+    #dnsContext,#internetConditionsContext{background:rgba(255,252,247,.54);}
     @media (max-width: 900px){
       body{padding:22px 14px 34px;}
       h1{font-size:26px;}
@@ -144,6 +144,13 @@
     <div class="section-kicker">DNS Context</div>
     <h2>DNS Context</h2>
     <div id="dnsContext" class="card"></div>
+  </div>
+
+  <div id="internetConditionsSection" class="section" style="display:none;">
+    <div class="section-kicker">Internet Conditions</div>
+    <h2>Internet Conditions</h2>
+    <div class="section-note">Closest locally generated Environmental Context snapshot only. This is supporting evidence, not historical proof, attribution, noticeability, or health scoring.</div>
+    <div id="internetConditionsContext" class="card"></div>
   </div>
 
   <div class="section">
@@ -335,6 +342,33 @@
       ` : `<div><b>Status:</b> unavailable</div><div class="small">${fmt(dns.reason || dns.note)}</div>`;
     }
 
+    function renderInternetConditions(data){
+      const section = document.getElementById("internetConditionsSection");
+      const context = data.internet_conditions_context || {};
+      if (!context.available){
+        section.style.display = "none";
+        return;
+      }
+
+      const items = (context.items || []).map(item => {
+        const started = item.started ? ` <span class="small">(${shortTime(item.started)})</span>` : "";
+        return `<div>${fmt(item.signal)} · ${fmt(item.region)}: ${fmt(item.description)}${started}</div>`;
+      }).join("");
+
+      section.style.display = "block";
+      document.getElementById("internetConditionsContext").innerHTML = `
+        <div><b>Provider:</b> ${fmt(context.provider)}</div>
+        <div><b>Status:</b> ${fmt(context.status)}</div>
+        <div><b>Generated:</b> ${shortTime(context.generated_at)} (${fmt(context.minutes_from_event_midpoint, " min from event midpoint")})</div>
+        <div><b>Summary:</b> ${fmt(context.summary)}</div>
+        <div><b>Scope:</b> ${fmt(context.scope?.label)}</div>
+        <div><b>Signals checked:</b> ${(context.signals_checked || []).join(", ") || "—"}</div>
+        <div><b>Source:</b> <span class="mono">${fmt(context.source_file)}</span></div>
+        <div class="small" style="margin-top:8px;">${fmt(context.note)}</div>
+        ${items ? `<div class="small" style="margin-top:8px;">${items}</div>` : ""}
+      `;
+    }
+
     function renderSources(data){
       const rows = (data.sources?.telemetry_files || []).map(src => `<tr><td class="mono">${src.path}</td><td>${src.rows}</td></tr>`).join("");
       document.getElementById("sourceTable").innerHTML = `
@@ -377,6 +411,7 @@
       renderNeighborhoodTable(data);
       renderSamples(data);
       renderDns(data);
+      renderInternetConditions(data);
       renderSources(data);
     }
 
