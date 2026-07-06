@@ -46,6 +46,7 @@ build_hourly_baseline.py
 .env.cloudflare
 viz/nextdns_summary.json
 viz/internet_conditions.json
+viz/aps_power_context.json
 viz/network_attribution.json
 viz/observations.json
 viz/investigation.json

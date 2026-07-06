@@ -16,6 +16,7 @@ OUT = VIZ_DIR / "investigation.json"
 INDEX_OUT = VIZ_DIR / "investigation_index.json"
 NEXTDNS_SUMMARY = VIZ_DIR / "nextdns_summary.json"
 INTERNET_CONDITIONS = VIZ_DIR / "internet_conditions.json"
+APS_POWER_CONTEXT = VIZ_DIR / "aps_power_context.json"
 OBSERVATIONS = VIZ_DIR / "observations.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
@@ -716,6 +717,68 @@ def internet_conditions_context(event_midpoint_utc):
     }
 
 
+def power_infrastructure_context(event_midpoint_utc):
+    if not APS_POWER_CONTEXT.exists():
+        return None
+
+    source_file = str(APS_POWER_CONTEXT.relative_to(BASE))
+    try:
+        payload = json.loads(APS_POWER_CONTEXT.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {
+            "available": False,
+            "source_file": source_file,
+            "reason": "Power Infrastructure artifact was unreadable",
+            "note": "Power Infrastructure context reflects the closest available generated Environmental Context snapshot locally; it is not historical proof or attribution.",
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "available": False,
+            "source_file": source_file,
+            "reason": "Power Infrastructure artifact was invalid",
+            "note": "Power Infrastructure context reflects the closest available generated Environmental Context snapshot locally; it is not historical proof or attribution.",
+        }
+
+    generated_at = utc_ts(payload.get("generated_at"))
+    scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+    signals_checked = payload.get("signals_checked") if isinstance(payload.get("signals_checked"), list) else []
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    status = payload.get("status")
+
+    return {
+        "available": status not in {"unavailable", None},
+        "source_file": source_file,
+        "provider": payload.get("provider"),
+        "generated_at": payload.get("generated_at"),
+        "status": status,
+        "summary": payload.get("summary"),
+        "scope": {
+            "state": scope.get("state"),
+            "service_area": scope.get("service_area"),
+            "label": scope.get("label"),
+        },
+        "signals_checked": [str(item) for item in signals_checked[:5]],
+        "items": [
+            {
+                "event_type": item.get("event_type"),
+                "affected_area": item.get("affected_area"),
+                "customer_count": item.get("customer_count"),
+                "estimated_restoration_time": item.get("estimated_restoration_time"),
+                "source_reference": item.get("source_reference"),
+            }
+            for item in items[:5]
+            if isinstance(item, dict)
+        ],
+        "minutes_from_event_midpoint": (
+            rounded(abs((generated_at - event_midpoint_utc).total_seconds()) / 60.0)
+            if generated_at is not None
+            else None
+        ),
+        "note": "Power Infrastructure context reflects the closest available generated Environmental Context snapshot locally; it is not historical proof or attribution.",
+    }
+
+
 def build_investigation(start, end, pad_minutes):
     start_utc = utc_ts(start)
     end_utc = utc_ts(end)
@@ -778,6 +841,7 @@ def build_investigation(start, end, pad_minutes):
     if observation_projection.get("reason") is not None:
         observation_projection_info["reason"] = observation_projection.get("reason")
     internet_context = internet_conditions_context(event_midpoint)
+    power_context = power_infrastructure_context(event_midpoint)
 
     payload = {
         "schema_version": 1,
@@ -811,6 +875,7 @@ def build_investigation(start, end, pad_minutes):
             "telemetry_files": sources,
             "nextdns_summary": str(NEXTDNS_SUMMARY.relative_to(BASE)),
             "internet_conditions": str(INTERNET_CONDITIONS.relative_to(BASE)),
+            "aps_power_context": str(APS_POWER_CONTEXT.relative_to(BASE)),
             "observations": observation_projection.get("source_file"),
         },
         "target_groups": target_group_summaries(samples),
@@ -830,11 +895,14 @@ def build_investigation(start, end, pad_minutes):
             "LAN, internet probe, and resolver probe evidence are reported separately where available.",
             "DNS context uses only the existing generated public-safe NextDNS summary.",
             "Internet Conditions context uses only the closest available generated Environmental Context snapshot and does not affect attribution, health, noticeability, or scoring.",
+            "Power Infrastructure context uses only the closest available generated provider snapshot and does not affect attribution, health, noticeability, or scoring.",
             "Observation references are additive snapshots from the current projection and do not replace investigation evidence.",
         ],
     }
     if internet_context is not None:
         payload["internet_conditions_context"] = internet_context
+    if power_context is not None:
+        payload["power_infrastructure_context"] = power_context
     return payload
 
 

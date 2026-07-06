@@ -80,6 +80,7 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 - representative timeline samples
 - local generated NextDNS context, when available
 - local generated Internet Conditions context, when available
+- local generated Power Infrastructure context, when available
 - telemetry source files used
 
 ## Deep-Link Shape
@@ -129,6 +130,7 @@ The JSON uses this high-level structure:
   "timeline_samples": [],
   "dns_context": {},
   "internet_conditions_context": {},
+  "power_infrastructure_context": {},
   "sources": {}
 }
 ```
@@ -199,6 +201,17 @@ bounded items, source file, and minutes from the event midpoint. It must not
 change attribution, health calculations, noticeability, or investigation
 scoring, and it must not be described as causal proof.
 
+Power Infrastructure context, when present, is copied only from the existing
+generated `viz/aps_power_context.json` fields. It represents the closest
+available locally generated provider snapshot, not historical proof of what
+happened during the event window.
+
+The copied Power Infrastructure context is supporting evidence only. It may
+include provider, generated time, status, summary, scope, signals checked,
+bounded outage or PSPS items, source file, and minutes from the event
+midpoint. It must not change attribution, health calculations, noticeability,
+or investigation scoring, and it must not be described as causal proof.
+
 ## Boundary Rules
 
 Allowed wording for consumers:
@@ -210,6 +223,7 @@ Allowed wording for consumers:
 - Packet loss was 0% during the window.
 - DNS summary closest to the event showed X total queries.
 - Internet Conditions closest to the event reported a United States outage advisory.
+- Power Infrastructure closest to the event reported APS outages in the service territory.
 - A WAN bucket observation was near the requested investigation window.
 - Two events share the same generated investigation file.
 

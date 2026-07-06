@@ -452,6 +452,25 @@
       </div>
       <div class="small" id="internetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
     </div>
+
+    <div class="card" style="min-width:240px; display:none;" id="powerInfrastructureCard">
+      <h4><span>Power Infrastructure</span><span class="hmeta"><span class="pill">APS</span></span></h4>
+      <div class="value" style="font-size:20px;" id="powerInfrastructureValue">—</div>
+      <div id="powerInfrastructureDetails">
+        <div id="powerInfrastructureSummary">—</div>
+        <div><b>Scope:</b> <span id="powerInfrastructureScope">—</span></div>
+        <div>
+          <b>Signals checked:</b>
+          <div id="powerInfrastructureSignalsChecked">—</div>
+        </div>
+        <div id="powerInfrastructureItemsWrap" style="display:none;">
+          <b>Details:</b>
+          <ul id="powerInfrastructureItems"></ul>
+        </div>
+        <div><b>Updated:</b> <span id="powerInfrastructureUpdated">—</span></div>
+        <div><b>Source:</b> <span id="powerInfrastructureSource">APS</span></div>
+      </div>
+    </div>
   </div>
 
   <div class="row dashboard-overview" style="margin-top:16px;">
@@ -595,6 +614,22 @@
           <div class="detail-line"><b>Source:</b> <span id="mobileInternetConditionsSource">Cloudflare Radar</span></div>
           <div class="detail-line" id="mobileInternetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
         </div>
+        <div class="mobile-secondary-card" id="mobilePowerInfrastructureCard" style="display:none;">
+          <h4>Power Infrastructure</h4>
+          <div class="detail-line"><b>Status:</b> <span id="mobilePowerInfrastructureValue">—</span></div>
+          <div class="detail-line" id="mobilePowerInfrastructureSummary">—</div>
+          <div class="detail-line"><b>Scope:</b> <span id="mobilePowerInfrastructureScope">—</span></div>
+          <div class="detail-line">
+            <b>Signals checked:</b>
+            <div id="mobilePowerInfrastructureSignalsChecked">—</div>
+          </div>
+          <div class="detail-line" id="mobilePowerInfrastructureItemsWrap" style="display:none;">
+            <b>Details:</b>
+            <ul id="mobilePowerInfrastructureItems"></ul>
+          </div>
+          <div class="detail-line"><b>Updated:</b> <span id="mobilePowerInfrastructureUpdated">—</span></div>
+          <div class="detail-line"><b>Source:</b> <span id="mobilePowerInfrastructureSource">APS</span></div>
+        </div>
         <div class="mobile-secondary-card">
           <h4>WAN Health Summary</h4>
           <div class="small" style="margin-bottom:8px;">Current WAN experience across monitored internet and resolver target groups.</div>
@@ -616,6 +651,7 @@
     const NETWORK_ATTRIBUTION_URL = "./network_attribution.json";
     const NEXTDNS_URL = "./nextdns_summary.json";
     const INTERNET_CONDITIONS_URL = "./internet_conditions.json";
+    const APS_POWER_CONTEXT_URL = "./aps_power_context.json";
     const NEXTDNS_STALE_MINUTES = 60;
     const GATEWAY_HOST = "192.168.1.1";
     const TARGET_METADATA = {
@@ -814,6 +850,11 @@
       document.getElementById("mobileInternetConditionsUnavailable").style.display = opts.unavailable ? "block" : "none";
     }
 
+    function setPowerInfrastructureHidden(){
+      document.getElementById("powerInfrastructureCard").style.display = "none";
+      document.getElementById("mobilePowerInfrastructureCard").style.display = "none";
+    }
+
     function renderSimpleList(targetId, values){
       const target = document.getElementById(targetId);
       target.replaceChildren();
@@ -839,6 +880,26 @@
       for (const item of items){
         const li = document.createElement("li");
         li.textContent = String(item.description || "").trim();
+        list.appendChild(li);
+      }
+      wrap.style.display = "block";
+    }
+
+    function renderPowerInfrastructureItems(wrapId, listId, items){
+      const wrap = document.getElementById(wrapId);
+      const list = document.getElementById(listId);
+      list.replaceChildren();
+      if (!items.length){
+        wrap.style.display = "none";
+        return;
+      }
+      for (const item of items){
+        const li = document.createElement("li");
+        const eventType = String(item.event_type || "").trim().replaceAll("_", " ");
+        const affectedArea = String(item.affected_area || "").trim();
+        const customerCount = Number.isFinite(item.customer_count) ? `${item.customer_count} customers` : "customer count unavailable";
+        const etr = item.estimated_restoration_time ? `; ETR ${toShortTime(parseTs(item.estimated_restoration_time))}` : "";
+        li.textContent = `${eventType || "power event"} · ${affectedArea || "APS service territory"} · ${customerCount}${etr}`;
         list.appendChild(li);
       }
       wrap.style.display = "block";
@@ -1337,6 +1398,12 @@
       return await res.json();
     }
 
+    async function loadApsPowerContext(){
+      const res = await fetch(APS_POWER_CONTEXT_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error("APS power context unavailable");
+      return await res.json();
+    }
+
     function setDnsUnavailable(){
       document.getElementById("dnsValue").textContent = "Unavailable";
       document.getElementById("dnsDetails").style.display = "none";
@@ -1473,6 +1540,60 @@
         updateInternetConditionsCard(data);
       } catch (e) {
         setInternetConditionsUnavailable();
+      }
+    }
+
+    function updatePowerInfrastructureCard(data){
+      if (!data || data.provider !== "aps" || data.status === "unavailable"){
+        setPowerInfrastructureHidden();
+        return;
+      }
+
+      const generatedAt = parseTs(data.generated_at || "");
+      const summary = String(data.summary || "").trim() || "No APS outages or PSPS events reported.";
+      const status = String(data.status || "normal").trim().toLowerCase();
+      const scopeLabel = String((data.scope && data.scope.label) || "").trim() || "—";
+      const signalsChecked = Array.isArray(data.signals_checked)
+        ? data.signals_checked.map(value => String(value || "").trim()).filter(Boolean)
+        : [];
+      const items = Array.isArray(data.items) ? data.items.slice(0, 5) : [];
+      let label = "Normal";
+      let cardAccent = "accent-ok";
+      let valueAccent = "ok";
+
+      if (status === "events_reported"){
+        label = "Events reported";
+        cardAccent = "accent-watch";
+        valueAccent = "watch";
+      }
+
+      document.getElementById("powerInfrastructureCard").style.display = "block";
+      document.getElementById("powerInfrastructureValue").textContent = label;
+      document.getElementById("powerInfrastructureSummary").textContent = summary;
+      document.getElementById("powerInfrastructureScope").textContent = scopeLabel;
+      renderSimpleList("powerInfrastructureSignalsChecked", signalsChecked);
+      renderPowerInfrastructureItems("powerInfrastructureItemsWrap", "powerInfrastructureItems", items);
+      document.getElementById("powerInfrastructureUpdated").textContent = toRelativeAge(generatedAt);
+      document.getElementById("powerInfrastructureSource").textContent = "APS";
+      setAccent(document.getElementById("powerInfrastructureCard"), cardAccent);
+      setAccent(document.getElementById("powerInfrastructureValue"), valueAccent);
+
+      document.getElementById("mobilePowerInfrastructureCard").style.display = "block";
+      document.getElementById("mobilePowerInfrastructureValue").textContent = label;
+      document.getElementById("mobilePowerInfrastructureSummary").textContent = summary;
+      document.getElementById("mobilePowerInfrastructureScope").textContent = scopeLabel;
+      renderSimpleList("mobilePowerInfrastructureSignalsChecked", signalsChecked);
+      renderPowerInfrastructureItems("mobilePowerInfrastructureItemsWrap", "mobilePowerInfrastructureItems", items);
+      document.getElementById("mobilePowerInfrastructureUpdated").textContent = toRelativeAge(generatedAt);
+      document.getElementById("mobilePowerInfrastructureSource").textContent = "APS";
+    }
+
+    async function refreshPowerInfrastructure(){
+      try {
+        const data = await loadApsPowerContext();
+        updatePowerInfrastructureCard(data);
+      } catch (e) {
+        setPowerInfrastructureHidden();
       }
     }
 
@@ -2373,6 +2494,7 @@
         scheduleResponsiveRender();
         refreshDnsSecurity();
         refreshInternetConditions();
+        refreshPowerInfrastructure();
       } catch (e) {
         console.error(e);
         document.getElementById("status").textContent = "Unable to load local telemetry files. Serve viz/ over HTTP and confirm the generated artifacts are present.";

@@ -241,6 +241,18 @@ viz/internet_conditions.json
 viz/index.html
 ```
 
+Optional Power Infrastructure context:
+
+```text
+bin/fetch_aps_power_context.py
+        |
+        v
+viz/aps_power_context.json
+        |
+        v
+viz/index.html
+```
+
 Historical investigation:
 
 ```text
@@ -295,6 +307,12 @@ Projection roles:
 
 - `viz/internet_conditions.json`
   Generated local Internet Conditions summary for dashboard context. If the token is missing or Cloudflare Radar is unavailable, the script writes an `unavailable` artifact instead of failing the dashboard.
+
+- `bin/fetch_aps_power_context.py`
+  Optional local APS Power Infrastructure summary fetcher. Uses public APS outage-viewer data and Python standard library only.
+
+- `viz/aps_power_context.json`
+  Generated local APS Power Infrastructure summary for dashboard context. If APS data is unavailable or malformed, the script writes an `unavailable` artifact instead of failing the dashboard.
 
 - `bin/build_investigation.py`
   Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. The output remains evidence-first and does not move Core Signal interpretation into Prime Observer. It also updates a generated investigation catalog by default.
@@ -379,6 +397,12 @@ If using Cloudflare Radar, generate the optional Internet Conditions summary:
 
 ```bash
 python3 bin/fetch_cloudflare_radar.py
+```
+
+If using APS Power Infrastructure context, generate the optional provider summary:
+
+```bash
+python3 bin/fetch_aps_power_context.py
 ```
 
 For automated macOS refresh of both optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context and Cloudflare Radar Internet Conditions without storing tokens in the plist.
@@ -533,6 +557,26 @@ from this generated file when it is available. That context is the closest
 locally generated Environmental Context snapshot only; it does not provide
 historical proof, attribution, noticeability, health changes, or investigation
 scoring.
+
+## Optional APS Power Infrastructure Context
+
+APS Power Infrastructure support is optional.
+
+The provider uses public APS outage-viewer data. No local secrets or browser
+network calls are required.
+
+Usage notes:
+
+- `bin/fetch_aps_power_context.py` writes `viz/aps_power_context.json`.
+- If the APS provider is unavailable or returns malformed data, the script
+  writes an `unavailable` artifact and exits successfully.
+- The dashboard reads only the generated local artifact and hides the Power
+  Infrastructure card when the artifact is unavailable.
+- Historical investigations may also copy a factual
+  `power_infrastructure_context` from this generated file when it is available.
+  That context is the closest locally generated provider snapshot only; it does
+  not provide historical proof, attribution, noticeability, health changes, or
+  investigation scoring.
 
 ## Design Principles
 

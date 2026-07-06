@@ -201,9 +201,11 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("selectEpisodeObservations(observationsPayload)", dashboard_html)
         self.assertIn("./nextdns_summary.json", dashboard_html)
         self.assertIn("./internet_conditions.json", dashboard_html)
+        self.assertIn("./aps_power_context.json", dashboard_html)
         self.assertIn("./investigation.json", investigation_html)
         self.assertNotIn("observations.json", investigation_html)
         self.assertNotIn("internet_conditions.json", investigation_html)
+        self.assertNotIn("aps_power_context.json", investigation_html)
 
     def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):
         base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)

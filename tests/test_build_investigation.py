@@ -33,6 +33,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.module.INDEX_OUT = self.viz_dir / "investigation_index.json"
         self.module.NEXTDNS_SUMMARY = self.viz_dir / "nextdns_summary.json"
         self.module.INTERNET_CONDITIONS = self.viz_dir / "internet_conditions.json"
+        self.module.APS_POWER_CONTEXT = self.viz_dir / "aps_power_context.json"
         self.module.OBSERVATIONS = self.viz_dir / "observations.json"
 
     def tearDown(self):
@@ -101,6 +102,24 @@ class BuildInvestigationTest(unittest.TestCase):
         payload.update(overrides)
         self.module.INTERNET_CONDITIONS.write_text(json.dumps(payload))
 
+    def write_aps_power_context(self, **overrides):
+        payload = {
+            "schema_version": 1,
+            "generated_at": "2026-06-08T12:08:00Z",
+            "provider": "aps",
+            "status": "normal",
+            "summary": "No APS outages or PSPS events reported.",
+            "scope": {
+                "state": "AZ",
+                "service_area": "APS service territory",
+                "label": "APS service territory",
+            },
+            "signals_checked": ["Current outages", "PSPS events", "Update properties"],
+            "items": [],
+        }
+        payload.update(overrides)
+        self.module.APS_POWER_CONTEXT.write_text(json.dumps(payload))
+
     def test_investigation_metadata_is_additive(self):
         self.write_rows([
             self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
@@ -123,6 +142,7 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertIn("dns_context", payload)
         self.assertFalse(payload["dns_context"]["available"])
         self.assertNotIn("internet_conditions_context", payload)
+        self.assertNotIn("power_infrastructure_context", payload)
         self.assertTrue(payload["id"].startswith("investigation-"))
         self.assertEqual(payload["status"], "available")
         self.assertGreaterEqual(len(payload["events"]), 2)
@@ -328,6 +348,104 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertFalse(context["available"])
         self.assertEqual(context["reason"], "Internet Conditions artifact was unreadable")
         self.assertEqual(context["source_file"], "viz/internet_conditions.json")
+
+    def test_power_infrastructure_context_is_copied_from_generated_artifact(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.write_aps_power_context(
+            generated_at="2026-06-08T12:04:00Z",
+            status="events_reported",
+            summary="2 APS power event(s) affecting 20 customers.",
+            items=[
+                {
+                    "event_type": "unplanned_outage",
+                    "affected_area": "Phoenix • Metro Phoenix: West Highland Ave to West Coolidge St",
+                    "customer_count": 13,
+                    "estimated_restoration_time": "2026-06-08T13:35:00Z",
+                    "source_reference": "https://outagemap.aps.com/outageviewer/",
+                    "ignored_field": "ignored",
+                },
+                {
+                    "event_type": "psps_event",
+                    "affected_area": "Northern Arizona",
+                    "customer_count": 7,
+                    "estimated_restoration_time": None,
+                    "source_reference": "https://outagemap.aps.com/outageviewer/",
+                },
+            ],
+        )
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["power_infrastructure_context"]
+        self.assertTrue(context["available"])
+        self.assertEqual(context["provider"], "aps")
+        self.assertEqual(context["status"], "events_reported")
+        self.assertEqual(context["summary"], "2 APS power event(s) affecting 20 customers.")
+        self.assertEqual(context["scope"]["label"], "APS service territory")
+        self.assertEqual(context["signals_checked"], ["Current outages", "PSPS events", "Update properties"])
+        self.assertEqual(context["items"][0]["event_type"], "unplanned_outage")
+        self.assertEqual(context["items"][0]["customer_count"], 13)
+        self.assertNotIn("ignored_field", context["items"][0])
+        self.assertEqual(context["minutes_from_event_midpoint"], 4.0)
+        self.assertIn("not historical proof or attribution", context["note"])
+
+    def test_power_infrastructure_context_preserves_unavailable_status_without_affecting_schema(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.write_aps_power_context(
+            status="unavailable",
+            summary="Unable to retrieve current APS power context.",
+            items=[],
+        )
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["power_infrastructure_context"]
+        self.assertFalse(context["available"])
+        self.assertEqual(context["status"], "unavailable")
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["status"], "available")
+
+    def test_power_infrastructure_context_is_omitted_when_artifact_missing(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        self.assertNotIn("power_infrastructure_context", payload)
+
+    def test_power_infrastructure_context_marks_malformed_artifact_unavailable(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.module.APS_POWER_CONTEXT.write_text("{not-json")
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["power_infrastructure_context"]
+        self.assertFalse(context["available"])
+        self.assertEqual(context["reason"], "Power Infrastructure artifact was unreadable")
+        self.assertEqual(context["source_file"], "viz/aps_power_context.json")
 
     def test_select_overlapping_observations_is_deterministic(self):
         observations = [
