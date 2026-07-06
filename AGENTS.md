@@ -18,6 +18,7 @@ See:
 - `HANDOFF.md` for current repository state
 - `ROADMAP.md` for milestone progression and current watch period
 - `DECISIONS.md` for settled architectural decisions
+- `docs/artifact-architecture.md` for the authoritative artifact reference
 - `docs/health-model.md` for canonical health-model semantics
 - `docs/investigation-workflow.md` for historical evidence workflow
 - `docs/environmental-context.md` for Environmental Context boundaries and

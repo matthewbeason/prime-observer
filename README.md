@@ -68,6 +68,8 @@ Prime Observer now separates four concerns:
 
 This keeps Prime Observer evidence-first while reducing browser-side reasoning drift. The dashboard is increasingly a projection consumer rather than the sole reasoning engine.
 
+See `docs/artifact-architecture.md` for the authoritative artifact reference.
+
 ## Major Concepts
 
 ### User Noticeability
