@@ -19,6 +19,7 @@ See:
 - `ROADMAP.md` for milestone progression and current watch period
 - `DECISIONS.md` for settled architectural decisions
 - `docs/artifact-architecture.md` for the authoritative artifact reference
+- `docs/validation.md` for the authoritative validation reference
 - `docs/health-model.md` for canonical health-model semantics
 - `docs/investigation-workflow.md` for historical evidence workflow
 - `docs/environmental-context.md` for Environmental Context boundaries and
@@ -101,6 +102,8 @@ For documentation-only changes:
 
 - verify the updated docs stay consistent with repository files and git history
 - run `git diff --check`
+
+See `docs/validation.md` for the canonical validation guide.
 
 For code changes, also run validation appropriate to the affected area. Use the
 existing tests and scripts in the repository as the guide.
