@@ -47,6 +47,7 @@
     .card.accent-ok{border-color:rgba(46,120,76,.20); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(46,120,76,.08);}
     .card.accent-watch{border-color:rgba(153,105,20,.22); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(153,105,20,.08);}
     .card.accent-risk{border-color:rgba(163,70,50,.22); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(163,70,50,.08);}
+    .card.accent-neutral{border-color:rgba(93,104,116,.20); box-shadow:var(--shadow-card), inset 0 0 0 1px rgba(93,104,116,.06);}
     .card.egg-glow{box-shadow:0 0 0 2px rgba(154,106,22,.10), 0 8px 24px rgba(64,54,40,.08);}
     .pill{
       display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#312c26;
@@ -57,11 +58,14 @@
     .pill.ok{color:var(--ok);border-color:rgba(46,120,76,.24);background:linear-gradient(180deg, rgba(245,251,247,.9), rgba(236,247,241,.86));}
     .pill.watch{color:var(--watch);border-color:rgba(153,105,20,.24);background:linear-gradient(180deg, rgba(252,249,240,.94), rgba(247,241,221,.88));}
     .pill.risk{color:var(--risk);border-color:rgba(163,70,50,.24);background:linear-gradient(180deg, rgba(253,246,243,.94), rgba(248,233,228,.88));}
+    .pill.info{color:var(--fiber);border-color:rgba(45,111,145,.22);background:linear-gradient(180deg, rgba(244,249,252,.94), rgba(233,242,248,.88));}
+    .pill.neutral{color:var(--muted);border-color:rgba(109,102,93,.18);background:linear-gradient(180deg, rgba(248,246,243,.94), rgba(239,234,228,.88));}
     .small{font-size:12px;color:var(--muted);line-height:1.5;}
     .value{font-size:28px;font-weight:800;margin-top:4px;letter-spacing:-0.03em;}
     .value.ok{color:var(--ok);}
     .value.watch{color:var(--watch);}
     .value.risk{color:var(--risk);}
+    .value.neutral{color:var(--muted-strong);}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
     svg{
       display:block; width:100%; max-width:100%; height:auto; background:var(--chart); border:1px solid var(--border);
@@ -92,6 +96,84 @@
     .hmeta{display:flex;gap:6px;align-items:center;}
     .subtle{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
     .metric-line{font-size:13px;line-height:1.55;color:var(--muted-strong);}
+    .metric-stack{display:grid;gap:9px;}
+    .metric-pair{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:8px 12px;
+      align-items:baseline;
+      font-size:12px;
+      line-height:1.45;
+      color:var(--muted-strong);
+    }
+    .metric-pair .label{
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-size:10px;
+    }
+    .metric-pair .metric-value{
+      font-weight:700;
+      color:var(--ink);
+      text-align:right;
+    }
+    .metric-pair .metric-value.neutral{color:var(--muted-strong);}
+    .metric-pair .metric-value.info{color:var(--fiber);}
+    .status-summary{
+      font-size:13px;
+      line-height:1.45;
+      color:var(--muted-strong);
+      font-weight:650;
+    }
+    .compact-subvalue{
+      margin-top:3px;
+      font-size:14px;
+      font-weight:700;
+      color:var(--muted-strong);
+    }
+    .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 9px;
+      border-radius:999px;
+      border:1px solid rgba(112,97,78,.16);
+      background:rgba(255,255,255,.55);
+      font-size:11px;
+      line-height:1.2;
+      color:var(--muted-strong);
+    }
+    .chip.ok{border-color:rgba(46,120,76,.22);color:var(--ok);background:rgba(236,247,241,.75);}
+    .chip.watch{border-color:rgba(153,105,20,.22);color:var(--watch);background:rgba(247,241,221,.78);}
+    .chip.risk{border-color:rgba(163,70,50,.22);color:var(--risk);background:rgba(248,233,228,.80);}
+    .chip.neutral{border-color:rgba(112,97,78,.16);color:var(--muted);background:rgba(244,240,235,.75);}
+    .chip.info{border-color:rgba(45,111,145,.18);color:var(--fiber);background:rgba(233,242,248,.76);}
+    .card-disclosure{
+      margin-top:10px;
+      border-top:1px solid rgba(112,97,78,.12);
+      padding-top:10px;
+    }
+    .card-disclosure summary{
+      cursor:pointer;
+      list-style:none;
+      font-size:11px;
+      font-weight:780;
+      color:var(--muted);
+      letter-spacing:.06em;
+      text-transform:uppercase;
+    }
+    .card-disclosure summary::-webkit-details-marker{display:none;}
+    .card-disclosure-body{display:grid;gap:8px;padding-top:10px;}
+    .card-disclosure .small{margin:0;}
+    .bullet-list{
+      margin:0;
+      padding-left:18px;
+      color:var(--muted-strong);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .bullet-list.compact li + li{margin-top:4px;}
     .health-card{min-width:420px;flex:1 1 520px;}
     .health-card h4{margin-bottom:6px;}
     .health-card .small{max-width:680px;}
@@ -362,113 +444,127 @@
 
   <div class="viz-panel primary mobile-only">
     <div class="panel-kicker">Current Network State</div>
-    <div class="mobile-state-grid">
-      <div class="mobile-state-card">
-        <h4>Connection</h4>
-        <div class="value-inline" id="mobilePhase">—</div>
+      <div class="mobile-state-grid">
+        <div class="mobile-state-card">
+        <h4><span>Connection</span> <span class="pill neutral" id="mobileConnectionBadge">—</span></h4>
+        <div class="value-inline" id="mobileConnectionP95">—</div>
         <div class="detail-line"><b>Gateway:</b> <span class="mono" id="mobileGwLabel">—</span></div>
-        <div class="detail-line"><b>Last sample:</b> <span id="mobileLastTs">—</span></div>
-      </div>
-      <div class="mobile-state-card">
+        <div class="detail-line"><b>Updated:</b> <span id="mobileLastTs">—</span></div>
+        </div>
+        <div class="mobile-state-card">
         <h4>User Noticeability</h4>
         <div class="value-inline" id="mobileNoticeScore">—</div>
-        <div class="detail-line"><b>State:</b> <span id="mobileNoticeLabel">—</span></div>
-        <div class="detail-line"><b>Forecast:</b> <span id="mobileNoticeForecast">—</span></div>
-      </div>
-      <div class="mobile-state-card span-2">
+        <div class="detail-line"><b>Level:</b> <span id="mobileNoticeLevel">—</span></div>
+        <div class="detail-line"><b>Confidence:</b> <span id="mobileNoticeConfidence">—</span></div>
+        </div>
+        <div class="mobile-state-card span-2">
         <h4>Network Attribution</h4>
         <div class="value-inline" id="mobileAttribLabel">—</div>
         <div class="detail-line"><b>Confidence:</b> <span id="mobileAttribConfidence">—</span></div>
-        <div class="detail-line" id="mobileAttribWhy">Why: —</div>
+        <div class="chip-row" id="mobileAttribEvidenceChips"></div>
+        </div>
       </div>
     </div>
-  </div>
 
   <div class="row dashboard-overview">
     <div class="card compact">
-      <h4><span>Connection</span><span class="pill" id="phasePill">—</span></h4>
-      <div class="metric-line"><b>Connection path:</b> <span id="phase">—</span></div>
-      <div class="metric-line"><b>Gateway:</b> <span class="mono" id="gwLabel">—</span></div>
-      <div class="small">Last sample: <span id="lastTs">—</span></div>
+      <h4><span>Connection</span><span class="pill neutral" id="connectionBadge">—</span></h4>
+      <div class="value" id="connectionP95">—</div>
+      <div class="compact-subvalue" id="phase">—</div>
+      <div class="metric-stack" style="margin-top:10px;">
+        <div class="metric-pair"><span class="label">Gateway</span><span class="metric-value mono" id="gwLabel">—</span></div>
+        <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="lastTs">—</span></div>
+      </div>
     </div>
 
     <div class="card" style="min-width:240px;">
-      <h4><span>Telemetry</span><span class="pill">live</span></h4>
-      <div class="small">Rows (window)</div>
-      <div class="value" id="rowsInWindow">—</div>
-      <div class="small" style="margin-top:6px;">Ingest (rows/min)</div>
-      <div class="value" style="font-size:18px;" id="ingestRate">—</div>
-      <div class="small" style="margin-top:6px;">WAN spike streak</div>
-      <div class="value" style="font-size:18px;" id="wanSpikeStreak">—</div>
-      <div class="small">Last refresh: <span id="lastRefresh">—</span></div>
+      <h4><span>Telemetry</span><span class="pill neutral" id="telemetryBadge">—</span></h4>
+      <div class="value" style="font-size:22px;" id="telemetryState">—</div>
+      <div class="status-summary" id="telemetrySummary">Waiting for recent telemetry.</div>
+      <div class="small" id="telemetryUpdated">Updated —</div>
     </div>
 
     <div class="card" style="min-width:240px;" id="noticeCard">
       <h4><span>User Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
       <div class="value" id="noticeScore">—</div>
       <div class="egg-message" id="zeroLawMessage">Zeroth Law Check: no significant harm to humans detected.</div>
-      <div><b>State:</b> <span id="noticeLabel">—</span></div>
-      <div><b>Forecast:</b> <span id="noticeForecast">—</span></div>
-      <div><b>Pattern:</b> <span id="noticePattern">—</span></div>
-      <div class="small" id="noticeWhy">Why: —</div>
-      <div class="small">Forecast uses the same sustained “bad moment” logic shown in the heatmap.</div>
+      <div class="metric-stack" style="margin-top:8px;">
+        <div class="metric-pair"><span class="label">Level</span><span class="metric-value" id="noticeLevel">—</span></div>
+        <div class="metric-pair"><span class="label">Confidence</span><span class="metric-value" id="noticeConfidence">—</span></div>
+      </div>
     </div>
 
     <div class="card" style="min-width:240px;" id="attribCard">
       <h4><span>Network Attribution</span><span class="pill">v1</span></h4>
       <div class="value" style="font-size:20px;" id="attribLabel">—</div>
-      <div><b>Confidence:</b> <span id="attribConfidence">—</span></div>
-      <div class="small" id="attribWhy">Why: —</div>
+      <div class="metric-pair" style="margin-top:8px;"><span class="label">Confidence</span><span class="metric-value" id="attribConfidence">—</span></div>
+      <div class="chip-row" id="attribEvidenceChips"></div>
     </div>
 
     <div class="card accent-ok" style="min-width:240px;" id="dnsCard">
-      <h4><span>DNS Security</span><span class="hmeta"><span class="subtle" id="dnsStale"></span><span class="pill">NextDNS</span></span></h4>
+      <h4><span>DNS Security</span><span class="hmeta"><span class="subtle" id="dnsStale"></span><span class="pill info" id="dnsProviderBadge">NextDNS</span></span></h4>
       <div class="value" style="font-size:20px;" id="dnsValue">—</div>
       <div id="dnsDetails">
-        <div><b>Queries:</b> <span id="dnsQueries">—</span></div>
-        <div><b>Encrypted:</b> <span id="dnsEncrypted">—</span></div>
-        <div><b>Top reason:</b> <span id="dnsTopReason">—</span></div>
-        <div class="small">Last update: <span id="dnsLastUpdate">—</span></div>
+        <div class="metric-stack" style="margin-top:8px;">
+          <div class="metric-pair"><span class="label">Provider</span><span class="metric-value info" id="dnsProvider">NextDNS</span></div>
+          <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="dnsLastUpdate">—</span></div>
+        </div>
+        <details class="card-disclosure">
+          <summary>Detail</summary>
+          <div class="card-disclosure-body">
+            <div class="metric-pair"><span class="label">Queries</span><span class="metric-value" id="dnsQueries">—</span></div>
+            <div class="metric-pair"><span class="label">Encrypted</span><span class="metric-value" id="dnsEncrypted">—</span></div>
+            <div class="metric-pair"><span class="label">Top queried domain</span><span class="metric-value" id="dnsTopQueried">—</span></div>
+            <div class="metric-pair"><span class="label">Top blocked domain</span><span class="metric-value" id="dnsTopBlocked">—</span></div>
+          </div>
+        </details>
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
 
     <div class="card" style="min-width:240px;" id="internetConditionsCard">
-      <h4><span>Internet Conditions</span><span class="hmeta"><span class="pill">Cloudflare Radar</span></span></h4>
+      <h4><span>Internet Conditions</span><span class="hmeta"><span class="pill info">Cloudflare Radar</span></span></h4>
       <div class="value" style="font-size:20px;" id="internetConditionsValue">—</div>
       <div id="internetConditionsDetails">
-        <div id="internetConditionsSummary">—</div>
-        <div><b>Scope:</b> <span id="internetConditionsScope">—</span></div>
-        <div>
-          <b>Signals checked:</b>
-          <div id="internetConditionsSignalsChecked">—</div>
+        <div class="status-summary" id="internetConditionsSummary">—</div>
+        <div class="metric-stack" style="margin-top:8px;">
+          <div class="metric-pair"><span class="label">Scope</span><span class="metric-value" id="internetConditionsScope">—</span></div>
+          <div class="metric-pair"><span class="label">Provider</span><span class="metric-value info" id="internetConditionsSource">Cloudflare Radar</span></div>
+          <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="internetConditionsUpdated">—</span></div>
         </div>
-        <div id="internetConditionsItemsWrap" style="display:none;">
-          <b>Details:</b>
-          <ul id="internetConditionsItems"></ul>
-        </div>
-        <div><b>Updated:</b> <span id="internetConditionsUpdated">—</span></div>
-        <div><b>Source:</b> <span id="internetConditionsSource">Cloudflare Radar</span></div>
+        <details class="card-disclosure" id="internetConditionsDisclosure">
+          <summary>Detail</summary>
+          <div class="card-disclosure-body">
+            <div id="internetConditionsItemsWrap" style="display:none;">
+              <ul class="bullet-list compact" id="internetConditionsItems"></ul>
+            </div>
+          </div>
+        </details>
       </div>
       <div class="small" id="internetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
     </div>
 
     <div class="card" style="min-width:240px; display:none;" id="powerInfrastructureCard">
-      <h4><span>Power Infrastructure</span><span class="hmeta"><span class="pill">APS</span></span></h4>
+      <h4><span>Power Infrastructure</span><span class="hmeta"><span class="pill info">APS</span></span></h4>
       <div class="value" style="font-size:20px;" id="powerInfrastructureValue">—</div>
       <div id="powerInfrastructureDetails">
-        <div id="powerInfrastructureSummary">—</div>
-        <div><b>Scope:</b> <span id="powerInfrastructureScope">—</span></div>
-        <div>
-          <b>Signals checked:</b>
-          <div id="powerInfrastructureSignalsChecked">—</div>
+        <div class="status-summary" id="powerInfrastructureSummary">—</div>
+        <div class="metric-stack" style="margin-top:8px;">
+          <div class="metric-pair"><span class="label">Customers</span><span class="metric-value" id="powerInfrastructureCustomers">—</span></div>
+          <div class="metric-pair"><span class="label">Events</span><span class="metric-value" id="powerInfrastructureEvents">—</span></div>
+          <div class="metric-pair"><span class="label">Nearest</span><span class="metric-value" id="powerInfrastructureNearest">—</span></div>
+          <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="powerInfrastructureUpdated">—</span></div>
         </div>
-        <div id="powerInfrastructureItemsWrap" style="display:none;">
-          <b>Details:</b>
-          <ul id="powerInfrastructureItems"></ul>
-        </div>
-        <div><b>Updated:</b> <span id="powerInfrastructureUpdated">—</span></div>
-        <div><b>Source:</b> <span id="powerInfrastructureSource">APS</span></div>
+        <details class="card-disclosure" id="powerInfrastructureDisclosure">
+          <summary>Detail</summary>
+          <div class="card-disclosure-body">
+            <div class="metric-pair"><span class="label">Scope</span><span class="metric-value" id="powerInfrastructureScope">—</span></div>
+            <div class="metric-pair"><span class="label">Provider</span><span class="metric-value info" id="powerInfrastructureSource">APS</span></div>
+            <div id="powerInfrastructureItemsWrap" style="display:none;">
+              <ul class="bullet-list compact" id="powerInfrastructureItems"></ul>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   </div>
@@ -569,32 +665,24 @@
       <div class="mobile-secondary-body">
         <div class="mobile-secondary-card">
           <h4>Telemetry</h4>
-          <div class="mobile-secondary-metrics">
-            <div class="mobile-secondary-metric">
-              <div class="label">Rows</div>
-              <div class="value" id="mobileRowsInWindow">—</div>
-            </div>
-            <div class="mobile-secondary-metric">
-              <div class="label">Ingest</div>
-              <div class="value" id="mobileIngestRate">—</div>
-            </div>
-            <div class="mobile-secondary-metric">
-              <div class="label">WAN Streak</div>
-              <div class="value" id="mobileWanSpikeStreak">—</div>
-            </div>
-            <div class="mobile-secondary-metric">
-              <div class="label">Refresh</div>
-              <div class="value" id="mobileLastRefresh" style="font-size:15px;">—</div>
-            </div>
-          </div>
+          <div class="detail-line"><b>Status:</b> <span id="mobileTelemetryState">—</span></div>
+          <div class="detail-line" id="mobileTelemetrySummary">Waiting for recent telemetry.</div>
+          <div class="detail-line"><b>Updated:</b> <span id="mobileTelemetryUpdated">—</span></div>
         </div>
         <div class="mobile-secondary-card">
           <h4>DNS Security</h4>
           <div class="detail-line"><b>Status:</b> <span id="mobileDnsValue">—</span></div>
-          <div class="detail-line"><b>Queries:</b> <span id="mobileDnsQueries">—</span></div>
-          <div class="detail-line"><b>Encrypted:</b> <span id="mobileDnsEncrypted">—</span></div>
-          <div class="detail-line"><b>Top reason:</b> <span id="mobileDnsTopReason">—</span></div>
+          <div class="detail-line"><b>Provider:</b> <span id="mobileDnsProvider">NextDNS</span></div>
           <div class="detail-line"><b>Last update:</b> <span id="mobileDnsLastUpdate">—</span></div>
+          <details class="card-disclosure">
+            <summary>Detail</summary>
+            <div class="card-disclosure-body">
+              <div class="detail-line"><b>Queries:</b> <span id="mobileDnsQueries">—</span></div>
+              <div class="detail-line"><b>Encrypted:</b> <span id="mobileDnsEncrypted">—</span></div>
+              <div class="detail-line"><b>Top queried domain:</b> <span id="mobileDnsTopQueried">—</span></div>
+              <div class="detail-line"><b>Top blocked domain:</b> <span id="mobileDnsTopBlocked">—</span></div>
+            </div>
+          </details>
           <div class="detail-line" id="mobileDnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
         </div>
         <div class="mobile-secondary-card" id="mobileInternetConditionsCard">
@@ -602,33 +690,36 @@
           <div class="detail-line"><b>Status:</b> <span id="mobileInternetConditionsValue">—</span></div>
           <div class="detail-line" id="mobileInternetConditionsSummary">—</div>
           <div class="detail-line"><b>Scope:</b> <span id="mobileInternetConditionsScope">—</span></div>
-          <div class="detail-line">
-            <b>Signals checked:</b>
-            <div id="mobileInternetConditionsSignalsChecked">—</div>
-          </div>
-          <div class="detail-line" id="mobileInternetConditionsItemsWrap" style="display:none;">
-            <b>Details:</b>
-            <ul id="mobileInternetConditionsItems"></ul>
-          </div>
           <div class="detail-line"><b>Updated:</b> <span id="mobileInternetConditionsUpdated">—</span></div>
           <div class="detail-line"><b>Source:</b> <span id="mobileInternetConditionsSource">Cloudflare Radar</span></div>
+          <details class="card-disclosure">
+            <summary>Detail</summary>
+            <div class="card-disclosure-body">
+              <div class="detail-line" id="mobileInternetConditionsItemsWrap" style="display:none;">
+                <ul class="bullet-list compact" id="mobileInternetConditionsItems"></ul>
+              </div>
+            </div>
+          </details>
           <div class="detail-line" id="mobileInternetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
         </div>
         <div class="mobile-secondary-card" id="mobilePowerInfrastructureCard" style="display:none;">
           <h4>Power Infrastructure</h4>
           <div class="detail-line"><b>Status:</b> <span id="mobilePowerInfrastructureValue">—</span></div>
           <div class="detail-line" id="mobilePowerInfrastructureSummary">—</div>
-          <div class="detail-line"><b>Scope:</b> <span id="mobilePowerInfrastructureScope">—</span></div>
-          <div class="detail-line">
-            <b>Signals checked:</b>
-            <div id="mobilePowerInfrastructureSignalsChecked">—</div>
-          </div>
-          <div class="detail-line" id="mobilePowerInfrastructureItemsWrap" style="display:none;">
-            <b>Details:</b>
-            <ul id="mobilePowerInfrastructureItems"></ul>
-          </div>
+          <div class="detail-line"><b>Customers:</b> <span id="mobilePowerInfrastructureCustomers">—</span></div>
+          <div class="detail-line"><b>Events:</b> <span id="mobilePowerInfrastructureEvents">—</span></div>
+          <div class="detail-line"><b>Nearest:</b> <span id="mobilePowerInfrastructureNearest">—</span></div>
           <div class="detail-line"><b>Updated:</b> <span id="mobilePowerInfrastructureUpdated">—</span></div>
           <div class="detail-line"><b>Source:</b> <span id="mobilePowerInfrastructureSource">APS</span></div>
+          <details class="card-disclosure" id="mobilePowerInfrastructureDisclosure">
+            <summary>Detail</summary>
+            <div class="card-disclosure-body">
+              <div class="detail-line"><b>Scope:</b> <span id="mobilePowerInfrastructureScope">—</span></div>
+              <div class="detail-line" id="mobilePowerInfrastructureItemsWrap" style="display:none;">
+                <ul class="bullet-list compact" id="mobilePowerInfrastructureItems"></ul>
+              </div>
+            </div>
+          </details>
         </div>
         <div class="mobile-secondary-card">
           <h4>WAN Health Summary</h4>
@@ -673,6 +764,7 @@
     let currentVizState = null;
     let resizeObserver = null;
     let renderFrame = null;
+    let powerInfrastructureDisclosureState = { lastStatus: null };
 
     function bucketKey(d){
       const phase = d.phase || "FIBER";
@@ -748,12 +840,15 @@
     function updateMobileCurrentState(){
       document.getElementById("mobileGwLabel").textContent = document.getElementById("gwLabel").textContent;
       document.getElementById("mobileLastTs").textContent = document.getElementById("lastTs").textContent;
-      document.getElementById("mobilePhase").textContent = document.getElementById("phase").textContent;
-      document.getElementById("mobileNoticeLabel").textContent = document.getElementById("noticeLabel").textContent;
-      document.getElementById("mobileNoticeForecast").textContent = document.getElementById("noticeForecast").textContent;
+      document.getElementById("mobileConnectionP95").textContent = document.getElementById("connectionP95").textContent;
+      const mobileConnectionBadge = document.getElementById("mobileConnectionBadge");
+      mobileConnectionBadge.textContent = document.getElementById("connectionBadge").textContent;
+      mobileConnectionBadge.className = document.getElementById("connectionBadge").className;
+      document.getElementById("mobileNoticeLevel").textContent = document.getElementById("noticeLevel").textContent;
+      document.getElementById("mobileNoticeConfidence").textContent = document.getElementById("noticeConfidence").textContent;
       document.getElementById("mobileAttribLabel").textContent = document.getElementById("attribLabel").textContent;
       document.getElementById("mobileAttribConfidence").textContent = document.getElementById("attribConfidence").textContent;
-      document.getElementById("mobileAttribWhy").textContent = document.getElementById("attribWhy").textContent;
+      document.getElementById("mobileAttribEvidenceChips").innerHTML = document.getElementById("attribEvidenceChips").innerHTML;
 
       const mobileNoticeScore = document.getElementById("mobileNoticeScore");
       const mobileAttribLabel = document.getElementById("mobileAttribLabel");
@@ -769,10 +864,9 @@
     }
 
     function updateMobileTelemetrySummary(){
-      document.getElementById("mobileRowsInWindow").textContent = document.getElementById("rowsInWindow").textContent;
-      document.getElementById("mobileIngestRate").textContent = document.getElementById("ingestRate").textContent;
-      document.getElementById("mobileWanSpikeStreak").textContent = document.getElementById("wanSpikeStreak").textContent;
-      document.getElementById("mobileLastRefresh").textContent = document.getElementById("lastRefresh").textContent;
+      document.getElementById("mobileTelemetryState").textContent = document.getElementById("telemetryState").textContent;
+      document.getElementById("mobileTelemetrySummary").textContent = document.getElementById("telemetrySummary").textContent;
+      document.getElementById("mobileTelemetryUpdated").textContent = document.getElementById("telemetryUpdated").textContent.replace(/^Updated\s*/, "");
     }
 
     function syncWanHealthTables(html){
@@ -853,6 +947,29 @@
     function setPowerInfrastructureHidden(){
       document.getElementById("powerInfrastructureCard").style.display = "none";
       document.getElementById("mobilePowerInfrastructureCard").style.display = "none";
+      const desktopDisclosure = document.getElementById("powerInfrastructureDisclosure");
+      const mobileDisclosure = document.getElementById("mobilePowerInfrastructureDisclosure");
+      if (desktopDisclosure) desktopDisclosure.open = false;
+      if (mobileDisclosure) mobileDisclosure.open = false;
+      powerInfrastructureDisclosureState.lastStatus = null;
+    }
+
+    function isActivePowerInfrastructureStatus(status){
+      return Boolean(status) && status !== "normal" && status !== "unavailable";
+    }
+
+    function syncPowerInfrastructureDisclosureState(status){
+      const desktopDisclosure = document.getElementById("powerInfrastructureDisclosure");
+      const mobileDisclosure = document.getElementById("mobilePowerInfrastructureDisclosure");
+      if (!desktopDisclosure && !mobileDisclosure) return;
+
+      const statusChanged = powerInfrastructureDisclosureState.lastStatus !== status;
+      if (statusChanged){
+        const shouldOpen = isActivePowerInfrastructureStatus(status);
+        if (desktopDisclosure) desktopDisclosure.open = shouldOpen;
+        if (mobileDisclosure) mobileDisclosure.open = shouldOpen;
+      }
+      powerInfrastructureDisclosureState.lastStatus = status;
     }
 
     function renderSimpleList(targetId, values){
@@ -867,6 +984,121 @@
         line.textContent = value;
         target.appendChild(line);
       }
+    }
+
+    function applyPillState(el, text, tone = "neutral"){
+      if (!el) return;
+      el.textContent = text;
+      el.className = "pill";
+      if (tone) el.classList.add(tone);
+    }
+
+    function renderChipRow(targetId, chips){
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.replaceChildren();
+      for (const chip of chips){
+        const node = document.createElement("span");
+        node.className = `chip ${chip.tone || "neutral"}`;
+        node.textContent = chip.label;
+        target.appendChild(node);
+      }
+    }
+
+    function formatDomainWithCount(domain, count, noun){
+      const cleanDomain = String(domain || "").trim();
+      const numericCount = Number.isFinite(count) ? count : parseFloatSafe(count, null);
+      if (!cleanDomain && numericCount == null) return "—";
+      if (!cleanDomain) return `${fmtInt(numericCount)} ${noun}`;
+      if (numericCount == null) return cleanDomain;
+      return `${cleanDomain} (${fmtInt(numericCount)} ${noun})`;
+    }
+
+    function deriveNoticeLevel(summary){
+      const label = String(summary?.label || "").toLowerCase();
+      if (label.includes("likely noticeable")) return "High";
+      if (label.includes("possibly noticeable")) return "Medium";
+      return summary?.score == null ? "—" : "Low";
+    }
+
+    function getPatternAwarenessSummary(wanSeries){
+      if (!wanSeries.length){
+        return { detail: "Learning...", confidence: "Low" };
+      }
+      const latest = [...wanSeries].reverse().find(d =>
+        d.baselineDeltaPct != null && Number.isFinite(d.baselineDeltaPct)
+      );
+      if (!latest){
+        return { detail: "Learning...", confidence: "Low" };
+      }
+
+      const delta = latest.baselineDeltaPct;
+      const sampleCount = latest.baselineSampleCount;
+      if (sampleCount == null || !Number.isFinite(sampleCount)){
+        return { detail: "Learning...", confidence: "Low" };
+      }
+      if (sampleCount < 4){
+        return { detail: `Learning... · Low confidence (${sampleCount} samples)`, confidence: "Low" };
+      }
+
+      let confidence = "Low";
+      if (sampleCount >= 40){
+        confidence = "High";
+      } else if (sampleCount >= 16){
+        confidence = "Medium";
+      }
+
+      let label = "";
+      if (Math.abs(delta) < 10){
+        label = "Normal for this time of day";
+      } else if (delta > 25){
+        label = `Highly elevated for this time of day (+${fmt1(delta)}%)`;
+      } else if (delta > 10){
+        label = `Slightly elevated for this time of day (+${fmt1(delta)}%)`;
+      } else {
+        label = `Better than usual for this time of day (${fmt1(delta)}%)`;
+      }
+
+      return { detail: `${label} · ${confidence} confidence (${sampleCount} samples)`, confidence };
+    }
+
+    function connectionStatusForP95(p95){
+      if (!Number.isFinite(p95)) return { label: "Unknown", tone: "neutral", accent: "accent-neutral" };
+      if (p95 >= LAN_BAD_P95) return { label: "Poor", tone: "risk", accent: "accent-risk" };
+      if (p95 >= 60) return { label: "Notice", tone: "watch", accent: "accent-watch" };
+      return { label: "Good", tone: "ok", accent: "accent-ok" };
+    }
+
+    function updateConnectionCard(data){
+      const connectionValue = document.getElementById("connectionP95");
+      const connectionBadge = document.getElementById("connectionBadge");
+      const connectionCard = connectionValue?.closest(".card");
+      const mobileConnectionValue = document.getElementById("mobileConnectionP95");
+
+      if (!data.length){
+        connectionValue.textContent = "—";
+        document.getElementById("phase").textContent = "No current path";
+        document.getElementById("lastTs").textContent = "—";
+        applyPillState(connectionBadge, "Unknown", "neutral");
+        setAccent(connectionCard, "accent-neutral");
+        setAccent(connectionValue, "neutral");
+        mobileConnectionValue.textContent = "—";
+        mobileConnectionValue.className = "value-inline";
+        return;
+      }
+
+      const lanRows = data.filter(d => isGatewayClass(d.targetClass));
+      const lastLan = lanRows.length ? lanRows[lanRows.length - 1] : data[data.length - 1];
+      const p95 = lastLan?.p95;
+      const status = connectionStatusForP95(p95);
+      connectionValue.textContent = Number.isFinite(p95) ? `${fmt1(p95)} ms` : "—";
+      document.getElementById("phase").textContent = pathTagLabel(lastLan?.phase);
+      document.getElementById("lastTs").textContent = lastLan?.t ? toRelativeAge(lastLan.t) : "—";
+      applyPillState(connectionBadge, status.label, status.tone);
+      setAccent(connectionCard, status.accent);
+      setAccent(connectionValue, status.tone);
+      mobileConnectionValue.className = "value-inline";
+      if (status.tone && status.tone !== "neutral") mobileConnectionValue.classList.add(status.tone);
     }
 
     function renderInternetConditionItems(wrapId, listId, items){
@@ -1084,7 +1316,7 @@
     }
     function setAccent(el, accent){
       if (!el) return;
-      el.classList.remove("accent-ok","accent-watch","accent-risk","ok","watch","risk");
+      el.classList.remove("accent-ok","accent-watch","accent-risk","accent-neutral","ok","watch","risk","neutral","info");
       if (accent) el.classList.add(accent);
     }
 
@@ -1409,12 +1641,14 @@
       document.getElementById("dnsDetails").style.display = "none";
       document.getElementById("dnsUnavailable").style.display = "block";
       document.getElementById("dnsStale").textContent = "";
-      setAccent(document.getElementById("dnsCard"), null);
-      setAccent(document.getElementById("dnsValue"), null);
+      setAccent(document.getElementById("dnsCard"), "accent-neutral");
+      setAccent(document.getElementById("dnsValue"), "neutral");
       document.getElementById("mobileDnsValue").textContent = "Unavailable";
+      document.getElementById("mobileDnsProvider").textContent = "NextDNS";
       document.getElementById("mobileDnsQueries").textContent = "—";
       document.getElementById("mobileDnsEncrypted").textContent = "—";
-      document.getElementById("mobileDnsTopReason").textContent = "—";
+      document.getElementById("mobileDnsTopQueried").textContent = "—";
+      document.getElementById("mobileDnsTopBlocked").textContent = "—";
       document.getElementById("mobileDnsLastUpdate").textContent = "—";
       updateMobileDnsSummary({ unavailable: true });
     }
@@ -1429,28 +1663,31 @@
       const generatedAt = parseTs(data.generated_at || "");
       const ageMs = generatedAt ? (Date.now() - generatedAt.getTime()) : null;
       const isStale = ageMs == null || ageMs > NEXTDNS_STALE_MINUTES * 60000;
-      const topReason = Array.isArray(summary.top_reasons) && summary.top_reasons.length
-        ? (summary.top_reasons[0].name || "—")
-        : "—";
       const blockRate = parseFloatSafe(summary.block_rate_pct, null);
       const encryptedRate = parseFloatSafe(summary.encrypted_rate_pct, null);
       const totalQueries = parseFloatSafe(summary.total_queries, null);
+      const topQueried = formatDomainWithCount(summary.top_queried_domain, summary.top_queried_domain_count, "queries");
+      const topBlocked = formatDomainWithCount(summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
 
       document.getElementById("dnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
       document.getElementById("dnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("dnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
-      document.getElementById("dnsTopReason").textContent = topReason;
-      document.getElementById("dnsLastUpdate").textContent = generatedAt ? toShortTime(generatedAt) : "—";
+      document.getElementById("dnsTopQueried").textContent = topQueried;
+      document.getElementById("dnsTopBlocked").textContent = topBlocked;
+      document.getElementById("dnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
+      document.getElementById("dnsProvider").textContent = "NextDNS";
       document.getElementById("dnsDetails").style.display = "block";
       document.getElementById("dnsUnavailable").style.display = "none";
       document.getElementById("dnsStale").textContent = isStale ? "Stale" : "";
       setAccent(document.getElementById("dnsCard"), "accent-ok");
       setAccent(document.getElementById("dnsValue"), "ok");
       document.getElementById("mobileDnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
+      document.getElementById("mobileDnsProvider").textContent = "NextDNS";
       document.getElementById("mobileDnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("mobileDnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
-      document.getElementById("mobileDnsTopReason").textContent = topReason;
-      document.getElementById("mobileDnsLastUpdate").textContent = generatedAt ? toShortTime(generatedAt) : "—";
+      document.getElementById("mobileDnsTopQueried").textContent = topQueried;
+      document.getElementById("mobileDnsTopBlocked").textContent = topBlocked;
+      document.getElementById("mobileDnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
       updateMobileDnsSummary({ unavailable: false });
     }
 
@@ -1467,18 +1704,16 @@
       document.getElementById("internetConditionsValue").textContent = "Unavailable";
       document.getElementById("internetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
       document.getElementById("internetConditionsScope").textContent = "—";
-      renderSimpleList("internetConditionsSignalsChecked", []);
       renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", []);
       document.getElementById("internetConditionsUpdated").textContent = "—";
       document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
       document.getElementById("internetConditionsDetails").style.display = "none";
       document.getElementById("internetConditionsUnavailable").style.display = "block";
-      setAccent(document.getElementById("internetConditionsCard"), null);
-      setAccent(document.getElementById("internetConditionsValue"), null);
+      setAccent(document.getElementById("internetConditionsCard"), "accent-neutral");
+      setAccent(document.getElementById("internetConditionsValue"), "neutral");
       document.getElementById("mobileInternetConditionsValue").textContent = "Unavailable";
       document.getElementById("mobileInternetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
       document.getElementById("mobileInternetConditionsScope").textContent = "—";
-      renderSimpleList("mobileInternetConditionsSignalsChecked", []);
       renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", []);
       document.getElementById("mobileInternetConditionsUpdated").textContent = "—";
       document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
@@ -1495,9 +1730,6 @@
       const summary = String(data.summary || "").trim() || "No regional Internet disruptions detected.";
       const status = String(data.status || "normal").trim().toLowerCase();
       const scopeLabel = String((data.scope && data.scope.label) || "").trim() || "—";
-      const signalsChecked = Array.isArray(data.signals_checked)
-        ? data.signals_checked.map(value => String(value || "").trim()).filter(Boolean)
-        : [];
       const items = Array.isArray(data.items) ? data.items.slice(0, 3) : [];
       let label = "Normal";
       let cardAccent = "accent-ok";
@@ -1516,7 +1748,6 @@
       document.getElementById("internetConditionsValue").textContent = label;
       document.getElementById("internetConditionsSummary").textContent = summary;
       document.getElementById("internetConditionsScope").textContent = scopeLabel;
-      renderSimpleList("internetConditionsSignalsChecked", signalsChecked);
       renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", items);
       document.getElementById("internetConditionsUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
@@ -1527,7 +1758,6 @@
       document.getElementById("mobileInternetConditionsValue").textContent = label;
       document.getElementById("mobileInternetConditionsSummary").textContent = summary;
       document.getElementById("mobileInternetConditionsScope").textContent = scopeLabel;
-      renderSimpleList("mobileInternetConditionsSignalsChecked", signalsChecked);
       renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", items);
       document.getElementById("mobileInternetConditionsUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
@@ -1544,7 +1774,7 @@
     }
 
     function updatePowerInfrastructureCard(data){
-      if (!data || data.provider !== "aps" || data.status === "unavailable"){
+      if (!data || data.provider !== "aps"){
         setPowerInfrastructureHidden();
         return;
       }
@@ -1553,25 +1783,36 @@
       const summary = String(data.summary || "").trim() || "No APS outages or PSPS events reported.";
       const status = String(data.status || "normal").trim().toLowerCase();
       const scopeLabel = String((data.scope && data.scope.label) || "").trim() || "—";
-      const signalsChecked = Array.isArray(data.signals_checked)
-        ? data.signals_checked.map(value => String(value || "").trim()).filter(Boolean)
-        : [];
       const items = Array.isArray(data.items) ? data.items.slice(0, 5) : [];
+      const customers = items.reduce((sum, item) => sum + (Number.isFinite(item?.customer_count) ? item.customer_count : 0), 0);
+      const nearest = items.length ? String(items[0].affected_area || "").split("•")[0].trim() || "Reported area" : "—";
       let label = "Normal";
       let cardAccent = "accent-ok";
       let valueAccent = "ok";
+      let customerValue = fmtInt(customers);
+      let eventValue = fmtInt(items.length);
+      let nearestValue = nearest || "—";
 
       if (status === "events_reported"){
         label = "Events reported";
         cardAccent = "accent-watch";
         valueAccent = "watch";
+      } else if (status === "unavailable"){
+        label = "Unavailable";
+        cardAccent = "accent-neutral";
+        valueAccent = "neutral";
+        customerValue = "—";
+        eventValue = "—";
+        nearestValue = "—";
       }
 
       document.getElementById("powerInfrastructureCard").style.display = "block";
       document.getElementById("powerInfrastructureValue").textContent = label;
       document.getElementById("powerInfrastructureSummary").textContent = summary;
+      document.getElementById("powerInfrastructureCustomers").textContent = customerValue;
+      document.getElementById("powerInfrastructureEvents").textContent = eventValue;
+      document.getElementById("powerInfrastructureNearest").textContent = nearestValue;
       document.getElementById("powerInfrastructureScope").textContent = scopeLabel;
-      renderSimpleList("powerInfrastructureSignalsChecked", signalsChecked);
       renderPowerInfrastructureItems("powerInfrastructureItemsWrap", "powerInfrastructureItems", items);
       document.getElementById("powerInfrastructureUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("powerInfrastructureSource").textContent = "APS";
@@ -1581,11 +1822,14 @@
       document.getElementById("mobilePowerInfrastructureCard").style.display = "block";
       document.getElementById("mobilePowerInfrastructureValue").textContent = label;
       document.getElementById("mobilePowerInfrastructureSummary").textContent = summary;
+      document.getElementById("mobilePowerInfrastructureCustomers").textContent = customerValue;
+      document.getElementById("mobilePowerInfrastructureEvents").textContent = eventValue;
+      document.getElementById("mobilePowerInfrastructureNearest").textContent = nearestValue;
       document.getElementById("mobilePowerInfrastructureScope").textContent = scopeLabel;
-      renderSimpleList("mobilePowerInfrastructureSignalsChecked", signalsChecked);
       renderPowerInfrastructureItems("mobilePowerInfrastructureItemsWrap", "mobilePowerInfrastructureItems", items);
       document.getElementById("mobilePowerInfrastructureUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("mobilePowerInfrastructureSource").textContent = "APS";
+      syncPowerInfrastructureDisclosureState(status);
     }
 
     async function refreshPowerInfrastructure(){
@@ -1633,31 +1877,53 @@
       }
       status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
       const last = data[data.length - 1];
-      document.getElementById("phase").textContent = pathTagLabel(last.phase);
-      document.getElementById("phasePill").textContent = pathLabel(last.phase);
-      document.getElementById("lastTs").textContent = toShortTime(last.t);
     }
 
     function computeTelemetry(data) {
-      document.getElementById("rowsInWindow").textContent = data.length.toString();
-      const now = new Date();
-      const tenMinCut = new Date(now.getTime() - 10 * 60000);
-      const recent = data.filter(d => d.t >= tenMinCut);
-      document.getElementById("ingestRate").textContent = fmt2(recent.length / 10.0);
-      document.getElementById("lastRefresh").textContent = new Date().toLocaleTimeString(undefined, {hour12:true, hour:"numeric", minute:"2-digit", second:"2-digit"});
-    }
+      const stateEl = document.getElementById("telemetryState");
+      const summaryEl = document.getElementById("telemetrySummary");
+      const updatedEl = document.getElementById("telemetryUpdated");
+      const card = stateEl?.closest(".card");
+      const badge = document.getElementById("telemetryBadge");
 
-    function computeSpikeStreak(wanSeries){
-      const el = document.getElementById("wanSpikeStreak");
-      if (!wanSeries.length){ el.textContent = "—"; return; }
-      const THRESHOLD = 120;
-      const SAMPLE_INTERVAL_MIN = 2;
-      let streak = 0;
-      for (let i = wanSeries.length - 1; i >= 0; i--) {
-        if ((wanSeries[i].p95 ?? 0) > THRESHOLD) streak++;
-        else break;
+      if (!data.length){
+        stateEl.textContent = "Warning";
+        summaryEl.textContent = "Collector stalled";
+        updatedEl.textContent = "Updated —";
+        applyPillState(badge, "Notice", "watch");
+        setAccent(card, "accent-watch");
+        setAccent(stateEl, "watch");
+        return;
       }
-      el.textContent = streak === 0 ? "0" : `${streak} samples (~${streak * SAMPLE_INTERVAL_MIN} min)`;
+
+      const last = data[data.length - 1];
+      const ageMs = Date.now() - last.t.getTime();
+      let label = "Healthy";
+      let summary = "Collector healthy";
+      let pillTone = "ok";
+      let cardAccent = "accent-ok";
+      let valueTone = "ok";
+
+      if (ageMs > 120000){
+        label = "Warning";
+        summary = "Collector stalled";
+        pillTone = "risk";
+        cardAccent = "accent-risk";
+        valueTone = "risk";
+      } else if (ageMs > 30000){
+        label = "Warning";
+        summary = "Collector delayed";
+        pillTone = "watch";
+        cardAccent = "accent-watch";
+        valueTone = "watch";
+      }
+
+      stateEl.textContent = label;
+      summaryEl.textContent = summary;
+      updatedEl.textContent = `Updated ${toRelativeAge(last.t)}`;
+      applyPillState(badge, label, pillTone);
+      setAccent(card, cardAccent);
+      setAccent(stateEl, valueTone);
     }
 
     function targetGroupFacts(internetSeries, resolverSeries, lanSeries){
@@ -1781,28 +2047,42 @@
 
     function computeUserNoticeability(summary){
       const scoreEl = document.getElementById("noticeScore");
-      const labelEl = document.getElementById("noticeLabel");
+      const levelEl = document.getElementById("noticeLevel");
       if (!summary || summary.score == null) {
         scoreEl.textContent = "—";
-        labelEl.textContent = summary?.label || "No data";
-        setAccent(document.getElementById("noticeCard"), null);
-        setAccent(scoreEl, null);
+        levelEl.textContent = "—";
+        document.getElementById("noticeConfidence").textContent = "—";
+        setAccent(document.getElementById("noticeCard"), "accent-neutral");
+        setAccent(scoreEl, "neutral");
         return;
       }
       scoreEl.textContent = String(summary.score);
-      labelEl.textContent = summary.label;
+      levelEl.textContent = deriveNoticeLevel(summary);
       const accent = summary.forecast === "Risk" ? "risk" : (summary.forecast === "Watch" ? "watch" : "ok");
       setAccent(document.getElementById("noticeCard"), `accent-${accent}`);
       setAccent(scoreEl, accent);
     }
 
-    function updateAttributionCard(attribution){
+    function updateAttributionCard(attribution, evidenceCounts){
       const label = attribution?.label || "—";
       const labelEl = document.getElementById("attribLabel");
       labelEl.textContent = label;
       document.getElementById("attribConfidence").textContent = attribution?.confidence || "—";
-      const facts = attribution?.facts?.length ? " " + attribution.facts.join(" ") : "";
-      document.getElementById("attribWhy").textContent = "Why: " + (attribution?.why || "—") + facts;
+      const chips = [
+        {
+          label: `WAN ${evidenceCounts?.wanDegradedTargetGroups ? "✓" : "—"}`,
+          tone: evidenceCounts?.wanDegradedTargetGroups ? "watch" : "neutral"
+        },
+        {
+          label: `Resolver ${evidenceCounts?.resolverProbeDegraded ? "✓" : "—"}`,
+          tone: evidenceCounts?.resolverProbeDegraded ? "watch" : "neutral"
+        },
+        {
+          label: `Gateway ${evidenceCounts?.lanElevated ? "✓" : "—"}`,
+          tone: evidenceCounts?.lanElevated ? "watch" : "neutral"
+        }
+      ];
+      renderChipRow("attribEvidenceChips", chips);
       let accent = null;
       if (label === "No network issue detected") accent = "ok";
       else if (label === "Likely upstream (ISP / path)" || label === "Likely local (LAN / Wi‑Fi)") accent = "risk";
@@ -1816,60 +2096,6 @@
       const sorted = arr.slice().sort((a,b)=>a-b);
       return d3.quantile(sorted, q);
     }
-
-    function updatePatternAwareness(wanSeries){
-      const el = document.getElementById("noticePattern");
-      if (!el){
-        return;
-      }
-      if (!wanSeries.length){
-        el.textContent = "Learning...";
-        return;
-      }
-
-      const latest = [...wanSeries].reverse().find(d =>
-        d.baselineDeltaPct != null && Number.isFinite(d.baselineDeltaPct)
-      );
-
-      if (!latest){
-        el.textContent = "Learning...";
-        return;
-      }
-
-      const delta = latest.baselineDeltaPct;
-      const sampleCount = latest.baselineSampleCount;
-
-      if (sampleCount == null || !Number.isFinite(sampleCount)){
-        el.textContent = "Learning...";
-        return;
-      }
-
-      if (sampleCount < 4){
-        el.textContent = `Learning... · Low confidence (${sampleCount} samples)`;
-        return;
-      }
-
-      let confidence = "Low confidence";
-      if (sampleCount >= 40){
-        confidence = "High confidence";
-      } else if (sampleCount >= 16){
-        confidence = "Medium confidence";
-      }
-
-      let label = "";
-      if (Math.abs(delta) < 10){
-        label = "Normal for this time of day";
-      } else if (delta > 25){
-        label = `Highly elevated for this time of day (+${fmt1(delta)}%)`;
-      } else if (delta > 10){
-        label = `Slightly elevated for this time of day (+${fmt1(delta)}%)`;
-      } else {
-        label = `Better than usual for this time of day (${fmt1(delta)}%)`;
-      }
-
-      el.textContent = `${label} · ${confidence} (${sampleCount} samples)`;
-    }
-
 
     function getNoticeabilitySummary(wanSeries, compositeBuckets){
       if (!wanSeries.length) return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
@@ -1929,16 +2155,13 @@
       return { score, label, forecast, why };
     }
 
-    function computeNoticeabilityForecast(summary){
-      const el = document.getElementById("noticeForecast");
-      const whyEl = document.getElementById("noticeWhy");
+    function computeNoticeabilityForecast(summary, patternSummary){
+      const confidenceEl = document.getElementById("noticeConfidence");
       if (!summary){
-        el.textContent = "No data";
-        whyEl.textContent = "Why: No WAN data.";
+        confidenceEl.textContent = "—";
         return;
       }
-      el.textContent = summary.forecast || "No data";
-      whyEl.textContent = "Why: " + (summary.why || "—");
+      confidenceEl.textContent = patternSummary?.confidence || "Low";
     }
 
     function computeProviderStats(seriesArr){
@@ -2465,9 +2688,11 @@
         const episodeObservations = selectEpisodeObservations(observationsPayload);
         const compositeWanBuckets = buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked, episodeObservations);
         const noticeSummary = getNoticeabilitySummary([...internetSeriesMarked, ...resolverSeriesMarked].sort((a,b)=>a.t-b.t), compositeWanBuckets);
+        const patternSummary = getPatternAwarenessSummary(internetSeriesMarked);
         const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
         const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
         const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
+        const attributionEvidence = attributionEvidenceCounts(internetSeriesMarked, resolverSeriesMarked, lanSeries);
         const attribution = resolveCurrentAttribution({
           observationsPayload,
           networkAttributionPayload,
@@ -2483,11 +2708,10 @@
 
         currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain };
 
-        computeSpikeStreak(internetSeriesMarked);
+        updateConnectionCard(raw);
         computeUserNoticeability(noticeSummary);
-        computeNoticeabilityForecast(noticeSummary);
-        updatePatternAwareness(internetSeriesMarked);
-        updateAttributionCard(attribution);
+        computeNoticeabilityForecast(noticeSummary, patternSummary);
+        updateAttributionCard(attribution, attributionEvidence);
         renderWanHealthTable(internetSeriesMarked, resolverSeriesMarked);
         updateMobileCurrentState();
         updateMobileTelemetrySummary();
