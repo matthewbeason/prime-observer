@@ -117,6 +117,46 @@
       color:var(--ink);
       text-align:right;
     }
+    .dns-domain-pair{
+      grid-template-columns:minmax(0, 110px) minmax(0, 1fr);
+      align-items:start;
+    }
+    .dns-domain-pair .metric-value{
+      min-width:0;
+      width:100%;
+      justify-self:stretch;
+    }
+    .dns-domain-metric,
+    .dns-domain-inline{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr);
+      gap:2px;
+      min-width:0;
+      width:100%;
+      overflow:hidden;
+    }
+    .dns-domain-text{
+      min-width:0;
+      width:100%;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      justify-self:stretch;
+    }
+    .dns-domain-count{
+      white-space:nowrap;
+      color:var(--muted-strong);
+      font-size:11px;
+      font-weight:700;
+      justify-self:end;
+    }
+    .dns-domain-detail-line{
+      display:grid;
+      grid-template-columns:auto minmax(0, 1fr);
+      gap:8px;
+      align-items:baseline;
+    }
+    .dns-domain-detail-line > *{min-width:0;}
     .metric-pair .metric-value.neutral{color:var(--muted-strong);}
     .metric-pair .metric-value.info{color:var(--fiber);}
     .status-summary{
@@ -336,6 +376,7 @@
       border:1px solid var(--border);
       border-radius:18px;
       padding:12px 13px;
+      min-width:0;
     }
     .mobile-secondary-card h4{
       margin:0 0 8px;
@@ -422,6 +463,8 @@
       .panel-actions{gap:8px;}
       .mobile-state-grid{grid-template-columns:repeat(2, minmax(0, 1fr));}
       .selected-bucket-grid{grid-template-columns:1fr;}
+      .dns-domain-detail-line{grid-template-columns:minmax(0, 1fr);}
+      .dns-domain-count{justify-self:start;}
     }
   </style>
 </head>
@@ -514,8 +557,20 @@
           <div class="card-disclosure-body">
             <div class="metric-pair"><span class="label">Queries</span><span class="metric-value" id="dnsQueries">—</span></div>
             <div class="metric-pair"><span class="label">Encrypted</span><span class="metric-value" id="dnsEncrypted">—</span></div>
-            <div class="metric-pair"><span class="label">Top queried domain</span><span class="metric-value" id="dnsTopQueried">—</span></div>
-            <div class="metric-pair"><span class="label">Top blocked domain</span><span class="metric-value" id="dnsTopBlocked">—</span></div>
+            <div class="metric-pair dns-domain-pair">
+              <span class="label">Top queried domain</span>
+              <span class="metric-value dns-domain-metric" aria-live="polite">
+                <span class="dns-domain-text" id="dnsTopQueried">—</span>
+                <span class="dns-domain-count" id="dnsTopQueriedCount"></span>
+              </span>
+            </div>
+            <div class="metric-pair dns-domain-pair">
+              <span class="label">Top blocked domain</span>
+              <span class="metric-value dns-domain-metric" aria-live="polite">
+                <span class="dns-domain-text" id="dnsTopBlocked">—</span>
+                <span class="dns-domain-count" id="dnsTopBlockedCount"></span>
+              </span>
+            </div>
           </div>
         </details>
       </div>
@@ -679,8 +734,20 @@
             <div class="card-disclosure-body">
               <div class="detail-line"><b>Queries:</b> <span id="mobileDnsQueries">—</span></div>
               <div class="detail-line"><b>Encrypted:</b> <span id="mobileDnsEncrypted">—</span></div>
-              <div class="detail-line"><b>Top queried domain:</b> <span id="mobileDnsTopQueried">—</span></div>
-              <div class="detail-line"><b>Top blocked domain:</b> <span id="mobileDnsTopBlocked">—</span></div>
+              <div class="detail-line dns-domain-detail-line">
+                <b>Top queried domain:</b>
+                <span class="dns-domain-inline" aria-live="polite">
+                  <span class="dns-domain-text" id="mobileDnsTopQueried">—</span>
+                  <span class="dns-domain-count" id="mobileDnsTopQueriedCount"></span>
+                </span>
+              </div>
+              <div class="detail-line dns-domain-detail-line">
+                <b>Top blocked domain:</b>
+                <span class="dns-domain-inline" aria-live="polite">
+                  <span class="dns-domain-text" id="mobileDnsTopBlocked">—</span>
+                  <span class="dns-domain-count" id="mobileDnsTopBlockedCount"></span>
+                </span>
+              </div>
             </div>
           </details>
           <div class="detail-line" id="mobileDnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
@@ -1005,13 +1072,43 @@
       }
     }
 
-    function formatDomainWithCount(domain, count, noun){
-      const cleanDomain = String(domain || "").trim();
+    function formatDomainCount(count, noun){
       const numericCount = Number.isFinite(count) ? count : parseFloatSafe(count, null);
-      if (!cleanDomain && numericCount == null) return "—";
-      if (!cleanDomain) return `${fmtInt(numericCount)} ${noun}`;
-      if (numericCount == null) return cleanDomain;
-      return `${cleanDomain} (${fmtInt(numericCount)} ${noun})`;
+      if (numericCount == null) return "";
+      return `${fmtInt(numericCount)} ${noun}`;
+    }
+
+    function setDnsDomainText(id, domain){
+      const el = document.getElementById(id);
+      if (!el) return;
+      const cleanDomain = String(domain || "").trim();
+      const text = cleanDomain || "—";
+      el.textContent = text;
+      if (cleanDomain){
+        el.title = cleanDomain;
+        el.setAttribute("aria-label", cleanDomain);
+      } else {
+        el.removeAttribute("title");
+        el.removeAttribute("aria-label");
+      }
+    }
+
+    function renderDomainWithCount(domainId, countId, domain, count, noun){
+      const cleanDomain = String(domain || "").trim();
+      const countLabel = formatDomainCount(count, noun);
+      setDnsDomainText(domainId, cleanDomain);
+
+      const countEl = document.getElementById(countId);
+      if (!countEl) return;
+      countEl.textContent = countLabel;
+      if (countLabel){
+        const accessibleText = cleanDomain ? `${cleanDomain} (${countLabel})` : countLabel;
+        countEl.title = accessibleText;
+        countEl.setAttribute("aria-label", accessibleText);
+      } else {
+        countEl.removeAttribute("title");
+        countEl.removeAttribute("aria-label");
+      }
     }
 
     function deriveNoticeLevel(summary){
@@ -1647,8 +1744,10 @@
       document.getElementById("mobileDnsProvider").textContent = "NextDNS";
       document.getElementById("mobileDnsQueries").textContent = "—";
       document.getElementById("mobileDnsEncrypted").textContent = "—";
-      document.getElementById("mobileDnsTopQueried").textContent = "—";
-      document.getElementById("mobileDnsTopBlocked").textContent = "—";
+      renderDomainWithCount("dnsTopQueried", "dnsTopQueriedCount", "", null, "queries");
+      renderDomainWithCount("dnsTopBlocked", "dnsTopBlockedCount", "", null, "blocks");
+      renderDomainWithCount("mobileDnsTopQueried", "mobileDnsTopQueriedCount", "", null, "queries");
+      renderDomainWithCount("mobileDnsTopBlocked", "mobileDnsTopBlockedCount", "", null, "blocks");
       document.getElementById("mobileDnsLastUpdate").textContent = "—";
       updateMobileDnsSummary({ unavailable: true });
     }
@@ -1666,14 +1765,11 @@
       const blockRate = parseFloatSafe(summary.block_rate_pct, null);
       const encryptedRate = parseFloatSafe(summary.encrypted_rate_pct, null);
       const totalQueries = parseFloatSafe(summary.total_queries, null);
-      const topQueried = formatDomainWithCount(summary.top_queried_domain, summary.top_queried_domain_count, "queries");
-      const topBlocked = formatDomainWithCount(summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
-
       document.getElementById("dnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
       document.getElementById("dnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("dnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
-      document.getElementById("dnsTopQueried").textContent = topQueried;
-      document.getElementById("dnsTopBlocked").textContent = topBlocked;
+      renderDomainWithCount("dnsTopQueried", "dnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");
+      renderDomainWithCount("dnsTopBlocked", "dnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
       document.getElementById("dnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
       document.getElementById("dnsProvider").textContent = "NextDNS";
       document.getElementById("dnsDetails").style.display = "block";
@@ -1685,8 +1781,8 @@
       document.getElementById("mobileDnsProvider").textContent = "NextDNS";
       document.getElementById("mobileDnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("mobileDnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
-      document.getElementById("mobileDnsTopQueried").textContent = topQueried;
-      document.getElementById("mobileDnsTopBlocked").textContent = topBlocked;
+      renderDomainWithCount("mobileDnsTopQueried", "mobileDnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");
+      renderDomainWithCount("mobileDnsTopBlocked", "mobileDnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
       document.getElementById("mobileDnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
       updateMobileDnsSummary({ unavailable: false });
     }
