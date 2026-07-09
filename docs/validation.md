@@ -197,6 +197,9 @@ git diff --check
 bin/refresh_optional_context.sh
 ```
 
+The wrapper should refresh NextDNS, Cloudflare Radar, and APS Power
+Infrastructure in sequence while keeping each provider non-fatal.
+
 ## Standard Commands
 
 These are the canonical validation commands already used by the repository's

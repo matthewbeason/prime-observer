@@ -405,7 +405,7 @@ If using APS Power Infrastructure context, generate the optional provider summar
 python3 bin/fetch_aps_power_context.py
 ```
 
-For automated macOS refresh of both optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context and Cloudflare Radar Internet Conditions without storing tokens in the plist.
+For automated macOS refresh of the scheduled optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context, Cloudflare Radar Internet Conditions, and APS Power Infrastructure context without storing tokens in the plist.
 
 Generate a historical investigation:
 

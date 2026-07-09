@@ -30,5 +30,6 @@ cd "$BASE" || exit 1
 
 run_step "NextDNS summary" "$BASE/bin/fetch_nextdns_summary.py"
 run_step "Internet Conditions" "$BASE/bin/fetch_cloudflare_radar.py"
+run_step "APS power context" "$BASE/bin/fetch_aps_power_context.py"
 
 log "Optional context refresh finished."
