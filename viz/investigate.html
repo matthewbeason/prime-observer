@@ -6,10 +6,12 @@
   <title>Prime Observer Investigation</title>
   <style>
     :root{
-      --bg:#ece7df; --bg-wash:#f7f3ed; --surface:rgba(251,248,243,.72); --surface-strong:rgba(255,252,247,.88);
-      --surface-muted:rgba(255,252,247,.58); --border:rgba(112,97,78,.16); --muted:#6d665d; --muted-strong:#4f483e;
-      --ink:#171512; --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833; --accent:#2d6f91; --radius:24px;
-      --shadow-card:0 10px 30px rgba(52,43,33,.08), inset 0 1px 0 rgba(255,255,255,.48);
+      --bg:#ece7df; --bg-wash:#f7f3ed; --surface:rgba(251,248,243,.62); --surface-strong:rgba(255,252,247,.84);
+      --surface-muted:rgba(255,252,247,.5); --surface-support:rgba(245,242,237,.88); --border:rgba(112,97,78,.13);
+      --muted:#6d665d; --muted-strong:#4f483e; --ink:#171512; --ok:#2f7d4f; --watch:#9a6a16; --warn:#bd6b12;
+      --risk:#a54833; --accent:#2d6f91; --neutral:#6f6a61; --ok-bg:rgba(47,125,79,.1); --watch-bg:rgba(154,106,22,.12);
+      --warn-bg:rgba(189,107,18,.14); --risk-bg:rgba(165,72,51,.12); --muted-bg:rgba(109,102,93,.1); --accent-bg:rgba(45,111,145,.12);
+      --radius:24px; --shadow-card:0 10px 30px rgba(52,43,33,.06), inset 0 1px 0 rgba(255,255,255,.42);
     }
     *{box-sizing:border-box;}
     body{
@@ -41,65 +43,105 @@
       backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); box-shadow:inset 0 1px 0 rgba(255,255,255,.62);
     }
     .pill-strong{background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(247,240,231,.92));}
+    .pill-group{display:flex;flex-wrap:wrap;gap:8px;}
     .status{
-      font-size:13px;color:var(--muted);margin:0 0 12px;line-height:1.5;
-      padding:10px 14px; border:1px solid var(--border); border-radius:999px;
-      background:rgba(255,255,255,.46); width:fit-content; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      font-size:13px;color:var(--muted-strong);margin:0 0 12px;line-height:1.5;
+      padding:11px 14px; border:1px solid var(--border); border-radius:18px;
+      background:rgba(255,255,255,.42); width:fit-content; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
     }
     .status.error{color:var(--risk);line-height:1.45;max-width:760px;}
     .section{
-      margin-top:26px; padding:24px; border-radius:30px; background:var(--surface);
+      margin-top:26px; padding:26px; border-radius:30px; background:var(--surface);
       border:1px solid var(--border); box-shadow:var(--shadow-card); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
     }
-    .section-hero{padding:28px;background:linear-gradient(180deg, rgba(255,252,247,.86), rgba(251,248,243,.74));}
+    .section-hero{padding:30px;background:linear-gradient(180deg, rgba(255,252,247,.88), rgba(251,248,243,.68));}
     .section-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
     .section-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:18px;}
     .section-note{font-size:13px;color:var(--muted);margin:10px 0 0;line-height:1.55;max-width:900px;}
+    .section-note.supporting{max-width:760px;color:var(--muted-strong);}
     .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;}
     .card{
-      background:var(--surface-strong);border:1px solid var(--border);border-radius:22px;padding:16px 18px;
+      background:var(--surface-strong);border:1px solid rgba(112,97,78,.1);border-radius:22px;padding:16px 18px;
       box-shadow:var(--shadow-card); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
     }
     .card-muted{background:var(--surface-muted);}
-    .value{font-size:28px;font-weight:800;margin-top:2px;letter-spacing:-0.03em;}
-    .eyebrow{font-size:12px;color:var(--muted);}
+    .card-supportive{background:var(--surface-support);}
+    .value{font-size:30px;font-weight:800;margin-top:4px;letter-spacing:-0.035em;line-height:1.1;}
+    .eyebrow{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
     .small{font-size:12px;color:var(--muted);line-height:1.55;}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
     .summary-layout{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(280px,1fr);gap:18px;align-items:start;}
     .stack{display:grid;gap:14px;}
     .summary-list{display:grid;gap:10px;}
-    .summary-item{padding-top:10px;border-top:1px solid var(--border);}
+    .summary-item{padding-top:10px;border-top:1px solid rgba(112,97,78,.1);}
     .summary-item:first-child{padding-top:0;border-top:0;}
     .summary-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
     .summary-value{font-size:16px;font-weight:700;line-height:1.35;margin-top:2px;}
     .summary-detail{font-size:12px;color:var(--muted);line-height:1.5;margin-top:3px;}
+    .summary-signal-strip{display:flex;flex-wrap:wrap;gap:10px;margin-top:2px;}
+    .metric-card{display:grid;gap:12px;align-content:start;min-height:148px;}
+    .metric-detail{font-size:12px;color:var(--muted);line-height:1.55;}
+    .tone-ok{color:var(--ok);}
+    .tone-watch{color:var(--watch);}
+    .tone-warn{color:var(--warn);}
+    .tone-risk{color:var(--risk);}
+    .tone-muted{color:var(--neutral);}
+    .tone-accent{color:var(--accent);}
+    .card.tone-ok{background:linear-gradient(180deg, rgba(255,252,247,.88), rgba(244,250,246,.92));}
+    .card.tone-watch{background:linear-gradient(180deg, rgba(255,252,247,.88), rgba(250,245,236,.94));}
+    .card.tone-warn{background:linear-gradient(180deg, rgba(255,252,247,.88), rgba(252,243,233,.94));}
+    .card.tone-risk{background:linear-gradient(180deg, rgba(255,252,247,.88), rgba(251,241,238,.94));}
+    .card.tone-muted{background:linear-gradient(180deg, rgba(255,252,247,.88), rgba(246,243,239,.94));}
+    .chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+    .chip{
+      display:inline-flex;align-items:center;gap:7px;max-width:100%;
+      border-radius:999px;padding:7px 11px;font-size:12px;line-height:1.25;
+      border:1px solid transparent;background:var(--muted-bg);color:var(--neutral);
+    }
+    .chip strong{font-weight:700;color:var(--ink);}
+    .chip.tone-ok{background:var(--ok-bg);border-color:rgba(47,125,79,.16);}
+    .chip.tone-watch{background:var(--watch-bg);border-color:rgba(154,106,22,.16);}
+    .chip.tone-warn{background:var(--warn-bg);border-color:rgba(189,107,18,.18);}
+    .chip.tone-risk{background:var(--risk-bg);border-color:rgba(165,72,51,.18);}
+    .chip.tone-muted{background:var(--muted-bg);border-color:rgba(109,102,93,.12);}
+    .chip.tone-accent{background:var(--accent-bg);border-color:rgba(45,111,145,.18);}
     .panel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
     .table-block + .table-block{margin-top:18px;}
-    .table-block h3{margin-bottom:8px;}
+    .table-block h3{margin-bottom:8px;color:var(--muted-strong);}
     .wide{overflow:auto;}
     .table-wide table{min-width:960px;}
     .table-medium table{min-width:720px;}
     table{
-      border-collapse:collapse;width:100%;font-size:12px;background:rgba(255,252,247,.68);
-      border:1px solid var(--border);border-radius:18px;overflow:hidden;
+      border-collapse:collapse;width:100%;font-size:12px;background:rgba(255,252,247,.5);
+      border:1px solid rgba(112,97,78,.08);border-radius:18px;overflow:hidden;
     }
-    th,td{border-bottom:1px solid var(--border);padding:10px 9px;text-align:left;vertical-align:top;}
-    th{font-size:11px;background:rgba(245,239,231,.88);color:#34302a;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+    th,td{border-bottom:1px solid rgba(112,97,78,.08);padding:10px 9px;text-align:left;vertical-align:top;}
+    th{font-size:11px;background:rgba(245,239,231,.72);color:#34302a;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
     tr:last-child td{border-bottom:0;}
     .risk{color:var(--risk);font-weight:750;}
     .watch{color:var(--watch);font-weight:750;}
     .ok{color:var(--ok);font-weight:750;}
-    .disclosure{background:rgba(255,252,247,.52);border:1px solid var(--border);border-radius:22px;padding:0 18px;}
+    .disclosure{background:rgba(255,252,247,.4);border:1px solid rgba(112,97,78,.08);border-radius:22px;padding:0 18px;}
     .disclosure + .disclosure{margin-top:14px;}
     .disclosure summary{
-      list-style:none;cursor:pointer;padding:16px 0;font-weight:700;display:flex;justify-content:space-between;gap:16px;align-items:center;
+      list-style:none;cursor:pointer;padding:16px 0;font-weight:650;display:flex;justify-content:space-between;gap:16px;align-items:center;
     }
     .disclosure summary::-webkit-details-marker{display:none;}
-    .disclosure[open] summary{border-bottom:1px solid var(--border);}
+    .disclosure[open] summary{border-bottom:1px solid rgba(112,97,78,.08);}
     .disclosure-body{padding:16px 0 18px;}
     .empty-note{font-size:13px;color:var(--muted);padding:2px 0;}
     .context-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
     .context-block{background:rgba(255,252,247,.54);}
+    .environmental-section{background:linear-gradient(180deg, rgba(246,243,238,.9), rgba(243,240,235,.74));}
+    .provider-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px;}
+    .provider-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+    .provider-items{display:grid;gap:8px;margin-top:12px;}
+    .provider-item{font-size:12px;line-height:1.5;color:var(--muted-strong);}
+    #rawDetailSection .section-kicker,
+    #rawDetailSection h2,
+    #rawDetailSection h3{color:var(--muted-strong);}
+    #rawDetailSection h2{font-size:20px;}
+    #rawDetailSection .section-note{max-width:760px;}
     @media (max-width: 980px){
       body{padding:22px 14px 34px;}
       h1{font-size:26px;}
@@ -139,11 +181,12 @@
           <h2>What happened</h2>
           <p class="section-note">Existing deterministic fields only: requested window, generated status, overlapping observation state, and the local evidence footprint for this investigation.</p>
         </div>
-        <div id="summaryPills" class="stack"></div>
+        <div id="summaryPills" class="pill-group"></div>
       </div>
       <div class="summary-layout">
         <div class="stack">
           <div id="summaryCards" class="card-grid"></div>
+          <div id="summarySignalChips" class="summary-signal-strip" aria-label="Evidence highlights"></div>
           <div class="panel-grid">
             <div class="card card-muted">
               <h3>Observation State</h3>
@@ -268,12 +311,53 @@
       return `<td>${fmt(value, suffix)}</td>`;
     }
 
-    function renderMetricCard(title, value, detail){
-      return `<div class="card"><h3>${title}</h3><div class="value">${fmt(value)}</div><div class="small">${detail}</div></div>`;
+    function statusLabel(value){
+      const map = {
+        available: "Observed",
+        unavailable: "Unavailable",
+        ok: "Healthy",
+        normal: "Healthy",
+        advisory: "Advisory",
+        degraded: "Likely issue",
+        events_reported: "Events reported",
+        likely_upstream: "Likely upstream",
+        likely_local: "Likely local",
+        mixed: "Mixed evidence",
+        inconclusive: "Inconclusive",
+        sustained_degradation: "Observed",
+      };
+      if (value === null || value === undefined || value === "") return "Unknown";
+      return map[value] || String(value).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function toneForStatus(value){
+      const status = String(value || "").toLowerCase();
+      if (["ok", "normal", "healthy", "available"].includes(status)) return "tone-ok";
+      if (["advisory", "watch", "observed", "sustained_degradation"].includes(status)) return "tone-watch";
+      if (["degraded", "events_reported", "likely_upstream", "likely_local", "mixed"].includes(status)) return "tone-warn";
+      if (["error", "failed", "significant", "outage"].includes(status)) return "tone-risk";
+      return "tone-muted";
+    }
+
+    function toneForObservationState(label){
+      const value = String(label || "").toLowerCase();
+      if (value.includes("no network issue") || value.includes("healthy")) return "tone-ok";
+      if (value.includes("inconclusive")) return "tone-muted";
+      if (value.includes("mixed")) return "tone-watch";
+      if (value.includes("sustained") || value.includes("issue") || value.includes("upstream") || value.includes("local")) return "tone-warn";
+      return "tone-muted";
+    }
+
+    function renderMetricCard(title, value, detail, tone = "tone-muted"){
+      return `<div class="card metric-card ${tone}"><div><div class="eyebrow">${title}</div><div class="value">${fmt(value)}</div></div><div class="metric-detail">${detail}</div></div>`;
     }
 
     function renderSummaryItem(label, value, detail){
       return `<div class="summary-item"><div class="summary-label">${label}</div><div class="summary-value">${fmt(value)}</div>${detail ? `<div class="summary-detail">${detail}</div>` : ""}</div>`;
+    }
+
+    function renderChip(label, value, tone = "tone-muted"){
+      return `<span class="chip ${tone}"><strong>${label}</strong> ${fmt(value)}</span>`;
     }
 
     function observationReferencesByType(data, type){
@@ -308,18 +392,31 @@
       const sampleCount = (data.timeline_samples || []).length;
       const selectedCount = data.provenance?.observation_projection?.selected_count;
       const pills = [
-        `<span class="pill pill-strong">Status: ${fmt(data.status)}</span>`,
+        `<span class="pill pill-strong ${toneForStatus(data.status)}">Status: ${statusLabel(data.status)}</span>`,
         `<span class="pill">Requested: ${fmt(requested.duration_minutes, " min")}</span>`,
         `<span class="pill">Context pad: ${fmt(context.pad_minutes, " min")}</span>`,
       ];
 
       document.getElementById("summaryPills").innerHTML = pills.join("");
       document.getElementById("summaryCards").innerHTML = [
-        renderMetricCard("Investigation Window", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`),
-        renderMetricCard("Current Attribution", currentAttribution?.state?.label || windowAttribution?.state?.label || "—", currentAttribution ? `status ${fmt(currentAttribution.state?.status)}` : "No current attribution reference selected."),
-        renderMetricCard("Observation Footprint", fmt(selectedCount ?? (data.observation_references || []).length), `${fmt(episodes.length)} episode references overlapping this window`),
-        renderMetricCard("Evidence Volume", `${eventCount} events`, `${sampleCount} timeline samples · ${activeGroups.length} target groups with evidence`),
+        renderMetricCard("Investigation window", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`, "tone-accent"),
+        renderMetricCard("Current attribution", currentAttribution?.state?.label || windowAttribution?.state?.label || "—", currentAttribution ? statusLabel(currentAttribution.state?.status) : "No current attribution reference selected.", toneForObservationState(currentAttribution?.state?.label || windowAttribution?.state?.label)),
+        renderMetricCard("Window attribution", windowAttribution?.state?.label || "—", windowAttribution ? statusLabel(windowAttribution.state?.status) : "No window attribution reference selected.", toneForObservationState(windowAttribution?.state?.label)),
+        renderMetricCard("Evidence volume", `${eventCount} events`, `${sampleCount} timeline samples across ${activeGroups.length} target groups`, eventCount ? "tone-watch" : "tone-muted"),
       ].join("");
+
+      const summaryChips = [
+        renderChip("Observation refs", selectedCount ?? (data.observation_references || []).length, "tone-accent"),
+        renderChip("Episode overlap", episodes.length, episodes.length ? "tone-watch" : "tone-muted"),
+        renderChip("DNS", statusLabel(data.dns_context?.status), toneForStatus(data.dns_context?.status)),
+      ];
+      if (data.internet_conditions_context?.available){
+        summaryChips.push(renderChip("Internet Conditions", statusLabel(data.internet_conditions_context?.status), toneForStatus(data.internet_conditions_context?.status)));
+      }
+      if (data.power_infrastructure_context?.available){
+        summaryChips.push(renderChip("Power Infrastructure", statusLabel(data.power_infrastructure_context?.status), toneForStatus(data.power_infrastructure_context?.status)));
+      }
+      document.getElementById("summarySignalChips").innerHTML = summaryChips.join("");
 
       document.getElementById("summaryObservationList").innerHTML = [
         renderSummaryItem(
@@ -503,19 +600,20 @@
       const summary = dns.summary || {};
       const entities = (summary.top_entities || []).map(entity => {
         const label = entity.name_redacted ? entity.label : (entity.name || entity.label);
-        return `<div>${label}: ${fmt(entity.count)} queries (${fmt(entity.share_of_total)})</div>`;
+        return `<div class="provider-item">${label}: ${fmt(entity.count)} queries (${fmt(entity.share_of_total)})</div>`;
       }).join("");
 
       document.getElementById("dnsContext").innerHTML = dns.available ? `
         <div class="summary-list">
-          ${renderSummaryItem("Status", fmt(dns.status), `${shortTime(dns.generated_at)} · ${fmt(dns.minutes_from_event_midpoint, " min from event midpoint")}`)}
+          ${renderSummaryItem("Status", statusLabel(dns.status), `${shortTime(dns.generated_at)} · ${fmt(dns.minutes_from_event_midpoint, " min from event midpoint")}`)}
           ${renderSummaryItem("Window", fmt(dns.window), `Profile suffix ${fmt(dns.profile_id_suffix)}`)}
           ${renderSummaryItem("Total queries", fmt(summary.total_queries), `Blocked ${fmt(summary.blocked_queries)} (${fmt(summary.block_rate_pct, "%")}) · ${fmt(summary.encrypted_rate_pct, "%")} encrypted`)}
           ${renderSummaryItem("Top blocked reason", fmt(summary.top_blocked_reason), `${fmt(summary.top_blocked_reason_queries)} queries`)}
         </div>
+        <div class="chip-row" style="margin-top:12px;">${renderChip("DNS", statusLabel(dns.status), toneForStatus(dns.status))}</div>
         <div class="small" style="margin-top:10px;">${fmt(dns.note)}</div>
-        ${entities ? `<div class="small" style="margin-top:10px;">${entities}</div>` : ""}
-      ` : `<div><b>Status:</b> unavailable</div><div class="small">${fmt(dns.reason || dns.note)}</div>`;
+        ${entities ? `<div class="provider-items">${entities}</div>` : ""}
+      ` : `<div><b>Status:</b> ${statusLabel(dns.status || "unavailable")}</div><div class="small">${fmt(dns.reason || dns.note)}</div>`;
     }
 
     function renderInternetConditions(data){
@@ -529,21 +627,28 @@
 
       const items = (context.items || []).map(item => {
         const started = item.started ? ` <span class="small">(${shortTime(item.started)})</span>` : "";
-        return `<div>${fmt(item.signal)} · ${fmt(item.region)}: ${fmt(item.description)}${started}</div>`;
+        return `<div class="provider-item">${fmt(item.signal)} · ${fmt(item.region)}: ${fmt(item.description)}${started}</div>`;
       }).join("");
 
       environmentalSection.style.display = "block";
       section.style.display = "block";
+      environmentalSection.classList.add("environmental-section");
       document.getElementById("internetConditionsContext").innerHTML = `
+        <div class="provider-header">
+          <div class="chip-row">
+            ${renderChip("Provider", fmt(context.provider), "tone-accent")}
+            ${renderChip("Status", statusLabel(context.status), toneForStatus(context.status))}
+          </div>
+          <div class="provider-kicker">Supporting context</div>
+        </div>
         <div class="summary-list">
-          ${renderSummaryItem("Provider", fmt(context.provider), fmt(context.status))}
           ${renderSummaryItem("Generated", shortTime(context.generated_at), `${fmt(context.minutes_from_event_midpoint, " min from event midpoint")} · ${fmt(context.source_file)}`)}
           ${renderSummaryItem("Scope", fmt(context.scope?.label), `Query mode ${fmt(context.query_mode)} · target ${fmt(context.query_target_label || context.provider_display_name || context.query_target_id)}`)}
           ${renderSummaryItem("Target ID", fmt(context.query_target_id), `Fallback used: ${context.fallback_used ? "yes" : "no"}`)}
           ${renderSummaryItem("Signals checked", (context.signals_checked || []).join(", ") || "—", fmt(context.summary))}
         </div>
-        <div class="small" style="margin-top:10px;">${fmt(context.note)}</div>
-        ${items ? `<div class="small" style="margin-top:10px;">${items}</div>` : ""}
+        <p class="section-note supporting" style="margin-top:12px;">${fmt(context.note)}</p>
+        ${items ? `<div class="provider-items">${items}</div>` : ""}
       `;
       return true;
     }
@@ -561,19 +666,26 @@
         const etr = item.estimated_restoration_time
           ? ` <span class="small">(ETR ${shortTime(item.estimated_restoration_time)})</span>`
           : "";
-        return `<div>${fmt(item.event_type)} · ${fmt(item.affected_area)} · ${fmt(item.customer_count)} customers${etr}</div>`;
+        return `<div class="provider-item">${fmt(item.event_type)} · ${fmt(item.affected_area)} · ${fmt(item.customer_count)} customers${etr}</div>`;
       }).join("");
 
       environmentalSection.style.display = "block";
       section.style.display = "block";
+      environmentalSection.classList.add("environmental-section");
       document.getElementById("powerInfrastructureContext").innerHTML = `
+        <div class="provider-header">
+          <div class="chip-row">
+            ${renderChip("Provider", fmt(context.provider), "tone-accent")}
+            ${renderChip("Status", statusLabel(context.status), toneForStatus(context.status))}
+          </div>
+          <div class="provider-kicker">Supporting context</div>
+        </div>
         <div class="summary-list">
-          ${renderSummaryItem("Provider", fmt(context.provider), fmt(context.status))}
           ${renderSummaryItem("Generated", shortTime(context.generated_at), `${fmt(context.minutes_from_event_midpoint, " min from event midpoint")} · ${fmt(context.source_file)}`)}
           ${renderSummaryItem("Scope", fmt(context.scope?.label), fmt(context.summary))}
           ${renderSummaryItem("Signals checked", (context.signals_checked || []).join(", ") || "—", fmt(context.note))}
         </div>
-        ${items ? `<div class="small" style="margin-top:10px;">${items}</div>` : ""}
+        ${items ? `<div class="provider-items">${items}</div>` : ""}
       `;
       return true;
     }

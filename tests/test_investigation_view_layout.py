@@ -26,6 +26,13 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("Environmental Context", self.html)
         self.assertIn("Raw Detail", self.html)
 
+    def test_investigation_view_exposes_presentation_only_status_and_chip_helpers(self):
+        self.assertIn('id="summarySignalChips"', self.html)
+        self.assertIn("function statusLabel(value)", self.html)
+        self.assertIn("function toneForStatus(value)", self.html)
+        self.assertIn("function renderChip(label, value, tone = \"tone-muted\")", self.html)
+        self.assertIn("Evidence highlights", self.html)
+
     def test_investigation_view_keeps_raw_detail_in_disclosures(self):
         self.assertIn("<details class=\"disclosure\" open>", self.html)
         self.assertIn("Investigation Events", self.html)
