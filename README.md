@@ -272,12 +272,25 @@ viz/investigation.json
 viz/investigate.html
 ```
 
+Operator Assistant evidence package prototype:
+
+```text
+viz/investigation.json
+        |
+        v
+bin/build_operator_assistant_input.py
+        |
+        v
+viz/operator_assistant_input.json
+```
+
 Projection roles:
 
 - `viz/latest.csv` remains the dashboard telemetry window and factual chart input.
 - `viz/network_attribution.json` remains the backward-compatible legacy export.
 - `viz/observations.json` is the authoritative Observation projection for deterministic attribution and episode semantics owned by Prime Observer.
 - `viz/investigation.json` organizes factual evidence and additive Observation references for a requested historical window.
+- `viz/operator_assistant_input.json` is a compact deterministic evidence package derived from `viz/investigation.json` for future assistant interpretation experiments.
 
 ### Key Files
 
@@ -322,6 +335,12 @@ Projection roles:
 
 - `viz/investigation_index.json`
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
+
+- `bin/build_operator_assistant_input.py`
+  Builds a compact deterministic evidence package from `viz/investigation.json` for future operator-assistant interpretation experiments. The output stays bounded, evidence-only, and additive; it does not call any model and does not change Prime Observer's existing investigation contract.
+
+- `viz/operator_assistant_input.json`
+  Generated local operator-assistant evidence package. It preserves requested-window metadata, current and window attribution scope, overlapping episode observations, bounded during-window evidence summaries, and optional environmental-context summaries without copying the full investigation artifact.
 
 - `viz/investigate.html`
   Static historical evidence view for `viz/investigation.json`.

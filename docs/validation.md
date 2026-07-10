@@ -155,6 +155,8 @@ Typical validation scope:
 - `viz/observations.json`: rerun `bin/transform_latest.py`
 - `viz/investigation.json` and `viz/investigation_index.json`: rerun
   `bin/build_investigation.py`
+- `viz/operator_assistant_input.json`: rerun
+  `bin/build_operator_assistant_input.py`
 - `viz/nextdns_summary.json`: rerun `bin/fetch_nextdns_summary.py`
 - `viz/internet_conditions.json`: rerun `bin/fetch_cloudflare_radar.py`
 - `viz/aps_power_context.json`: rerun `bin/fetch_aps_power_context.py`
@@ -213,6 +215,7 @@ python3 -m compileall -q bin tests
 git diff --check
 python3 bin/transform_latest.py
 python3 bin/build_investigation.py --start 2026-05-30T17:30:00-07:00 --end 2026-05-30T18:00:00-07:00
+python3 bin/build_operator_assistant_input.py
 python3 bin/fetch_nextdns_summary.py
 python3 bin/fetch_cloudflare_radar.py
 python3 bin/fetch_aps_power_context.py

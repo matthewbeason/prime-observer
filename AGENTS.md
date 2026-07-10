@@ -58,6 +58,8 @@ If something cannot be supported from the repository, mark it:
   `viz/network_attribution.json`, and `viz/observations.json`.
 - `bin/build_investigation.py` generates `viz/investigation.json` and
   `viz/investigation_index.json`.
+- `bin/build_operator_assistant_input.py` generates
+  `viz/operator_assistant_input.json`.
 - `bin/fetch_nextdns_summary.py` generates `viz/nextdns_summary.json`.
 - `bin/fetch_cloudflare_radar.py` generates `viz/internet_conditions.json`.
 - `viz/index.html` renders the dashboard from generated local artifacts.
@@ -91,6 +93,7 @@ These are local/generated artifacts and must not be committed:
 - `viz/observations.json`
 - `viz/investigation.json`
 - `viz/investigation_index.json`
+- `viz/operator_assistant_input.json`
 - `viz/nextdns_summary.json`
 - `viz/internet_conditions.json`
 - `.env.nextdns`

@@ -211,6 +211,25 @@ Stage ownership:
 - Generated: yes
 - Should be committed: no
 
+### `viz/operator_assistant_input.json`
+
+- Producer: `bin/build_operator_assistant_input.py`
+- Consumers: future manual LLM prompt experiments; not consumed by the current
+  browser views
+- Purpose: compact deterministic evidence package derived from
+  `viz/investigation.json` for bounded operator-assistant interpretation tests
+- Required fields: top-level `schema_version`, `generated_at`,
+  `investigation`, `observations`, `attribution`, `episode`, `evidence`,
+  `environmental_context`, `limitations`, and `provenance`
+- Optional fields: additive provider details inside `environmental_context`
+- Unavailable behavior: if `viz/investigation.json` is missing or unreadable,
+  the producer still writes a valid minimal package with empty evidence and
+  explicit limitations
+- Authoritative: no; Prime Observer remains authoritative through the source
+  investigation and upstream artifacts
+- Generated: yes
+- Should be committed: no
+
 ## Relationships
 
 - `viz/latest.csv` is factual telemetry projection, not attribution.
@@ -226,6 +245,9 @@ Stage ownership:
   into new semantics.
 - `viz/investigation_index.json` is catalog metadata, not investigation
   evidence.
+- `viz/operator_assistant_input.json` is a compact downstream evidence package,
+  not a replacement for `viz/investigation.json`, `viz/observations.json`, or
+  any authoritative Prime Observer artifact.
 - The browser consumes artifacts and renders views, but it does not create the
   primary semantic meaning Prime Observer owns.
 
