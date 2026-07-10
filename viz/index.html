@@ -30,9 +30,34 @@
     .page-shell{max-width:1320px;margin:0 auto;}
     #status{
       color:var(--muted); margin:12px 0 22px; font-size:13px; line-height:1.5;
-      padding:10px 14px; border:1px solid var(--border); border-radius:999px;
-      background:rgba(255,255,255,.46); width:fit-content; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+      padding:12px 14px; border:1px solid var(--border); border-radius:18px;
+      background:rgba(255,255,255,.46); width:fit-content; min-width:220px;
+      backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.55);
+    }
+    .status-line{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-weight:760;
+      color:var(--muted-strong);
+    }
+    .status-dot{
+      width:9px;
+      height:9px;
+      border-radius:999px;
+      background:currentColor;
+      flex:0 0 auto;
+    }
+    .status-dot.ok{color:var(--ok);}
+    .status-dot.watch{color:var(--watch);}
+    .status-dot.risk{color:var(--risk);}
+    .status-dot.neutral{color:var(--muted);}
+    .status-meta{
+      display:grid;
+      gap:2px;
+      margin-top:6px;
+      color:var(--muted);
     }
     .row{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;}
     .dashboard-overview .card:not(.health-card){flex:1 1 220px;}
@@ -197,11 +222,10 @@
     .card-disclosure summary{
       cursor:pointer;
       list-style:none;
-      font-size:11px;
-      font-weight:780;
+      font-size:12px;
+      font-weight:700;
       color:var(--muted);
-      letter-spacing:.06em;
-      text-transform:uppercase;
+      letter-spacing:.01em;
     }
     .card-disclosure summary::-webkit-details-marker{display:none;}
     .card-disclosure-body{display:grid;gap:8px;padding-top:10px;}
@@ -228,6 +252,13 @@
     .egg-message.on{display:block;}
     .header-egg{margin-top:6px;max-width:420px;}
     .section-stack{display:grid;grid-template-columns:minmax(0, 1fr);gap:18px;margin-top:22px;}
+    .dashboard-overview.primary-row .card{
+      flex:1 1 240px;
+      min-width:0;
+    }
+    .dashboard-detail-row .card{
+      flex:1 1 320px;
+    }
     .viz-panel{
       background:var(--card); border:1px solid var(--border); border-radius:28px; padding:18px 18px 16px;
       min-width:0;
@@ -449,6 +480,7 @@
         margin:10px 0 14px;
         padding:9px 12px;
         font-size:12px;
+        width:100%;
       }
       .mobile-only{display:block;}
       .dashboard-overview{display:none;}
@@ -483,7 +515,14 @@
     </div>
   </div>
 
-  <div id="status" role="status" aria-live="polite" aria-atomic="true">Loading latest telemetry…</div>
+  <div id="status" role="status" aria-live="polite" aria-atomic="true">
+    <div class="status-line"><span class="status-dot neutral" id="statusDot" aria-hidden="true"></span><span id="statusState">Loading latest telemetry…</span></div>
+    <div class="status-meta">
+      <div>Last sample: <span id="statusLastSample">—</span></div>
+      <div>Refresh: <span id="statusRefresh">every 5s</span></div>
+      <div>Window: <span id="statusWindow">last 24h</span></div>
+    </div>
+  </div>
 
   <div class="viz-panel primary mobile-only">
     <div class="panel-kicker">Current Network State</div>
@@ -506,10 +545,37 @@
         <div class="detail-line"><b>Confidence:</b> <span id="mobileAttribConfidence">—</span></div>
         <div class="chip-row" id="mobileAttribEvidenceChips"></div>
         </div>
+        <div class="mobile-state-card span-2" id="mobileDnsCard">
+        <h4>DNS Security</h4>
+        <div class="value-inline" id="mobileDnsValue">—</div>
+        <div class="detail-line"><b>Last update:</b> <span id="mobileDnsLastUpdate">—</span></div>
+        <details class="card-disclosure" id="mobileDnsDisclosure">
+          <summary id="mobileDnsDisclosureSummary">View DNS activity &gt;</summary>
+          <div class="card-disclosure-body">
+            <div class="detail-line"><b>Queries:</b> <span id="mobileDnsQueries">—</span></div>
+            <div class="detail-line"><b>Encrypted:</b> <span id="mobileDnsEncrypted">—</span></div>
+            <div class="detail-line dns-domain-detail-line">
+              <b>Top queried domain:</b>
+              <span class="dns-domain-inline" aria-live="polite">
+                <span class="dns-domain-text" id="mobileDnsTopQueried">—</span>
+                <span class="dns-domain-count" id="mobileDnsTopQueriedCount"></span>
+              </span>
+            </div>
+            <div class="detail-line dns-domain-detail-line">
+              <b>Top blocked domain:</b>
+              <span class="dns-domain-inline" aria-live="polite">
+                <span class="dns-domain-text" id="mobileDnsTopBlocked">—</span>
+                <span class="dns-domain-count" id="mobileDnsTopBlockedCount"></span>
+              </span>
+            </div>
+          </div>
+        </details>
+        <div class="detail-line" id="mobileDnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
+        </div>
       </div>
     </div>
 
-  <div class="row dashboard-overview">
+  <div class="row dashboard-overview primary-row">
     <div class="card compact">
       <h4><span>Connection</span><span class="pill neutral" id="connectionBadge">—</span></h4>
       <div class="value" id="connectionP95">—</div>
@@ -517,15 +583,6 @@
       <div class="metric-stack" style="margin-top:10px;">
         <div class="metric-pair"><span class="label">Gateway</span><span class="metric-value mono" id="gwLabel">—</span></div>
         <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="lastTs">—</span></div>
-      </div>
-    </div>
-
-    <div class="card" style="min-width:240px;">
-      <h4><span>Data Freshness</span><span class="pill neutral" id="telemetryBadge">—</span></h4>
-      <div class="value" style="font-size:22px;" id="telemetryState">—</div>
-      <div class="metric-stack" style="margin-top:10px;">
-        <div class="metric-pair"><span class="label">Latest Sample</span><span class="metric-value" id="telemetrySummary">—</span></div>
-        <div class="metric-pair"><span class="label">Observation Window</span><span class="metric-value" id="telemetryUpdated">24 hours</span></div>
       </div>
     </div>
 
@@ -551,11 +608,10 @@
       <div class="value" style="font-size:20px;" id="dnsValue">—</div>
       <div id="dnsDetails">
         <div class="metric-stack" style="margin-top:8px;">
-          <div class="metric-pair"><span class="label">Provider</span><span class="metric-value info" id="dnsProvider">NextDNS</span></div>
           <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="dnsLastUpdate">—</span></div>
         </div>
-        <details class="card-disclosure">
-          <summary>Detail</summary>
+        <details class="card-disclosure" id="dnsDisclosure">
+          <summary id="dnsDisclosureSummary">View DNS activity &gt;</summary>
           <div class="card-disclosure-body">
             <div class="metric-pair"><span class="label">Queries</span><span class="metric-value" id="dnsQueries">—</span></div>
             <div class="metric-pair"><span class="label">Encrypted</span><span class="metric-value" id="dnsEncrypted">—</span></div>
@@ -578,7 +634,9 @@
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
+  </div>
 
+  <div class="row dashboard-overview dashboard-detail-row" style="margin-top:16px;">
     <div class="card" style="min-width:240px;" id="internetConditionsCard">
       <h4><span>Internet Conditions</span><span class="hmeta"><span class="pill info">Cloudflare Radar</span></span></h4>
       <div class="value" style="font-size:20px;" id="internetConditionsValue">—</div>
@@ -586,11 +644,10 @@
         <div class="status-summary" id="internetConditionsSummary">—</div>
         <div class="metric-stack" style="margin-top:8px;">
           <div class="metric-pair"><span class="label">Scope</span><span class="metric-value" id="internetConditionsScope">—</span></div>
-          <div class="metric-pair"><span class="label">Provider</span><span class="metric-value info" id="internetConditionsSource">Cloudflare Radar</span></div>
           <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="internetConditionsUpdated">—</span></div>
         </div>
         <details class="card-disclosure" id="internetConditionsDisclosure">
-          <summary>Detail</summary>
+          <summary id="internetConditionsDisclosureSummary">View Radar evidence &gt;</summary>
           <div class="card-disclosure-body">
             <div class="metric-pair"><span class="label">Target</span><span class="metric-value" id="internetConditionsTarget">—</span></div>
             <div class="metric-pair"><span class="label">Fallback</span><span class="metric-value" id="internetConditionsFallback">—</span></div>
@@ -615,7 +672,7 @@
           <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="powerInfrastructureUpdated">—</span></div>
         </div>
         <details class="card-disclosure" id="powerInfrastructureDisclosure">
-          <summary>Detail</summary>
+          <summary id="powerInfrastructureDisclosureSummary">View events &gt;</summary>
           <div class="card-disclosure-body">
             <div class="metric-pair"><span class="label">Scope</span><span class="metric-value" id="powerInfrastructureScope">—</span></div>
             <div class="metric-pair"><span class="label">Provider</span><span class="metric-value info" id="powerInfrastructureSource">APS</span></div>
@@ -720,51 +777,16 @@
     </div>
 
     <details class="mobile-secondary-details mobile-only">
-      <summary>Additional Detail Cards</summary>
+      <summary>Supporting Context</summary>
       <div class="mobile-secondary-body">
-        <div class="mobile-secondary-card">
-          <h4>Data Freshness</h4>
-          <div class="detail-line"><b>Status:</b> <span id="mobileTelemetryState">—</span></div>
-          <div class="detail-line"><b>Latest Sample:</b> <span id="mobileTelemetrySummary">—</span></div>
-          <div class="detail-line"><b>Observation Window:</b> <span id="mobileTelemetryUpdated">24 hours</span></div>
-        </div>
-        <div class="mobile-secondary-card">
-          <h4>DNS Security</h4>
-          <div class="detail-line"><b>Status:</b> <span id="mobileDnsValue">—</span></div>
-          <div class="detail-line"><b>Provider:</b> <span id="mobileDnsProvider">NextDNS</span></div>
-          <div class="detail-line"><b>Last update:</b> <span id="mobileDnsLastUpdate">—</span></div>
-          <details class="card-disclosure">
-            <summary>Detail</summary>
-            <div class="card-disclosure-body">
-              <div class="detail-line"><b>Queries:</b> <span id="mobileDnsQueries">—</span></div>
-              <div class="detail-line"><b>Encrypted:</b> <span id="mobileDnsEncrypted">—</span></div>
-              <div class="detail-line dns-domain-detail-line">
-                <b>Top queried domain:</b>
-                <span class="dns-domain-inline" aria-live="polite">
-                  <span class="dns-domain-text" id="mobileDnsTopQueried">—</span>
-                  <span class="dns-domain-count" id="mobileDnsTopQueriedCount"></span>
-                </span>
-              </div>
-              <div class="detail-line dns-domain-detail-line">
-                <b>Top blocked domain:</b>
-                <span class="dns-domain-inline" aria-live="polite">
-                  <span class="dns-domain-text" id="mobileDnsTopBlocked">—</span>
-                  <span class="dns-domain-count" id="mobileDnsTopBlockedCount"></span>
-                </span>
-              </div>
-            </div>
-          </details>
-          <div class="detail-line" id="mobileDnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
-        </div>
         <div class="mobile-secondary-card" id="mobileInternetConditionsCard">
           <h4>Internet Conditions</h4>
-          <div class="detail-line"><b>Status:</b> <span id="mobileInternetConditionsValue">—</span></div>
+          <div class="detail-line"><span id="mobileInternetConditionsValue">—</span></div>
           <div class="detail-line" id="mobileInternetConditionsSummary">—</div>
           <div class="detail-line"><b>Scope:</b> <span id="mobileInternetConditionsScope">—</span></div>
           <div class="detail-line"><b>Updated:</b> <span id="mobileInternetConditionsUpdated">—</span></div>
-          <div class="detail-line"><b>Source:</b> <span id="mobileInternetConditionsSource">Cloudflare Radar</span></div>
-          <details class="card-disclosure">
-            <summary>Detail</summary>
+          <details class="card-disclosure" id="mobileInternetConditionsDisclosure">
+            <summary id="mobileInternetConditionsDisclosureSummary">View Radar evidence &gt;</summary>
             <div class="card-disclosure-body">
               <div class="detail-line"><b>Target:</b> <span id="mobileInternetConditionsTarget">—</span></div>
               <div class="detail-line"><b>Fallback:</b> <span id="mobileInternetConditionsFallback">—</span></div>
@@ -777,15 +799,14 @@
         </div>
         <div class="mobile-secondary-card" id="mobilePowerInfrastructureCard" style="display:none;">
           <h4>Power Infrastructure</h4>
-          <div class="detail-line"><b>Status:</b> <span id="mobilePowerInfrastructureValue">—</span></div>
+          <div class="detail-line"><span id="mobilePowerInfrastructureValue">—</span></div>
           <div class="detail-line" id="mobilePowerInfrastructureSummary">—</div>
           <div class="detail-line"><b>Customers:</b> <span id="mobilePowerInfrastructureCustomers">—</span></div>
           <div class="detail-line"><b>Events:</b> <span id="mobilePowerInfrastructureEvents">—</span></div>
           <div class="detail-line"><b>Nearest:</b> <span id="mobilePowerInfrastructureNearest">—</span></div>
           <div class="detail-line"><b>Updated:</b> <span id="mobilePowerInfrastructureUpdated">—</span></div>
-          <div class="detail-line"><b>Source:</b> <span id="mobilePowerInfrastructureSource">APS</span></div>
           <details class="card-disclosure" id="mobilePowerInfrastructureDisclosure">
-            <summary>Detail</summary>
+            <summary id="mobilePowerInfrastructureDisclosureSummary">View events &gt;</summary>
             <div class="card-disclosure-body">
               <div class="detail-line"><b>Scope:</b> <span id="mobilePowerInfrastructureScope">—</span></div>
               <div class="detail-line" id="mobilePowerInfrastructureItemsWrap" style="display:none;">
@@ -837,7 +858,7 @@
     let currentVizState = null;
     let resizeObserver = null;
     let renderFrame = null;
-    let powerInfrastructureDisclosureState = { lastStatus: null };
+    let powerInfrastructureDisclosureState = { lastStatus: null, itemsCount: 0 };
 
     function bucketKey(d){
       const phase = d.phase || "FIBER";
@@ -936,12 +957,6 @@
       if (document.getElementById("attribLabel").classList.contains("risk")) mobileAttribLabel.classList.add("risk");
     }
 
-    function updateMobileTelemetrySummary(){
-      document.getElementById("mobileTelemetryState").textContent = document.getElementById("telemetryState").textContent;
-      document.getElementById("mobileTelemetrySummary").textContent = document.getElementById("telemetrySummary").textContent;
-      document.getElementById("mobileTelemetryUpdated").textContent = document.getElementById("telemetryUpdated").textContent;
-    }
-
     function syncWanHealthTables(html){
       document.getElementById("compareWrap").innerHTML = html;
       document.getElementById("mobileCompareWrap").innerHTML = html;
@@ -1025,6 +1040,8 @@
       if (desktopDisclosure) desktopDisclosure.open = false;
       if (mobileDisclosure) mobileDisclosure.open = false;
       powerInfrastructureDisclosureState.lastStatus = null;
+      powerInfrastructureDisclosureState.itemsCount = 0;
+      syncPowerDisclosureLabels();
     }
 
     function isActivePowerInfrastructureStatus(status){
@@ -1064,6 +1081,73 @@
       el.textContent = text;
       el.className = "pill";
       if (tone) el.classList.add(tone);
+    }
+
+    function setDisclosureSummary(summaryId, detailsId, closedLabel, openLabel){
+      const summary = document.getElementById(summaryId);
+      const details = document.getElementById(detailsId);
+      if (!summary || !details) return;
+      summary.textContent = details.open ? openLabel : closedLabel;
+    }
+
+    function syncDnsDisclosureLabels(){
+      const closedLabel = "View DNS activity >";
+      const openLabel = "Hide DNS activity";
+      setDisclosureSummary("dnsDisclosureSummary", "dnsDisclosure", closedLabel, openLabel);
+      setDisclosureSummary("mobileDnsDisclosureSummary", "mobileDnsDisclosure", closedLabel, openLabel);
+    }
+
+    function syncInternetConditionsDisclosureLabels(itemsCount = 0){
+      const closedLabel = "View Radar evidence >";
+      const openLabel = itemsCount > 0 ? "Hide Radar evidence" : "Hide Radar evidence";
+      setDisclosureSummary("internetConditionsDisclosureSummary", "internetConditionsDisclosure", closedLabel, openLabel);
+      setDisclosureSummary("mobileInternetConditionsDisclosureSummary", "mobileInternetConditionsDisclosure", closedLabel, openLabel);
+    }
+
+    function powerDisclosureClosedLabel(itemsCount){
+      if (itemsCount > 0) return `View ${itemsCount} event${itemsCount === 1 ? "" : "s"} >`;
+      return "View events >";
+    }
+
+    function powerDisclosureOpenLabel(itemsCount){
+      if (itemsCount > 0) return `Hide ${itemsCount} event${itemsCount === 1 ? "" : "s"}`;
+      return "Hide events";
+    }
+
+    function syncPowerDisclosureLabels(itemsCount = powerInfrastructureDisclosureState.itemsCount || 0){
+      powerInfrastructureDisclosureState.itemsCount = itemsCount;
+      setDisclosureSummary(
+        "powerInfrastructureDisclosureSummary",
+        "powerInfrastructureDisclosure",
+        powerDisclosureClosedLabel(itemsCount),
+        powerDisclosureOpenLabel(itemsCount)
+      );
+      setDisclosureSummary(
+        "mobilePowerInfrastructureDisclosureSummary",
+        "mobilePowerInfrastructureDisclosure",
+        powerDisclosureClosedLabel(itemsCount),
+        powerDisclosureOpenLabel(itemsCount)
+      );
+    }
+
+    function syncDisclosureLabels(){
+      syncDnsDisclosureLabels();
+      syncInternetConditionsDisclosureLabels();
+      syncPowerDisclosureLabels();
+    }
+
+    function initDisclosureLabels(){
+      [
+        ["dnsDisclosure", syncDnsDisclosureLabels],
+        ["mobileDnsDisclosure", syncDnsDisclosureLabels],
+        ["internetConditionsDisclosure", syncInternetConditionsDisclosureLabels],
+        ["mobileInternetConditionsDisclosure", syncInternetConditionsDisclosureLabels],
+        ["powerInfrastructureDisclosure", syncPowerDisclosureLabels],
+        ["mobilePowerInfrastructureDisclosure", syncPowerDisclosureLabels],
+      ].forEach(([id, syncFn]) => {
+        document.getElementById(id)?.addEventListener("toggle", () => syncFn());
+      });
+      syncDisclosureLabels();
     }
 
     function renderChipRow(targetId, chips){
@@ -1758,7 +1842,6 @@
       setAccent(document.getElementById("dnsCard"), "accent-neutral");
       setAccent(document.getElementById("dnsValue"), "neutral");
       document.getElementById("mobileDnsValue").textContent = "Unavailable";
-      document.getElementById("mobileDnsProvider").textContent = "NextDNS";
       document.getElementById("mobileDnsQueries").textContent = "—";
       document.getElementById("mobileDnsEncrypted").textContent = "—";
       renderDomainWithCount("dnsTopQueried", "dnsTopQueriedCount", "", null, "queries");
@@ -1767,6 +1850,7 @@
       renderDomainWithCount("mobileDnsTopBlocked", "mobileDnsTopBlockedCount", "", null, "blocks");
       document.getElementById("mobileDnsLastUpdate").textContent = "—";
       updateMobileDnsSummary({ unavailable: true });
+      syncDnsDisclosureLabels();
     }
 
     function updateDnsSecurityCard(data){
@@ -1788,20 +1872,19 @@
       renderDomainWithCount("dnsTopQueried", "dnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");
       renderDomainWithCount("dnsTopBlocked", "dnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
       document.getElementById("dnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
-      document.getElementById("dnsProvider").textContent = "NextDNS";
       document.getElementById("dnsDetails").style.display = "block";
       document.getElementById("dnsUnavailable").style.display = "none";
       document.getElementById("dnsStale").textContent = isStale ? "Stale" : "";
       setAccent(document.getElementById("dnsCard"), "accent-ok");
       setAccent(document.getElementById("dnsValue"), "ok");
       document.getElementById("mobileDnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
-      document.getElementById("mobileDnsProvider").textContent = "NextDNS";
       document.getElementById("mobileDnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("mobileDnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
       renderDomainWithCount("mobileDnsTopQueried", "mobileDnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");
       renderDomainWithCount("mobileDnsTopBlocked", "mobileDnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
       document.getElementById("mobileDnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
       updateMobileDnsSummary({ unavailable: false });
+      syncDnsDisclosureLabels();
     }
 
     async function refreshDnsSecurity(){
@@ -1821,7 +1904,6 @@
       document.getElementById("internetConditionsFallback").textContent = "—";
       renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", []);
       document.getElementById("internetConditionsUpdated").textContent = "—";
-      document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
       document.getElementById("internetConditionsDetails").style.display = "none";
       document.getElementById("internetConditionsUnavailable").style.display = "block";
       setAccent(document.getElementById("internetConditionsCard"), "accent-neutral");
@@ -1833,8 +1915,8 @@
       document.getElementById("mobileInternetConditionsFallback").textContent = "—";
       renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", []);
       document.getElementById("mobileInternetConditionsUpdated").textContent = "—";
-      document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
       updateMobileInternetConditionsSummary({ unavailable: true });
+      syncInternetConditionsDisclosureLabels();
     }
 
     function internetConditionsPrimaryLabel(data, status, items){
@@ -1899,7 +1981,6 @@
       document.getElementById("internetConditionsFallback").textContent = fallbackUsed ? "Used US-scoped fallback" : "None";
       renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", items);
       document.getElementById("internetConditionsUpdated").textContent = toRelativeAge(generatedAt);
-      document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
       document.getElementById("internetConditionsDetails").style.display = "block";
       document.getElementById("internetConditionsUnavailable").style.display = "none";
       setAccent(document.getElementById("internetConditionsCard"), cardAccent);
@@ -1911,8 +1992,8 @@
       document.getElementById("mobileInternetConditionsFallback").textContent = fallbackUsed ? "Used US-scoped fallback" : "None";
       renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", items);
       document.getElementById("mobileInternetConditionsUpdated").textContent = toRelativeAge(generatedAt);
-      document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
       updateMobileInternetConditionsSummary({ unavailable: false });
+      syncInternetConditionsDisclosureLabels(items.length);
     }
 
     async function refreshInternetConditions(){
@@ -1979,8 +2060,8 @@
       document.getElementById("mobilePowerInfrastructureScope").textContent = scopeLabel;
       renderPowerInfrastructureItems("mobilePowerInfrastructureItemsWrap", "mobilePowerInfrastructureItems", items);
       document.getElementById("mobilePowerInfrastructureUpdated").textContent = toRelativeAge(generatedAt);
-      document.getElementById("mobilePowerInfrastructureSource").textContent = "APS";
       syncPowerInfrastructureDisclosureState(status);
+      syncPowerDisclosureLabels(items.length);
     }
 
     async function refreshPowerInfrastructure(){
@@ -2020,30 +2101,29 @@
     function updateHeader(data) {
       const status = document.getElementById("status");
       document.getElementById("gwLabel").textContent = GATEWAY_HOST;
-      const windowEl = document.getElementById("windowHours");
-      if (windowEl) windowEl.textContent = WINDOW_HOURS;
+      document.getElementById("statusRefresh").textContent = `every ${REFRESH_MS / 1000}s`;
+      document.getElementById("statusWindow").textContent = `last ${WINDOW_HOURS}h`;
       if (!data.length) {
-        status.textContent = "Waiting for recent telemetry…";
+        document.getElementById("statusState").textContent = "Offline";
+        document.getElementById("statusLastSample").textContent = "unavailable";
+        const dot = document.getElementById("statusDot");
+        dot.className = "status-dot risk";
         return;
       }
-      status.textContent = "Live. Refresh every 5s. Showing last " + WINDOW_HOURS + "h.";
-      const last = data[data.length - 1];
+      if (status && status.firstElementChild == null){
+        status.textContent = "";
+      }
     }
 
     function computeTelemetry(data) {
-      const stateEl = document.getElementById("telemetryState");
-      const summaryEl = document.getElementById("telemetrySummary");
-      const updatedEl = document.getElementById("telemetryUpdated");
-      const card = stateEl?.closest(".card");
-      const badge = document.getElementById("telemetryBadge");
+      const stateEl = document.getElementById("statusState");
+      const summaryEl = document.getElementById("statusLastSample");
+      const dot = document.getElementById("statusDot");
 
       if (!data.length){
         stateEl.textContent = "Offline";
-        summaryEl.textContent = "Unavailable";
-        updatedEl.textContent = `${WINDOW_HOURS} hours`;
-        applyPillState(badge, "Offline", "risk");
-        setAccent(card, "accent-risk");
-        setAccent(stateEl, "risk");
+        summaryEl.textContent = "unavailable";
+        dot.className = "status-dot risk";
         return;
       }
 
@@ -2051,28 +2131,22 @@
       const ageMs = Date.now() - last.t.getTime();
       let label = "Healthy";
       let summary = toCompactRelativeAge(last.t);
-      let pillTone = "ok";
-      let cardAccent = "accent-ok";
-      let valueTone = "ok";
+      let tone = "ok";
 
       if (ageMs > 120000){
         label = "Offline";
-        pillTone = "risk";
-        cardAccent = "accent-risk";
-        valueTone = "risk";
+        tone = "risk";
       } else if (ageMs > 30000){
         label = "Delayed";
-        pillTone = "watch";
-        cardAccent = "accent-watch";
-        valueTone = "watch";
+        tone = "watch";
+      } else {
+        label = "Live";
       }
 
       stateEl.textContent = label;
       summaryEl.textContent = summary;
-      updatedEl.textContent = `${WINDOW_HOURS} hours`;
-      applyPillState(badge, label, pillTone);
-      setAccent(card, cardAccent);
-      setAccent(stateEl, valueTone);
+      dot.className = "status-dot";
+      if (tone) dot.classList.add(tone);
     }
 
     function targetGroupFacts(internetSeries, resolverSeries, lanSeries){
@@ -2863,7 +2937,6 @@
         updateAttributionCard(attribution, attributionEvidence);
         renderWanHealthTable(internetSeriesMarked, resolverSeriesMarked);
         updateMobileCurrentState();
-        updateMobileTelemetrySummary();
         scheduleResponsiveRender();
         refreshDnsSecurity();
         refreshInternetConditions();
@@ -2875,6 +2948,7 @@
     }
 
     initEasterEggs();
+    initDisclosureLabels();
     initResponsiveRendering();
     document.getElementById("clearSelectionButton")?.addEventListener("click", () => clearSelectedBucket());
     window.addEventListener("keydown", ev => {

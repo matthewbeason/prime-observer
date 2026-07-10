@@ -55,6 +55,7 @@ class DashboardPowerInfrastructureTest(unittest.TestCase):
         self.assertIn('id="powerInfrastructureCustomers"', html)
         self.assertIn('id="powerInfrastructureEvents"', html)
         self.assertIn('id="powerInfrastructureNearest"', html)
+        self.assertIn('id="powerInfrastructureDisclosureSummary"', html)
         self.assertIn('id="powerInfrastructureItemsWrap"', html)
         self.assertIn('id="powerInfrastructureItems"', html)
         self.assertIn('id="mobilePowerInfrastructureCard"', html)
@@ -63,6 +64,7 @@ class DashboardPowerInfrastructureTest(unittest.TestCase):
         self.assertIn('id="mobilePowerInfrastructureEvents"', html)
         self.assertIn('id="mobilePowerInfrastructureNearest"', html)
         self.assertIn('id="mobilePowerInfrastructureDisclosure"', html)
+        self.assertIn('id="mobilePowerInfrastructureDisclosureSummary"', html)
         self.assertIn('id="mobilePowerInfrastructureItemsWrap"', html)
         self.assertIn('id="mobilePowerInfrastructureItems"', html)
         self.assertNotIn("aps-ags.esriemcs.com", html)
@@ -99,6 +101,15 @@ class DashboardPowerInfrastructureTest(unittest.TestCase):
         self.assertIn('section.style.display = "none";', html)
         self.assertIn('section.style.display = "block";', html)
 
+    def test_dashboard_uses_contextual_power_disclosure_copy(self):
+        html = INDEX_HTML.read_text()
+
+        self.assertIn("View events >", html)
+        self.assertIn("Hide events", html)
+        self.assertIn("function powerDisclosureClosedLabel(itemsCount)", html)
+        self.assertIn("function powerDisclosureOpenLabel(itemsCount)", html)
+        self.assertIn("syncPowerDisclosureLabels(items.length);", html)
+
 
 @unittest.skipUnless(shutil.which("osascript"), "osascript is required for dashboard Power Infrastructure disclosure tests")
 class DashboardPowerInfrastructureDisclosureBehaviorTest(unittest.TestCase):
@@ -109,16 +120,22 @@ class DashboardPowerInfrastructureDisclosureBehaviorTest(unittest.TestCase):
     def run_js(self, body: str):
         functions = [
             "function isActivePowerInfrastructureStatus",
+            "function powerDisclosureClosedLabel",
+            "function powerDisclosureOpenLabel",
+            "function setDisclosureSummary",
             "function syncPowerInfrastructureDisclosureState",
+            "function syncPowerDisclosureLabels",
         ]
         snippets = "\n\n".join(extract_function(self.html, signature) for signature in functions)
         script = textwrap.dedent(
             f"""
             {snippets}
-            var powerInfrastructureDisclosureState = {{ lastStatus: null }};
+            var powerInfrastructureDisclosureState = {{ lastStatus: null, itemsCount: 0 }};
             var nodes = {{
               powerInfrastructureDisclosure: {{ open: false }},
-              mobilePowerInfrastructureDisclosure: {{ open: false }}
+              mobilePowerInfrastructureDisclosure: {{ open: false }},
+              powerInfrastructureDisclosureSummary: {{ textContent: "" }},
+              mobilePowerInfrastructureDisclosureSummary: {{ textContent: "" }}
             }};
             var document = {{
               getElementById: function(id) {{
@@ -174,31 +191,46 @@ class DashboardPowerInfrastructureDisclosureBehaviorTest(unittest.TestCase):
         result = self.run_js(
             """
             syncPowerInfrastructureDisclosureState("events_reported");
+            syncPowerDisclosureLabels(3);
             const autoExpanded = {
               desktop: nodes.powerInfrastructureDisclosure.open,
-              mobile: nodes.mobilePowerInfrastructureDisclosure.open
+              mobile: nodes.mobilePowerInfrastructureDisclosure.open,
+              desktopLabel: nodes.powerInfrastructureDisclosureSummary.textContent,
+              mobileLabel: nodes.mobilePowerInfrastructureDisclosureSummary.textContent
             };
             nodes.powerInfrastructureDisclosure.open = false;
             nodes.mobilePowerInfrastructureDisclosure.open = false;
+            syncPowerDisclosureLabels();
             syncPowerInfrastructureDisclosureState("events_reported");
             const afterManualCollapse = {
               desktop: nodes.powerInfrastructureDisclosure.open,
-              mobile: nodes.mobilePowerInfrastructureDisclosure.open
+              mobile: nodes.mobilePowerInfrastructureDisclosure.open,
+              desktopLabel: nodes.powerInfrastructureDisclosureSummary.textContent,
+              mobileLabel: nodes.mobilePowerInfrastructureDisclosureSummary.textContent
             };
             syncPowerInfrastructureDisclosureState("normal");
+            syncPowerDisclosureLabels();
             const afterReturnToNormal = {
               desktop: nodes.powerInfrastructureDisclosure.open,
-              mobile: nodes.mobilePowerInfrastructureDisclosure.open
+              mobile: nodes.mobilePowerInfrastructureDisclosure.open,
+              desktopLabel: nodes.powerInfrastructureDisclosureSummary.textContent,
+              mobileLabel: nodes.mobilePowerInfrastructureDisclosureSummary.textContent
             };
             return { autoExpanded, afterManualCollapse, afterReturnToNormal };
             """
         )
         self.assertTrue(result["autoExpanded"]["desktop"])
         self.assertTrue(result["autoExpanded"]["mobile"])
+        self.assertEqual(result["autoExpanded"]["desktopLabel"], "Hide 3 events")
+        self.assertEqual(result["autoExpanded"]["mobileLabel"], "Hide 3 events")
         self.assertFalse(result["afterManualCollapse"]["desktop"])
         self.assertFalse(result["afterManualCollapse"]["mobile"])
+        self.assertEqual(result["afterManualCollapse"]["desktopLabel"], "View 3 events >")
+        self.assertEqual(result["afterManualCollapse"]["mobileLabel"], "View 3 events >")
         self.assertFalse(result["afterReturnToNormal"]["desktop"])
         self.assertFalse(result["afterReturnToNormal"]["mobile"])
+        self.assertEqual(result["afterReturnToNormal"]["desktopLabel"], "View 3 events >")
+        self.assertEqual(result["afterReturnToNormal"]["mobileLabel"], "View 3 events >")
 
 
 if __name__ == "__main__":
