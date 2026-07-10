@@ -542,6 +542,12 @@ Optional:
 CLOUDFLARE_RADAR_DATE_RANGE=7d
 CLOUDFLARE_RADAR_TIMEOUT_SECONDS=8
 CLOUDFLARE_RADAR_LIMIT=10
+```
+
+Optional ISP-scoped Internet Conditions:
+
+```bash
+# .env.cloudflare
 PRIME_OBSERVER_INTERNET_ASN=22773
 PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox
 ```
@@ -551,8 +557,10 @@ Usage notes:
 - `.env.example` contains placeholder values only. Copy it to `.env.cloudflare` for local use.
 - Do not commit `.env.cloudflare`.
 - Do not put Cloudflare tokens in browser code or generated artifacts.
-- `PRIME_OBSERVER_INTERNET_ASN` is optional. When present, Prime Observer queries Cloudflare Radar traffic anomalies for that ASN using explicit operator configuration only. It does not attempt automatic public-IP or ISP discovery.
-- `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` is optional but recommended when ASN mode is used so the dashboard can show an operator-facing label such as `Cox` instead of a technical network name.
+- `PRIME_OBSERVER_INTERNET_ASN` and `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` are optional. Prime Observer does not require them.
+- If both optional ASN settings are omitted, Internet Conditions stays in the current US-scoped mode.
+- `PRIME_OBSERVER_INTERNET_ASN` enables explicit ASN-scoped traffic anomaly checks only. Prime Observer does not attempt automatic public-IP or ISP discovery.
+- `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` is optional but recommended when ASN mode is used so operator-facing diagnostics can show a label such as `Cox` instead of a generic network label.
 - If the configured ASN query fails, `bin/fetch_cloudflare_radar.py` falls back to the existing US-scoped Internet Conditions behavior and marks the artifact with fallback metadata.
 - If the token is missing, `bin/fetch_cloudflare_radar.py` writes an `unavailable` `viz/internet_conditions.json` artifact and exits successfully.
 - The scheduled macOS refresh path also works with the repo-local `.env.cloudflare` file because `bin/fetch_cloudflare_radar.py` loads it directly. Do not put the token in a plist or shell profile just for Prime Observer.

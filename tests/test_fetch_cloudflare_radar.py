@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -43,6 +44,12 @@ class FetchCloudflareRadarTest(unittest.TestCase):
             "PRIME_OBSERVER_INTERNET_ASN": "",
             "PRIME_OBSERVER_INTERNET_PROVIDER_LABEL": "",
         }
+
+    def capture_stdout(self, func, *args, **kwargs):
+        stream = io.StringIO()
+        with mock.patch("sys.stdout", new=stream):
+            func(*args, **kwargs)
+        return stream.getvalue()
 
     def test_build_payload_normalizes_current_disruptions(self):
         now = self.module.parse_ts("2026-06-29T18:00:00Z")
@@ -406,6 +413,108 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
         self.assertEqual(payload["scope"]["label"], "United States context")
         self.assertEqual(payload["query_mode"], "country")
+
+    def test_print_configuration_diagnostics_for_asn_mode(self):
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        output = self.capture_stdout(
+            self.module.print_configuration_diagnostics,
+            config,
+            self.module.requested_query_metadata(config),
+        )
+
+        self.assertIn("Internet Conditions configuration", output)
+        self.assertIn("Mode: ASN", output)
+        self.assertIn("Provider: Cox", output)
+        self.assertIn("ASN: AS22773", output)
+        self.assertNotIn("Reason:", output)
+        self.assertNotIn("Result:", output)
+
+    def test_print_configuration_diagnostics_for_us_mode(self):
+        config = self.config()
+
+        output = self.capture_stdout(
+            self.module.print_configuration_diagnostics,
+            config,
+            self.module.requested_query_metadata(config),
+        )
+
+        self.assertIn("Internet Conditions configuration", output)
+        self.assertIn("Mode: US", output)
+        self.assertIn("Reason: PRIME_OBSERVER_INTERNET_ASN not configured.", output)
+        self.assertNotIn("Provider:", output)
+        self.assertNotIn("ASN:", output)
+
+    def test_print_configuration_diagnostics_warns_when_provider_label_exists_without_asn(self):
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        output = self.capture_stdout(
+            self.module.print_configuration_diagnostics,
+            config,
+            self.module.requested_query_metadata(config),
+        )
+
+        self.assertIn("Mode: US", output)
+        self.assertIn("Reason: PRIME_OBSERVER_INTERNET_ASN not configured.", output)
+        self.assertIn(
+            "Note: PRIME_OBSERVER_INTERNET_PROVIDER_LABEL is set but will be ignored without PRIME_OBSERVER_INTERNET_ASN.",
+            output,
+        )
+
+    def test_print_configuration_diagnostics_warns_when_asn_exists_without_provider_label(self):
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+
+        output = self.capture_stdout(
+            self.module.print_configuration_diagnostics,
+            config,
+            self.module.requested_query_metadata(config),
+        )
+
+        self.assertIn("Mode: ASN", output)
+        self.assertIn("Provider: Configured network", output)
+        self.assertIn("ASN: AS22773", output)
+        self.assertIn(
+            "Note: PRIME_OBSERVER_INTERNET_PROVIDER_LABEL not configured. Using a generic operator label.",
+            output,
+        )
+
+    def test_print_result_diagnostics_logs_asn_fallback(self):
+        payload = {
+            "query_mode": "asn",
+            "fallback_used": True,
+        }
+
+        output = self.capture_stdout(self.module.print_result_diagnostics, payload)
+
+        self.assertIn("Result: Falling back to US-scoped query.", output)
+
+    def test_main_logs_asn_fallback_configuration_and_result(self):
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+        payload = self.module.unavailable_payload(
+            {
+                "query_mode": "asn",
+                "query_target_label": "Cox",
+                "query_target_id": "AS22773",
+                "provider_display_name": "US Radar",
+                "fallback_used": True,
+            }
+        )
+
+        with mock.patch.object(self.module, "load_config", return_value=config):
+            with mock.patch.object(self.module, "build_payload", return_value=payload):
+                output = self.capture_stdout(self.module.main)
+
+        self.assertIn("Internet Conditions configuration", output)
+        self.assertIn("Mode: ASN", output)
+        self.assertIn("Provider: Cox", output)
+        self.assertIn("ASN: AS22773", output)
+        self.assertIn("Result: Falling back to US-scoped query.", output)
 
     def test_json_generation_is_atomic_and_parseable(self):
         payload = self.module.unavailable_payload()

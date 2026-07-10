@@ -169,6 +169,42 @@ def requested_query_metadata(config):
     }
 
 
+def configuration_notes(config):
+    asn = str(config.get("PRIME_OBSERVER_INTERNET_ASN") or "").strip()
+    provider_label = str(config.get("PRIME_OBSERVER_INTERNET_PROVIDER_LABEL") or "").strip()
+    notes = []
+
+    if not asn:
+        notes.append("Reason: PRIME_OBSERVER_INTERNET_ASN not configured.")
+        if provider_label:
+            notes.append(
+                "Note: PRIME_OBSERVER_INTERNET_PROVIDER_LABEL is set but will be ignored without PRIME_OBSERVER_INTERNET_ASN."
+            )
+        return notes
+
+    if not provider_label:
+        notes.append(
+            "Note: PRIME_OBSERVER_INTERNET_PROVIDER_LABEL not configured. Using a generic operator label."
+        )
+    return notes
+
+
+def print_configuration_diagnostics(config, query_meta):
+    mode_label = "ASN" if query_meta["query_mode"] == "asn" else "US"
+    print("Internet Conditions configuration")
+    print(f"Mode: {mode_label}")
+    for note in configuration_notes(config):
+        print(note)
+    if query_meta["query_mode"] == "asn":
+        print(f"Provider: {query_meta['provider_display_name']}")
+        print(f"ASN: {query_meta['query_target_id']}")
+
+
+def print_result_diagnostics(payload):
+    if payload.get("query_mode") == "asn" and payload.get("fallback_used"):
+        print("Result: Falling back to US-scoped query.")
+
+
 def asn_scope_label(query_meta):
     label = str(query_meta.get("provider_display_name") or "").strip()
     if not label:
@@ -603,6 +639,7 @@ def unavailable_payload(query_meta=None):
 def main():
     config = load_config()
     query_meta = requested_query_metadata(config)
+    print_configuration_diagnostics(config, query_meta)
     if not config["CLOUDFLARE_API_TOKEN"]:
         write_json_atomic(unavailable_payload(query_meta))
         print("Cloudflare Radar token missing. Wrote unavailable summary to viz/internet_conditions.json.", file=sys.stderr)
@@ -621,6 +658,7 @@ def main():
         return 0
 
     write_json_atomic(payload)
+    print_result_diagnostics(payload)
     print(f"Wrote Internet Conditions to {OUT}")
     return 0
 
