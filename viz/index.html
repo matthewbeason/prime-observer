@@ -521,10 +521,12 @@
     </div>
 
     <div class="card" style="min-width:240px;">
-      <h4><span>Telemetry</span><span class="pill neutral" id="telemetryBadge">—</span></h4>
+      <h4><span>Data Freshness</span><span class="pill neutral" id="telemetryBadge">—</span></h4>
       <div class="value" style="font-size:22px;" id="telemetryState">—</div>
-      <div class="status-summary" id="telemetrySummary">Waiting for recent telemetry.</div>
-      <div class="small" id="telemetryUpdated">Updated —</div>
+      <div class="metric-stack" style="margin-top:10px;">
+        <div class="metric-pair"><span class="label">Latest Sample</span><span class="metric-value" id="telemetrySummary">—</span></div>
+        <div class="metric-pair"><span class="label">Observation Window</span><span class="metric-value" id="telemetryUpdated">24 hours</span></div>
+      </div>
     </div>
 
     <div class="card" style="min-width:240px;" id="noticeCard">
@@ -721,10 +723,10 @@
       <summary>Additional Detail Cards</summary>
       <div class="mobile-secondary-body">
         <div class="mobile-secondary-card">
-          <h4>Telemetry</h4>
+          <h4>Data Freshness</h4>
           <div class="detail-line"><b>Status:</b> <span id="mobileTelemetryState">—</span></div>
-          <div class="detail-line" id="mobileTelemetrySummary">Waiting for recent telemetry.</div>
-          <div class="detail-line"><b>Updated:</b> <span id="mobileTelemetryUpdated">—</span></div>
+          <div class="detail-line"><b>Latest Sample:</b> <span id="mobileTelemetrySummary">—</span></div>
+          <div class="detail-line"><b>Observation Window:</b> <span id="mobileTelemetryUpdated">24 hours</span></div>
         </div>
         <div class="mobile-secondary-card">
           <h4>DNS Security</h4>
@@ -937,7 +939,7 @@
     function updateMobileTelemetrySummary(){
       document.getElementById("mobileTelemetryState").textContent = document.getElementById("telemetryState").textContent;
       document.getElementById("mobileTelemetrySummary").textContent = document.getElementById("telemetrySummary").textContent;
-      document.getElementById("mobileTelemetryUpdated").textContent = document.getElementById("telemetryUpdated").textContent.replace(/^Updated\s*/, "");
+      document.getElementById("mobileTelemetryUpdated").textContent = document.getElementById("telemetryUpdated").textContent;
     }
 
     function syncWanHealthTables(html){
@@ -1414,6 +1416,17 @@
       if (hours < 24) return `${hours} hours ago`;
       const days = Math.floor(hours / 24);
       return days === 1 ? "1 day ago" : `${days} days ago`;
+    }
+    function toCompactRelativeAge(d){
+      if (!(d instanceof Date) || isNaN(d.getTime())) return "—";
+      const deltaMs = Math.max(0, Date.now() - d.getTime());
+      const minutes = Math.floor(deltaMs / 60000);
+      if (minutes <= 1) return "just now";
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
     }
     function setAccent(el, accent){
       if (!el) return;
@@ -2025,32 +2038,30 @@
       const badge = document.getElementById("telemetryBadge");
 
       if (!data.length){
-        stateEl.textContent = "Warning";
-        summaryEl.textContent = "Collector stalled";
-        updatedEl.textContent = "Updated —";
-        applyPillState(badge, "Notice", "watch");
-        setAccent(card, "accent-watch");
-        setAccent(stateEl, "watch");
+        stateEl.textContent = "Offline";
+        summaryEl.textContent = "Unavailable";
+        updatedEl.textContent = `${WINDOW_HOURS} hours`;
+        applyPillState(badge, "Offline", "risk");
+        setAccent(card, "accent-risk");
+        setAccent(stateEl, "risk");
         return;
       }
 
       const last = data[data.length - 1];
       const ageMs = Date.now() - last.t.getTime();
       let label = "Healthy";
-      let summary = "Collector healthy";
+      let summary = toCompactRelativeAge(last.t);
       let pillTone = "ok";
       let cardAccent = "accent-ok";
       let valueTone = "ok";
 
       if (ageMs > 120000){
-        label = "Warning";
-        summary = "Collector stalled";
+        label = "Offline";
         pillTone = "risk";
         cardAccent = "accent-risk";
         valueTone = "risk";
       } else if (ageMs > 30000){
-        label = "Warning";
-        summary = "Collector delayed";
+        label = "Delayed";
         pillTone = "watch";
         cardAccent = "accent-watch";
         valueTone = "watch";
@@ -2058,7 +2069,7 @@
 
       stateEl.textContent = label;
       summaryEl.textContent = summary;
-      updatedEl.textContent = `Updated ${toRelativeAge(last.t)}`;
+      updatedEl.textContent = `${WINDOW_HOURS} hours`;
       applyPillState(badge, label, pillTone);
       setAccent(card, cardAccent);
       setAccent(stateEl, valueTone);
