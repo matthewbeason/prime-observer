@@ -61,7 +61,8 @@ class DashboardAttributionObservationStaticTest(unittest.TestCase):
     def test_investigation_html_remains_unmigrated(self):
         investigation_html = (ROOT / "viz" / "investigate.html").read_text()
         self.assertNotIn("./observations.json", investigation_html)
-        self.assertNotIn("current_attribution", investigation_html)
+        self.assertNotIn("data.current_attribution", investigation_html)
+        self.assertNotIn("loadObservationsPayload()", investigation_html)
 
 
 @unittest.skipUnless(shutil.which("osascript"), "osascript is required for dashboard JS adapter tests")

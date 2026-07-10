@@ -6,9 +6,9 @@
   <title>Prime Observer Investigation</title>
   <style>
     :root{
-      --bg:#ece7df; --bg-wash:#f7f3ed; --card:rgba(251,248,243,.72); --card-strong:rgba(255,252,247,.88);
-      --border:rgba(112,97,78,.16); --muted:#6d665d; --muted-strong:#4f483e; --ink:#171512;
-      --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833; --radius:24px;
+      --bg:#ece7df; --bg-wash:#f7f3ed; --surface:rgba(251,248,243,.72); --surface-strong:rgba(255,252,247,.88);
+      --surface-muted:rgba(255,252,247,.58); --border:rgba(112,97,78,.16); --muted:#6d665d; --muted-strong:#4f483e;
+      --ink:#171512; --ok:#2f7d4f; --watch:#9a6a16; --risk:#a54833; --accent:#2d6f91; --radius:24px;
       --shadow-card:0 10px 30px rgba(52,43,33,.08), inset 0 1px 0 rgba(255,255,255,.48);
     }
     *{box-sizing:border-box;}
@@ -23,150 +23,228 @@
     }
     h1,h2,h3{font-family:"SF Pro Display","Segoe UI Variable Display","Inter Tight","Inter",system-ui,sans-serif;}
     h1{font-size:30px;margin:0;letter-spacing:-0.03em;}
-    h2{font-size:18px;margin:0 0 8px;letter-spacing:-0.02em;}
+    h2{font-size:24px;margin:0;letter-spacing:-0.025em;}
     h3{font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-strong);}
-    a:focus-visible{
+    a{color:inherit;}
+    a:focus-visible,
+    summary:focus-visible{
       outline:2px solid rgba(45,111,145,.70);
       outline-offset:3px;
     }
     .page-shell{max-width:1320px;margin:0 auto;}
-    .header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;}
-    .subtitle{font-size:14px;color:var(--muted);margin-top:6px;line-height:1.5;}
+    .page-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;}
+    .subtitle{font-size:14px;color:var(--muted);margin-top:6px;line-height:1.5;max-width:700px;}
     .pill{
+      display:inline-flex;align-items:center;gap:8px;
       font-size:11px;color:#34302a;background:linear-gradient(180deg, rgba(255,255,255,.76), rgba(242,236,229,.82));
       border:1px solid var(--border);padding:5px 11px;border-radius:999px;white-space:nowrap;
       backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); box-shadow:inset 0 1px 0 rgba(255,255,255,.62);
     }
-    .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
-    .card{
-      background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;
-      box-shadow:var(--shadow-card); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
-    }
-    .value{font-size:28px;font-weight:800;margin-top:2px;letter-spacing:-0.03em;}
-    .small{font-size:12px;color:var(--muted);line-height:1.55;}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
+    .pill-strong{background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(247,240,231,.92));}
     .status{
-      font-size:13px;color:var(--muted);margin:12px 0 18px;line-height:1.5;
+      font-size:13px;color:var(--muted);margin:0 0 12px;line-height:1.5;
       padding:10px 14px; border:1px solid var(--border); border-radius:999px;
       background:rgba(255,255,255,.46); width:fit-content; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
     }
-    table{border-collapse:collapse;width:100%;font-size:12px;background:rgba(255,252,247,.68);border:1px solid var(--border);border-radius:18px;overflow:hidden;}
+    .status.error{color:var(--risk);line-height:1.45;max-width:760px;}
+    .section{
+      margin-top:26px; padding:24px; border-radius:30px; background:var(--surface);
+      border:1px solid var(--border); box-shadow:var(--shadow-card); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+    }
+    .section-hero{padding:28px;background:linear-gradient(180deg, rgba(255,252,247,.86), rgba(251,248,243,.74));}
+    .section-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
+    .section-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:18px;}
+    .section-note{font-size:13px;color:var(--muted);margin:10px 0 0;line-height:1.55;max-width:900px;}
+    .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;}
+    .card{
+      background:var(--surface-strong);border:1px solid var(--border);border-radius:22px;padding:16px 18px;
+      box-shadow:var(--shadow-card); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+    }
+    .card-muted{background:var(--surface-muted);}
+    .value{font-size:28px;font-weight:800;margin-top:2px;letter-spacing:-0.03em;}
+    .eyebrow{font-size:12px;color:var(--muted);}
+    .small{font-size:12px;color:var(--muted);line-height:1.55;}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
+    .summary-layout{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(280px,1fr);gap:18px;align-items:start;}
+    .stack{display:grid;gap:14px;}
+    .summary-list{display:grid;gap:10px;}
+    .summary-item{padding-top:10px;border-top:1px solid var(--border);}
+    .summary-item:first-child{padding-top:0;border-top:0;}
+    .summary-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+    .summary-value{font-size:16px;font-weight:700;line-height:1.35;margin-top:2px;}
+    .summary-detail{font-size:12px;color:var(--muted);line-height:1.5;margin-top:3px;}
+    .panel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+    .table-block + .table-block{margin-top:18px;}
+    .table-block h3{margin-bottom:8px;}
+    .wide{overflow:auto;}
+    .table-wide table{min-width:960px;}
+    .table-medium table{min-width:720px;}
+    table{
+      border-collapse:collapse;width:100%;font-size:12px;background:rgba(255,252,247,.68);
+      border:1px solid var(--border);border-radius:18px;overflow:hidden;
+    }
     th,td{border-bottom:1px solid var(--border);padding:10px 9px;text-align:left;vertical-align:top;}
     th{font-size:11px;background:rgba(245,239,231,.88);color:#34302a;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
     tr:last-child td{border-bottom:0;}
-    .section-note{font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.55;max-width:900px;}
-    .status.error{color:var(--risk);line-height:1.45;max-width:760px;}
     .risk{color:var(--risk);font-weight:750;}
     .watch{color:var(--watch);font-weight:750;}
     .ok{color:var(--ok);font-weight:750;}
-    .wide{overflow:auto;}
-    .section{
-      margin-top:18px; padding:18px; border-radius:28px; background:var(--card);
-      border:1px solid var(--border); box-shadow:var(--shadow-card); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+    .disclosure{background:rgba(255,252,247,.52);border:1px solid var(--border);border-radius:22px;padding:0 18px;}
+    .disclosure + .disclosure{margin-top:14px;}
+    .disclosure summary{
+      list-style:none;cursor:pointer;padding:16px 0;font-weight:700;display:flex;justify-content:space-between;gap:16px;align-items:center;
     }
-    .section-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;}
-    #dnsContext,#internetConditionsContext,#powerInfrastructureContext{background:rgba(255,252,247,.54);}
-    @media (max-width: 900px){
+    .disclosure summary::-webkit-details-marker{display:none;}
+    .disclosure[open] summary{border-bottom:1px solid var(--border);}
+    .disclosure-body{padding:16px 0 18px;}
+    .empty-note{font-size:13px;color:var(--muted);padding:2px 0;}
+    .context-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+    .context-block{background:rgba(255,252,247,.54);}
+    @media (max-width: 980px){
       body{padding:22px 14px 34px;}
       h1{font-size:26px;}
+      h2{font-size:22px;}
       .status{width:100%;}
-      .section{padding:15px 14px;border-radius:24px;}
+      .section,.section-hero{padding:18px 16px;border-radius:26px;}
+      .summary-layout,.panel-grid{grid-template-columns:1fr;}
     }
     @media (max-width: 640px){
-      .row{grid-template-columns:1fr;}
+      .card-grid{grid-template-columns:1fr 1fr;}
       .value{font-size:24px;}
       .pill{font-size:10px;}
       th,td{padding:9px 8px;}
+    }
+    @media (max-width: 520px){
+      .card-grid{grid-template-columns:1fr;}
     }
   </style>
 </head>
 <body>
   <div class="page-shell">
-  <div class="header">
-    <div>
-      <h1>Prime Observer Investigation</h1>
-      <div class="subtitle">Historical evidence view for a selected telemetry window</div>
-    </div>
-    <span class="pill">Evidence only</span>
-  </div>
+    <header class="page-header">
+      <div>
+        <h1>Prime Observer Investigation</h1>
+        <div class="subtitle">Historical evidence view for a selected telemetry window, organized for review rather than interpretation.</div>
+      </div>
+      <span class="pill">Evidence only</span>
+    </header>
 
-  <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
-  <div id="deepLink" class="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
+    <div id="deepLink" class="status" aria-live="polite" aria-atomic="true" style="display:none;"></div>
 
-  <div class="row" id="eventCards"></div>
+    <section id="summarySection" class="section section-hero">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Investigation Summary</div>
+          <h2>What happened</h2>
+          <p class="section-note">Existing deterministic fields only: requested window, generated status, overlapping observation state, and the local evidence footprint for this investigation.</p>
+        </div>
+        <div id="summaryPills" class="stack"></div>
+      </div>
+      <div class="summary-layout">
+        <div class="stack">
+          <div id="summaryCards" class="card-grid"></div>
+          <div class="panel-grid">
+            <div class="card card-muted">
+              <h3>Observation State</h3>
+              <div id="summaryObservationList" class="summary-list"></div>
+            </div>
+            <div class="card card-muted">
+              <h3>Affected Probe Groups</h3>
+              <div id="summaryTargetGroups" class="summary-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card card-muted">
+          <h3>Investigation Notes</h3>
+          <div id="summaryNotes" class="summary-list"></div>
+        </div>
+      </div>
+    </section>
 
-  <div class="section">
-    <div class="section-kicker">Evidence Summary</div>
-    <h2>Before / During / After</h2>
-    <div class="section-note">Internet probes, resolver probes, and LAN are summarized separately where available. Bad counts use Prime Observer thresholds from the generated investigation file.</div>
-    <div class="wide">
-      <table id="periodTable"></table>
-    </div>
-  </div>
+    <section id="timelineSection" class="section">
+      <div class="section-kicker">Timeline</div>
+      <h2>When it happened</h2>
+      <p class="section-note">Before, during, and after summaries stay grouped with the 15-minute WAN buckets so the time window can be reviewed as one continuous timeline.</p>
+      <div class="table-block">
+        <h3>Before / During / After</h3>
+        <div class="wide table-wide">
+          <table id="periodTable"></table>
+        </div>
+      </div>
+      <div class="table-block">
+        <h3>WAN Buckets</h3>
+        <div class="wide table-wide">
+          <table id="bucketTable"></table>
+        </div>
+      </div>
+    </section>
 
-  <div class="section">
-    <div class="section-kicker">Interval Evidence</div>
-    <h2>WAN Buckets</h2>
-    <div class="section-note">15-minute factual buckets around the requested window.</div>
-    <div class="wide">
-      <table id="bucketTable"></table>
-    </div>
-  </div>
+    <section id="coreEvidenceSection" class="section">
+      <div class="section-kicker">Core Evidence</div>
+      <h2>What supports the current interpretation</h2>
+      <p class="section-note">Deterministic evidence stays grouped by domain so attribution, observations, health signals, and DNS context do not compete as unrelated cards.</p>
+      <div class="panel-grid">
+        <div class="card">
+          <h3>Observation References</h3>
+          <div id="observationReferenceList" class="summary-list"></div>
+        </div>
+        <div class="card">
+          <h3>Health And Threshold Evidence</h3>
+          <div id="healthEvidenceList" class="summary-list"></div>
+        </div>
+      </div>
+      <div class="card context-block" style="margin-top:14px;">
+        <h3>DNS Context</h3>
+        <div id="dnsContext"></div>
+      </div>
+    </section>
 
-  <div class="section">
-    <div class="section-kicker">Navigation Evidence</div>
-    <h2>Investigation Events</h2>
-    <div class="section-note">Deterministic event metadata and adjacent-event navigation from the generated investigation file.</div>
-    <div class="wide">
-      <table id="eventTable"></table>
-    </div>
-  </div>
+    <section id="environmentalContextSection" class="section" style="display:none;">
+      <div class="section-kicker">Environmental Context</div>
+      <h2>What external context was present</h2>
+      <p class="section-note">Provider provenance remains visible. This is supporting context only and does not change attribution, noticeability, health scoring, or causal interpretation.</p>
+      <div class="context-grid">
+        <div id="internetConditionsSection" class="card context-block" style="display:none;">
+          <h3>Internet Conditions</h3>
+          <div id="internetConditionsContext"></div>
+        </div>
+        <div id="powerInfrastructureSection" class="card context-block" style="display:none;">
+          <h3>Power Infrastructure</h3>
+          <div id="powerInfrastructureContext"></div>
+        </div>
+      </div>
+    </section>
 
-  <div class="section">
-    <div class="section-kicker">Neighbor Context</div>
-    <h2>Nearby Events</h2>
-    <div class="section-note">Factual neighborhood signals only: temporal proximity, shared investigation membership, and shared evidence windows.</div>
-    <div class="wide">
-      <table id="neighborhoodTable"></table>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-kicker">Source Samples</div>
-    <h2>Timeline Samples</h2>
-    <div class="section-note">Representative telemetry rows from the generated investigation file.</div>
-    <div class="wide">
-      <table id="sampleTable"></table>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-kicker">DNS Context</div>
-    <h2>DNS Context</h2>
-    <div id="dnsContext" class="card"></div>
-  </div>
-
-  <div id="internetConditionsSection" class="section" style="display:none;">
-    <div class="section-kicker">Internet Conditions</div>
-    <h2>Internet Conditions</h2>
-    <div class="section-note">Closest locally generated Environmental Context snapshot only. This is supporting evidence, not historical proof, attribution, noticeability, or health scoring.</div>
-    <div id="internetConditionsContext" class="card"></div>
-  </div>
-
-  <div id="powerInfrastructureSection" class="section" style="display:none;">
-    <div class="section-kicker">Power Infrastructure</div>
-    <h2>Power Infrastructure</h2>
-    <div class="section-note">Closest locally generated provider snapshot only. This is supporting evidence, not historical proof, attribution, noticeability, or health scoring.</div>
-    <div id="powerInfrastructureContext" class="card"></div>
-  </div>
-
-  <div class="section">
-    <div class="section-kicker">Artifact Provenance</div>
-    <h2>Sources</h2>
-    <div class="wide">
-      <table id="sourceTable"></table>
-    </div>
-  </div>
+    <section id="rawDetailSection" class="section">
+      <div class="section-kicker">Raw Detail</div>
+      <h2>What deeper inspection is available</h2>
+      <p class="section-note">Lower-level tables and source metadata remain available, but they move to the end of the page and use disclosure to reduce visual noise during the first pass.</p>
+      <details class="disclosure" open>
+        <summary>Investigation Events <span class="small">Deterministic event metadata and navigation</span></summary>
+        <div class="disclosure-body wide table-medium">
+          <table id="eventTable"></table>
+        </div>
+      </details>
+      <details class="disclosure">
+        <summary>Nearby Events <span class="small">Temporal proximity and shared evidence windows only</span></summary>
+        <div class="disclosure-body wide table-wide">
+          <table id="neighborhoodTable"></table>
+        </div>
+      </details>
+      <details class="disclosure">
+        <summary>Timeline Samples <span class="small">Representative telemetry rows from the investigation artifact</span></summary>
+        <div class="disclosure-body wide table-wide">
+          <table id="sampleTable"></table>
+        </div>
+      </details>
+      <details class="disclosure">
+        <summary>Telemetry Sources <span class="small">Files and row counts used for the generated artifact</span></summary>
+        <div class="disclosure-body wide">
+          <table id="sourceTable"></table>
+        </div>
+      </details>
+    </section>
   </div>
 
   <script>
@@ -190,19 +268,88 @@
       return `<td>${fmt(value, suffix)}</td>`;
     }
 
-    function renderCard(title, value, detail){
-      return `<div class="card"><h3>${title}</h3><div class="value">${value}</div><div class="small">${detail}</div></div>`;
+    function renderMetricCard(title, value, detail){
+      return `<div class="card"><h3>${title}</h3><div class="value">${fmt(value)}</div><div class="small">${detail}</div></div>`;
     }
 
-    function renderEventCards(data){
-      const event = data.event_window || {};
-      const thresholds = data.thresholds || {};
-      document.getElementById("eventCards").innerHTML = [
-        renderCard("Event Window", fmt(event.duration_minutes, " min"), `${shortTime(event.start)} to ${shortTime(event.end)}`),
-        renderCard("Context Window", fmt(data.input?.pad_minutes, " min pad"), `${shortTime(event.context_start)} to ${shortTime(event.context_end)}`),
-        renderCard("WAN Bad Thresholds", `${thresholds.wan_bad_p95_ms} ms`, `jitter > ${thresholds.wan_bad_jitter_ms} ms or loss > ${thresholds.wan_bad_loss_pct}%`),
-        renderCard("Generated", shortTime(data.generated_at), `schema ${fmt(data.schema_version)}`),
+    function renderSummaryItem(label, value, detail){
+      return `<div class="summary-item"><div class="summary-label">${label}</div><div class="summary-value">${fmt(value)}</div>${detail ? `<div class="summary-detail">${detail}</div>` : ""}</div>`;
+    }
+
+    function observationReferencesByType(data, type){
+      return (data.observation_references || []).filter(item => item.type === type);
+    }
+
+    function findObservationReference(data, view){
+      return (data.observation_references || []).find(item => item.scope?.view === view);
+    }
+
+    function affectedTargetGroups(data){
+      const groups = Object.entries(data.target_groups || {}).map(([name, group]) => ({
+        name,
+        sampleCount: group.sample_count || 0,
+        rawBadCount: group.raw_bad_count || 0,
+        sustainedBadCount: group.sustained_bad_count || 0,
+        hostCount: Object.keys(group.host_counts || {}).length,
+      }));
+      const active = groups.filter(group => group.rawBadCount > 0 || group.sustainedBadCount > 0);
+      return active.length ? active : groups.filter(group => group.sampleCount > 0);
+    }
+
+    function renderSummary(data){
+      const requested = data.requested_window || {};
+      const eventWindow = data.event_window || {};
+      const context = data.context_window || {};
+      const currentAttribution = findObservationReference(data, "current_attribution");
+      const windowAttribution = findObservationReference(data, "window_attribution");
+      const episodes = observationReferencesByType(data, "episode");
+      const activeGroups = affectedTargetGroups(data);
+      const eventCount = (data.events || []).length;
+      const sampleCount = (data.timeline_samples || []).length;
+      const selectedCount = data.provenance?.observation_projection?.selected_count;
+      const pills = [
+        `<span class="pill pill-strong">Status: ${fmt(data.status)}</span>`,
+        `<span class="pill">Requested: ${fmt(requested.duration_minutes, " min")}</span>`,
+        `<span class="pill">Context pad: ${fmt(context.pad_minutes, " min")}</span>`,
+      ];
+
+      document.getElementById("summaryPills").innerHTML = pills.join("");
+      document.getElementById("summaryCards").innerHTML = [
+        renderMetricCard("Investigation Window", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`),
+        renderMetricCard("Current Attribution", currentAttribution?.state?.label || windowAttribution?.state?.label || "—", currentAttribution ? `status ${fmt(currentAttribution.state?.status)}` : "No current attribution reference selected."),
+        renderMetricCard("Observation Footprint", fmt(selectedCount ?? (data.observation_references || []).length), `${fmt(episodes.length)} episode references overlapping this window`),
+        renderMetricCard("Evidence Volume", `${eventCount} events`, `${sampleCount} timeline samples · ${activeGroups.length} target groups with evidence`),
       ].join("");
+
+      document.getElementById("summaryObservationList").innerHTML = [
+        renderSummaryItem(
+          "Current attribution",
+          currentAttribution?.state?.label || "—",
+          currentAttribution ? `${fmt(currentAttribution.state?.status)} · ${fmt(currentAttribution.materialization?.conclusion_kind)} · ${shortTime(currentAttribution.generated_at)}` : "No current-attribution observation reference in this artifact."
+        ),
+        renderSummaryItem(
+          "Window attribution",
+          windowAttribution?.state?.label || "—",
+          windowAttribution ? `${fmt(windowAttribution.state?.status)} · ${fmt(windowAttribution.materialization?.conclusion_kind)} · ${shortTime(windowAttribution.generated_at)}` : "No window-attribution observation reference in this artifact."
+        ),
+        renderSummaryItem(
+          "Episode state",
+          episodes.length ? episodes.map(item => item.state?.label || item.type).join(" · ") : "No overlapping episode references",
+          episodes.length ? `${episodes.length} overlapping episode references in the requested window` : "Episode state remains available through the raw event and timeline sections."
+        ),
+      ].join("");
+
+      document.getElementById("summaryTargetGroups").innerHTML = activeGroups.length
+        ? activeGroups.map(group => renderSummaryItem(
+            group.name,
+            `${group.sampleCount} samples`,
+            `${group.rawBadCount} raw bad · ${group.sustainedBadCount} sustained bad · ${group.hostCount} hosts`
+          )).join("")
+        : '<div class="empty-note">No target-group evidence available.</div>';
+
+      document.getElementById("summaryNotes").innerHTML = (data.notes || []).length
+        ? data.notes.map(note => renderSummaryItem("Note", note, "")).join("")
+        : '<div class="empty-note">No investigation notes available.</div>';
     }
 
     function renderPeriodTable(data){
@@ -262,6 +409,29 @@
       document.getElementById("bucketTable").innerHTML = `
         <thead><tr><th>Period</th><th>Start</th><th>End</th><th>Target class</th><th>Hosts</th><th>Samples</th><th>Raw bad</th><th>Sustained bad</th><th>Max run</th><th>Max p95</th><th>Max jitter</th><th>Max loss</th><th>Bucket</th></tr></thead>
         <tbody>${rows.join("") || '<tr><td colspan="13">No WAN bucket evidence available.</td></tr>'}</tbody>`;
+    }
+
+    function renderObservationReferenceList(data){
+      const references = data.observation_references || [];
+      document.getElementById("observationReferenceList").innerHTML = references.length
+        ? references.map(reference => renderSummaryItem(
+            `${fmt(reference.type)} · ${fmt(reference.scope?.view || reference.scope?.target_class || "reference")}`,
+            reference.state?.label || "—",
+            `${fmt(reference.state?.status)} · ${shortTime(reference.interval?.start)} to ${shortTime(reference.interval?.end)}`
+          )).join("")
+        : '<div class="empty-note">No observation references available.</div>';
+    }
+
+    function renderHealthEvidence(data){
+      const during = data.periods?.during || {};
+      const wan = during.wan || {};
+      const lan = during.lan || {};
+      const thresholds = data.thresholds || {};
+      document.getElementById("healthEvidenceList").innerHTML = [
+        renderSummaryItem("During-window WAN", `${fmt(wan.sample_count)} samples`, `${fmt(wan.raw_bad_count)} raw bad · ${fmt(wan.sustained_bad_count)} sustained bad · ${fmt(wan.turbulence_bucket_count)} turbulence buckets`),
+        renderSummaryItem("During-window LAN", `${fmt(lan.sample_count)} samples`, `${fmt(lan.elevated_p95_count)} elevated samples · max ${fmt(lan.max_p95_ms, " ms")}`),
+        renderSummaryItem("Bad thresholds", `${fmt(thresholds.wan_bad_p95_ms, " ms")} p95`, `jitter > ${fmt(thresholds.wan_bad_jitter_ms, " ms")} · loss > ${fmt(thresholds.wan_bad_loss_pct, "%")}`),
+      ].join("");
     }
 
     function renderEventTable(data){
@@ -337,24 +507,24 @@
       }).join("");
 
       document.getElementById("dnsContext").innerHTML = dns.available ? `
-        <div><b>Status:</b> ${fmt(dns.status)}</div>
-        <div><b>Generated:</b> ${shortTime(dns.generated_at)} (${fmt(dns.minutes_from_event_midpoint, " min from event midpoint")})</div>
-        <div><b>Window:</b> ${fmt(dns.window)}</div>
-        <div><b>Total queries:</b> ${fmt(summary.total_queries)}</div>
-        <div><b>Blocked:</b> ${fmt(summary.blocked_queries)} (${fmt(summary.block_rate_pct, "%")})</div>
-        <div><b>Encrypted:</b> ${fmt(summary.encrypted_rate_pct, "%")}</div>
-        <div><b>Top blocked reason:</b> ${fmt(summary.top_blocked_reason)} (${fmt(summary.top_blocked_reason_queries)} queries)</div>
-        <div class="small" style="margin-top:8px;">${fmt(dns.note)}</div>
-        <div class="small" style="margin-top:8px;">${entities}</div>
+        <div class="summary-list">
+          ${renderSummaryItem("Status", fmt(dns.status), `${shortTime(dns.generated_at)} · ${fmt(dns.minutes_from_event_midpoint, " min from event midpoint")}`)}
+          ${renderSummaryItem("Window", fmt(dns.window), `Profile suffix ${fmt(dns.profile_id_suffix)}`)}
+          ${renderSummaryItem("Total queries", fmt(summary.total_queries), `Blocked ${fmt(summary.blocked_queries)} (${fmt(summary.block_rate_pct, "%")}) · ${fmt(summary.encrypted_rate_pct, "%")} encrypted`)}
+          ${renderSummaryItem("Top blocked reason", fmt(summary.top_blocked_reason), `${fmt(summary.top_blocked_reason_queries)} queries`)}
+        </div>
+        <div class="small" style="margin-top:10px;">${fmt(dns.note)}</div>
+        ${entities ? `<div class="small" style="margin-top:10px;">${entities}</div>` : ""}
       ` : `<div><b>Status:</b> unavailable</div><div class="small">${fmt(dns.reason || dns.note)}</div>`;
     }
 
     function renderInternetConditions(data){
+      const environmentalSection = document.getElementById("environmentalContextSection");
       const section = document.getElementById("internetConditionsSection");
       const context = data.internet_conditions_context || {};
       if (!context.available){
         section.style.display = "none";
-        return;
+        return false;
       }
 
       const items = (context.items || []).map(item => {
@@ -362,30 +532,29 @@
         return `<div>${fmt(item.signal)} · ${fmt(item.region)}: ${fmt(item.description)}${started}</div>`;
       }).join("");
 
+      environmentalSection.style.display = "block";
       section.style.display = "block";
       document.getElementById("internetConditionsContext").innerHTML = `
-        <div><b>Provider:</b> ${fmt(context.provider)}</div>
-        <div><b>Status:</b> ${fmt(context.status)}</div>
-        <div><b>Generated:</b> ${shortTime(context.generated_at)} (${fmt(context.minutes_from_event_midpoint, " min from event midpoint")})</div>
-        <div><b>Summary:</b> ${fmt(context.summary)}</div>
-        <div><b>Query mode:</b> ${fmt(context.query_mode)}</div>
-        <div><b>Target label:</b> ${fmt(context.query_target_label || context.provider_display_name)}</div>
-        <div><b>Target ID:</b> ${fmt(context.query_target_id)}</div>
-        <div><b>Fallback used:</b> ${context.fallback_used ? "yes" : "no"}</div>
-        <div><b>Scope:</b> ${fmt(context.scope?.label)}</div>
-        <div><b>Signals checked:</b> ${(context.signals_checked || []).join(", ") || "—"}</div>
-        <div><b>Source:</b> <span class="mono">${fmt(context.source_file)}</span></div>
-        <div class="small" style="margin-top:8px;">${fmt(context.note)}</div>
-        ${items ? `<div class="small" style="margin-top:8px;">${items}</div>` : ""}
+        <div class="summary-list">
+          ${renderSummaryItem("Provider", fmt(context.provider), fmt(context.status))}
+          ${renderSummaryItem("Generated", shortTime(context.generated_at), `${fmt(context.minutes_from_event_midpoint, " min from event midpoint")} · ${fmt(context.source_file)}`)}
+          ${renderSummaryItem("Scope", fmt(context.scope?.label), `Query mode ${fmt(context.query_mode)} · target ${fmt(context.query_target_label || context.provider_display_name || context.query_target_id)}`)}
+          ${renderSummaryItem("Target ID", fmt(context.query_target_id), `Fallback used: ${context.fallback_used ? "yes" : "no"}`)}
+          ${renderSummaryItem("Signals checked", (context.signals_checked || []).join(", ") || "—", fmt(context.summary))}
+        </div>
+        <div class="small" style="margin-top:10px;">${fmt(context.note)}</div>
+        ${items ? `<div class="small" style="margin-top:10px;">${items}</div>` : ""}
       `;
+      return true;
     }
 
     function renderPowerInfrastructure(data){
+      const environmentalSection = document.getElementById("environmentalContextSection");
       const section = document.getElementById("powerInfrastructureSection");
       const context = data.power_infrastructure_context || {};
       if (!context.available){
         section.style.display = "none";
-        return;
+        return false;
       }
 
       const items = (context.items || []).map(item => {
@@ -395,18 +564,18 @@
         return `<div>${fmt(item.event_type)} · ${fmt(item.affected_area)} · ${fmt(item.customer_count)} customers${etr}</div>`;
       }).join("");
 
+      environmentalSection.style.display = "block";
       section.style.display = "block";
       document.getElementById("powerInfrastructureContext").innerHTML = `
-        <div><b>Provider:</b> ${fmt(context.provider)}</div>
-        <div><b>Status:</b> ${fmt(context.status)}</div>
-        <div><b>Generated:</b> ${shortTime(context.generated_at)} (${fmt(context.minutes_from_event_midpoint, " min from event midpoint")})</div>
-        <div><b>Summary:</b> ${fmt(context.summary)}</div>
-        <div><b>Scope:</b> ${fmt(context.scope?.label)}</div>
-        <div><b>Signals checked:</b> ${(context.signals_checked || []).join(", ") || "—"}</div>
-        <div><b>Source:</b> <span class="mono">${fmt(context.source_file)}</span></div>
-        <div class="small" style="margin-top:8px;">${fmt(context.note)}</div>
-        ${items ? `<div class="small" style="margin-top:8px;">${items}</div>` : ""}
+        <div class="summary-list">
+          ${renderSummaryItem("Provider", fmt(context.provider), fmt(context.status))}
+          ${renderSummaryItem("Generated", shortTime(context.generated_at), `${fmt(context.minutes_from_event_midpoint, " min from event midpoint")} · ${fmt(context.source_file)}`)}
+          ${renderSummaryItem("Scope", fmt(context.scope?.label), fmt(context.summary))}
+          ${renderSummaryItem("Signals checked", (context.signals_checked || []).join(", ") || "—", fmt(context.note))}
+        </div>
+        ${items ? `<div class="small" style="margin-top:10px;">${items}</div>` : ""}
       `;
+      return true;
     }
 
     function renderSources(data){
@@ -421,7 +590,9 @@
       const start = params.get("start") || params.get("event_start");
       const end = params.get("end") || params.get("event_end");
       if (!start && !end) return;
-      document.getElementById("deepLink").innerHTML =
+      const deepLink = document.getElementById("deepLink");
+      deepLink.style.display = "block";
+      deepLink.innerHTML =
         `Requested URL window: <span class="mono">${fmt(start)}</span> to <span class="mono">${fmt(end)}</span>. Generate matching evidence with <span class="mono">bin/build_investigation.py</span>.`;
     }
 
@@ -444,15 +615,20 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       document.getElementById("status").textContent = "Loaded investigation.json";
-      renderEventCards(data);
+      renderSummary(data);
       renderPeriodTable(data);
       renderBucketTable(data);
+      renderObservationReferenceList(data);
+      renderHealthEvidence(data);
       renderEventTable(data);
       renderNeighborhoodTable(data);
       renderSamples(data);
       renderDns(data);
-      renderInternetConditions(data);
-      renderPowerInfrastructure(data);
+      const hasInternetConditions = renderInternetConditions(data);
+      const hasPowerInfrastructure = renderPowerInfrastructure(data);
+      if (!hasInternetConditions && !hasPowerInfrastructure){
+        document.getElementById("environmentalContextSection").style.display = "none";
+      }
       renderSources(data);
     }
 
