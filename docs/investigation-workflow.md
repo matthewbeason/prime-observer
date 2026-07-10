@@ -196,10 +196,10 @@ available locally generated Environmental Context snapshot, not historical
 proof of what happened during the event window.
 
 The copied Internet Conditions context is supporting evidence only. It may
-include provider, generated time, status, summary, scope, signals checked,
-bounded items, source file, and minutes from the event midpoint. It must not
-change attribution, health calculations, noticeability, or investigation
-scoring, and it must not be described as causal proof.
+include provider, generated time, status, summary, query metadata, scope,
+signals checked, bounded items, source file, and minutes from the event
+midpoint. It must not change attribution, health calculations, noticeability,
+or investigation scoring, and it must not be described as causal proof.
 
 Power Infrastructure context, when present, is copied only from the existing
 generated `viz/aps_power_context.json` fields. It represents the closest

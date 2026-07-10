@@ -164,8 +164,10 @@ Stage ownership:
   conditions
 - Required fields: `schema_version`, `generated_at`, `provider`, `status`,
   `summary`, `scope`, `signals_checked`, `items`
-- Optional fields: item-level `reference`; `scope.region` may be `null`; `items`
-  may be empty for `normal` or `unavailable`
+- Optional fields: `query_mode`, `query_target_label`, `query_target_id`,
+  `provider_display_name`, `fallback_used`, item-level `reference`;
+  `scope.region` may be `null`; `items` may be empty for `normal` or
+  `unavailable`
 - Unavailable behavior: the producer writes an explicit `unavailable` artifact
   instead of failing the dashboard
 - Authoritative: yes, for the current local Internet Conditions summary

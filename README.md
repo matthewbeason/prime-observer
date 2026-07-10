@@ -303,10 +303,10 @@ Projection roles:
   Generated local DNS summary. It may include aggregate top-N domain names from analytics endpoints, but must not contain API keys, raw logs, client IPs, device names, per-query records, or full profile IDs.
 
 - `bin/fetch_cloudflare_radar.py`
-  Optional local Cloudflare Radar outage-summary fetcher. Uses Python standard library only and can load `CLOUDFLARE_API_TOKEN` from the process environment or a local `.env.cloudflare` file.
+  Optional local Cloudflare Radar Internet Conditions fetcher. Uses Python standard library only, can load `CLOUDFLARE_API_TOKEN` from the process environment or a local `.env.cloudflare` file, and optionally supports an explicitly configured provider ASN for provider-scoped traffic anomaly checks.
 
 - `viz/internet_conditions.json`
-  Generated local Internet Conditions summary for dashboard context. If the token is missing or Cloudflare Radar is unavailable, the script writes an `unavailable` artifact instead of failing the dashboard.
+  Generated local Internet Conditions summary for dashboard context. By default it remains US-scoped. If an explicit provider ASN is configured, the script targets Cloudflare Radar traffic anomalies for that ASN and falls back to the US-scoped check if the ASN query fails. If the token is missing or Cloudflare Radar is unavailable, the script writes an `unavailable` artifact instead of failing the dashboard.
 
 - `bin/fetch_aps_power_context.py`
   Optional local APS Power Infrastructure summary fetcher. Uses public APS outage-viewer data and Python standard library only.
@@ -542,6 +542,8 @@ Optional:
 CLOUDFLARE_RADAR_DATE_RANGE=7d
 CLOUDFLARE_RADAR_TIMEOUT_SECONDS=8
 CLOUDFLARE_RADAR_LIMIT=10
+PRIME_OBSERVER_INTERNET_ASN=22773
+PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox
 ```
 
 Usage notes:
@@ -549,6 +551,9 @@ Usage notes:
 - `.env.example` contains placeholder values only. Copy it to `.env.cloudflare` for local use.
 - Do not commit `.env.cloudflare`.
 - Do not put Cloudflare tokens in browser code or generated artifacts.
+- `PRIME_OBSERVER_INTERNET_ASN` is optional. When present, Prime Observer queries Cloudflare Radar traffic anomalies for that ASN using explicit operator configuration only. It does not attempt automatic public-IP or ISP discovery.
+- `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` is optional but recommended when ASN mode is used so the dashboard can show an operator-facing label such as `Cox` instead of a technical network name.
+- If the configured ASN query fails, `bin/fetch_cloudflare_radar.py` falls back to the existing US-scoped Internet Conditions behavior and marks the artifact with fallback metadata.
 - If the token is missing, `bin/fetch_cloudflare_radar.py` writes an `unavailable` `viz/internet_conditions.json` artifact and exits successfully.
 - The scheduled macOS refresh path also works with the repo-local `.env.cloudflare` file because `bin/fetch_cloudflare_radar.py` loads it directly. Do not put the token in a plist or shell profile just for Prime Observer.
 

@@ -368,6 +368,10 @@
         <div><b>Status:</b> ${fmt(context.status)}</div>
         <div><b>Generated:</b> ${shortTime(context.generated_at)} (${fmt(context.minutes_from_event_midpoint, " min from event midpoint")})</div>
         <div><b>Summary:</b> ${fmt(context.summary)}</div>
+        <div><b>Query mode:</b> ${fmt(context.query_mode)}</div>
+        <div><b>Target label:</b> ${fmt(context.query_target_label || context.provider_display_name)}</div>
+        <div><b>Target ID:</b> ${fmt(context.query_target_id)}</div>
+        <div><b>Fallback used:</b> ${context.fallback_used ? "yes" : "no"}</div>
         <div><b>Scope:</b> ${fmt(context.scope?.label)}</div>
         <div><b>Signals checked:</b> ${(context.signals_checked || []).join(", ") || "—"}</div>
         <div><b>Source:</b> <span class="mono">${fmt(context.source_file)}</span></div>

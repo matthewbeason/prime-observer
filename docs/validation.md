@@ -173,6 +173,8 @@ Environmental Context validation should prove these provider rules still hold:
 - successful provider fetch writes a bounded local JSON artifact
 - unavailable provider state writes an explicit `unavailable` artifact
 - malformed provider data degrades safely instead of breaking the dashboard
+- explicit configured-scope logic remains honest about the requested target and
+  any fallback used
 - dashboard rendering remains artifact-driven and renderer-only
 - investigation integration remains additive supporting evidence
 - provider evidence stays separate from Observation, Attribution, Health, and

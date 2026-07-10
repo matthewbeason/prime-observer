@@ -691,6 +691,11 @@ def internet_conditions_context(event_midpoint_utc):
         "generated_at": payload.get("generated_at"),
         "status": status,
         "summary": payload.get("summary"),
+        "query_mode": payload.get("query_mode"),
+        "query_target_label": payload.get("query_target_label"),
+        "query_target_id": payload.get("query_target_id"),
+        "provider_display_name": payload.get("provider_display_name"),
+        "fallback_used": bool(payload.get("fallback_used")),
         "scope": {
             "country": scope.get("country"),
             "region": scope.get("region"),

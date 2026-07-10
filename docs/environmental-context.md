@@ -191,6 +191,9 @@ Cloudflare Radar / Internet Conditions already demonstrates this pattern:
 - output is `viz/internet_conditions.json`
 - browser consumption happens from generated local artifact data
 - missing configuration or provider failure writes an `unavailable` artifact
+- explicit configured ASN mode is allowed for provider-scoped traffic anomaly
+  checks, but only through deterministic local configuration and additive
+  artifact metadata
 
 APS Power Infrastructure now follows the same pattern:
 

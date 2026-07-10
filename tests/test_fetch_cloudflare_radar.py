@@ -40,6 +40,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
             "CLOUDFLARE_RADAR_DATE_RANGE": "7d",
             "CLOUDFLARE_RADAR_TIMEOUT_SECONDS": 1,
             "CLOUDFLARE_RADAR_LIMIT": 10,
+            "PRIME_OBSERVER_INTERNET_ASN": "",
+            "PRIME_OBSERVER_INTERNET_PROVIDER_LABEL": "",
         }
 
     def test_build_payload_normalizes_current_disruptions(self):
@@ -113,6 +115,11 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertIsNone(payload["scope"]["region"])
         self.assertEqual(payload["scope"]["label"], "United States context")
         self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["query_mode"], "country")
+        self.assertEqual(payload["query_target_label"], "United States")
+        self.assertEqual(payload["query_target_id"], "US")
+        self.assertEqual(payload["provider_display_name"], "US Radar")
+        self.assertFalse(payload["fallback_used"])
         self.assertEqual(payload["summary"], "United States Internet outage reported in Arizona and 2 more location(s).")
         self.assertEqual(len(payload["items"]), 3)
         self.assertEqual(payload["items"][0]["region"], "Arizona")
@@ -160,6 +167,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["summary"], "No United States Internet outages or traffic anomalies detected.")
         self.assertEqual(payload["scope"]["label"], "United States context")
         self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["query_mode"], "country")
+        self.assertEqual(payload["provider_display_name"], "US Radar")
         self.assertEqual(payload["items"], [])
 
     def test_build_payload_limits_items_to_first_three_meaningful_entries(self):
@@ -214,6 +223,76 @@ class FetchCloudflareRadarTest(unittest.TestCase):
             ],
         )
 
+    def test_build_payload_uses_configured_asn_mode_for_traffic_anomalies(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        payload = self.module.build_payload(
+            config,
+            now=now,
+            outages_fetcher=lambda *_: self.fail("outage fetch should not run for ASN mode"),
+            traffic_fetcher=lambda *_: self.fail("country anomaly fetch should not run for ASN mode"),
+            asn_traffic_fetcher=lambda api_token, date_range, timeout, limit, asn: {
+                "success": True,
+                "result": {
+                    "trafficAnomalies": [
+                        {
+                            "startDate": "2026-06-29T17:45:00Z",
+                            "endDate": None,
+                            "asnDetails": {"asn": "22773", "name": "Cox Communications", "locations": {"code": "US", "name": "United States"}},
+                            "status": "VERIFIED",
+                            "type": "AS",
+                            "uuid": "traffic-asn-1",
+                        }
+                    ]
+                },
+            },
+        )
+
+        self.assertEqual(payload["status"], "disruption")
+        self.assertEqual(payload["query_mode"], "asn")
+        self.assertEqual(payload["query_target_label"], "Cox")
+        self.assertEqual(payload["query_target_id"], "AS22773")
+        self.assertEqual(payload["provider_display_name"], "Cox")
+        self.assertFalse(payload["fallback_used"])
+        self.assertEqual(payload["signals_checked"], ["Traffic anomalies"])
+        self.assertEqual(payload["scope"]["label"], "Cox network context")
+        self.assertEqual(payload["summary"], "Cloudflare Radar traffic anomaly detected for Cox.")
+        self.assertEqual(payload["items"][0]["region"], "Cox Communications")
+        self.assertEqual(payload["items"][0]["description"], "Verified traffic anomaly detected for Cox Communications")
+
+    def test_build_payload_falls_back_to_country_when_asn_query_fails(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        payload = self.module.build_payload(
+            config,
+            now=now,
+            outages_fetcher=lambda *_: {
+                "success": True,
+                "result": {"annotations": []},
+            },
+            traffic_fetcher=lambda *_: {
+                "success": True,
+                "result": {"trafficAnomalies": []},
+            },
+            asn_traffic_fetcher=lambda *_: (_ for _ in ()).throw(urllib.error.URLError("asn down")),
+        )
+
+        self.assertEqual(payload["status"], "normal")
+        self.assertEqual(payload["query_mode"], "asn")
+        self.assertEqual(payload["query_target_label"], "Cox")
+        self.assertEqual(payload["query_target_id"], "AS22773")
+        self.assertEqual(payload["provider_display_name"], "US Radar")
+        self.assertTrue(payload["fallback_used"])
+        self.assertEqual(payload["scope"]["label"], "United States context")
+        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["summary"], "No United States Internet outages or traffic anomalies detected.")
+
     def test_missing_token_writes_unavailable_summary(self):
         config = self.config()
         config["CLOUDFLARE_API_TOKEN"] = ""
@@ -228,6 +307,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["scope"]["label"], "United States context")
         self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["query_mode"], "country")
+        self.assertEqual(payload["provider_display_name"], "US Radar")
         self.assertEqual(payload["items"], [])
 
     def test_load_config_uses_process_environment_token(self):
@@ -238,6 +319,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                 "CLOUDFLARE_RADAR_DATE_RANGE": "30d",
                 "CLOUDFLARE_RADAR_TIMEOUT_SECONDS": "12",
                 "CLOUDFLARE_RADAR_LIMIT": "7",
+                "PRIME_OBSERVER_INTERNET_ASN": "AS22773",
+                "PRIME_OBSERVER_INTERNET_PROVIDER_LABEL": "Cox",
             },
             clear=True,
         ):
@@ -247,6 +330,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(config["CLOUDFLARE_RADAR_DATE_RANGE"], "30d")
         self.assertEqual(config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"], 12.0)
         self.assertEqual(config["CLOUDFLARE_RADAR_LIMIT"], 7)
+        self.assertEqual(config["PRIME_OBSERVER_INTERNET_ASN"], "22773")
+        self.assertEqual(config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"], "Cox")
 
     def test_load_config_uses_env_cloudflare_token_when_process_env_absent(self):
         self.module.ENV_FILE.write_text(
@@ -257,6 +342,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                     "CLOUDFLARE_RADAR_DATE_RANGE=14d",
                     "CLOUDFLARE_RADAR_TIMEOUT_SECONDS=9",
                     "CLOUDFLARE_RADAR_LIMIT=6",
+                    "PRIME_OBSERVER_INTERNET_ASN=22773",
+                    "PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox",
                     "",
                 ]
             )
@@ -269,18 +356,22 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(config["CLOUDFLARE_RADAR_DATE_RANGE"], "14d")
         self.assertEqual(config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"], 9.0)
         self.assertEqual(config["CLOUDFLARE_RADAR_LIMIT"], 6)
+        self.assertEqual(config["PRIME_OBSERVER_INTERNET_ASN"], "22773")
+        self.assertEqual(config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"], "Cox")
 
     def test_process_environment_overrides_env_cloudflare(self):
         self.module.ENV_FILE.write_text(
             "\n".join(
                 [
-                    "CLOUDFLARE_API_TOKEN=dotenv-token",
-                    "CLOUDFLARE_RADAR_DATE_RANGE=14d",
-                    "CLOUDFLARE_RADAR_TIMEOUT_SECONDS=9",
-                    "CLOUDFLARE_RADAR_LIMIT=6",
-                    "",
-                ]
-            )
+                "CLOUDFLARE_API_TOKEN=dotenv-token",
+                "CLOUDFLARE_RADAR_DATE_RANGE=14d",
+                "CLOUDFLARE_RADAR_TIMEOUT_SECONDS=9",
+                "CLOUDFLARE_RADAR_LIMIT=6",
+                "PRIME_OBSERVER_INTERNET_ASN=22773",
+                "PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Dotenv Cox",
+                "",
+            ]
+        )
         )
 
         with mock.patch.dict(
@@ -290,6 +381,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                 "CLOUDFLARE_RADAR_DATE_RANGE": "30d",
                 "CLOUDFLARE_RADAR_TIMEOUT_SECONDS": "12",
                 "CLOUDFLARE_RADAR_LIMIT": "7",
+                "PRIME_OBSERVER_INTERNET_ASN": "AS7018",
+                "PRIME_OBSERVER_INTERNET_PROVIDER_LABEL": "AT&T",
             },
             clear=True,
         ):
@@ -299,6 +392,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(config["CLOUDFLARE_RADAR_DATE_RANGE"], "30d")
         self.assertEqual(config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"], 12.0)
         self.assertEqual(config["CLOUDFLARE_RADAR_LIMIT"], 7)
+        self.assertEqual(config["PRIME_OBSERVER_INTERNET_ASN"], "7018")
+        self.assertEqual(config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"], "AT&T")
 
     def test_api_failure_writes_unavailable_summary(self):
         with mock.patch.object(self.module, "load_config", return_value=self.config()):
@@ -310,6 +405,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
         self.assertEqual(payload["scope"]["label"], "United States context")
+        self.assertEqual(payload["query_mode"], "country")
 
     def test_json_generation_is_atomic_and_parseable(self):
         payload = self.module.unavailable_payload()
@@ -326,6 +422,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
 
         body = env_example.read_text()
         self.assertIn("CLOUDFLARE_API_TOKEN=replace-with-token", body)
+        self.assertIn("PRIME_OBSERVER_INTERNET_ASN=22773", body)
+        self.assertIn("PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox", body)
         self.assertNotRegex(body, r"CLOUDFLARE_API_TOKEN=(?!replace-with-token)[^\s#]+")
 
     def test_gitignore_excludes_env_cloudflare(self):

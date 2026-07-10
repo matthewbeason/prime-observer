@@ -590,6 +590,8 @@
         <details class="card-disclosure" id="internetConditionsDisclosure">
           <summary>Detail</summary>
           <div class="card-disclosure-body">
+            <div class="metric-pair"><span class="label">Target</span><span class="metric-value" id="internetConditionsTarget">—</span></div>
+            <div class="metric-pair"><span class="label">Fallback</span><span class="metric-value" id="internetConditionsFallback">—</span></div>
             <div id="internetConditionsItemsWrap" style="display:none;">
               <ul class="bullet-list compact" id="internetConditionsItems"></ul>
             </div>
@@ -762,6 +764,8 @@
           <details class="card-disclosure">
             <summary>Detail</summary>
             <div class="card-disclosure-body">
+              <div class="detail-line"><b>Target:</b> <span id="mobileInternetConditionsTarget">—</span></div>
+              <div class="detail-line"><b>Fallback:</b> <span id="mobileInternetConditionsFallback">—</span></div>
               <div class="detail-line" id="mobileInternetConditionsItemsWrap" style="display:none;">
                 <ul class="bullet-list compact" id="mobileInternetConditionsItems"></ul>
               </div>
@@ -1797,9 +1801,11 @@
     }
 
     function setInternetConditionsUnavailable(){
-      document.getElementById("internetConditionsValue").textContent = "Unavailable";
+      document.getElementById("internetConditionsValue").textContent = "Internet check unavailable";
       document.getElementById("internetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
       document.getElementById("internetConditionsScope").textContent = "—";
+      document.getElementById("internetConditionsTarget").textContent = "—";
+      document.getElementById("internetConditionsFallback").textContent = "—";
       renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", []);
       document.getElementById("internetConditionsUpdated").textContent = "—";
       document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
@@ -1807,13 +1813,45 @@
       document.getElementById("internetConditionsUnavailable").style.display = "block";
       setAccent(document.getElementById("internetConditionsCard"), "accent-neutral");
       setAccent(document.getElementById("internetConditionsValue"), "neutral");
-      document.getElementById("mobileInternetConditionsValue").textContent = "Unavailable";
+      document.getElementById("mobileInternetConditionsValue").textContent = "Internet check unavailable";
       document.getElementById("mobileInternetConditionsSummary").textContent = "Unable to retrieve current Internet conditions.";
       document.getElementById("mobileInternetConditionsScope").textContent = "—";
+      document.getElementById("mobileInternetConditionsTarget").textContent = "—";
+      document.getElementById("mobileInternetConditionsFallback").textContent = "—";
       renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", []);
       document.getElementById("mobileInternetConditionsUpdated").textContent = "—";
       document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";
       updateMobileInternetConditionsSummary({ unavailable: true });
+    }
+
+    function internetConditionsPrimaryLabel(data, status, items){
+      const queryMode = String(data.query_mode || "country").trim().toLowerCase();
+      const fallbackUsed = Boolean(data.fallback_used);
+      const providerName = String(data.provider_display_name || "").trim() || "US Radar";
+      const leadSignal = items.length && items[0].signal === "outage" ? "outage" : "anomaly";
+
+      if (fallbackUsed){
+        if (status === "normal") return "US Radar fallback normal";
+        return leadSignal === "outage" ? "US Radar fallback outage reported" : "US Radar fallback anomaly reported";
+      }
+
+      if (queryMode === "asn"){
+        if (status === "normal") return `${providerName} normal`;
+        return `${providerName} anomaly reported`;
+      }
+
+      if (status === "normal") return "US Radar normal";
+      return leadSignal === "outage" ? "US Radar outage reported" : "US Radar anomaly reported";
+    }
+
+    function internetConditionsTargetLabel(data){
+      const queryMode = String(data.query_mode || "country").trim().toLowerCase();
+      const targetLabel = String(data.query_target_label || "").trim();
+      const targetId = String(data.query_target_id || "").trim();
+      if (queryMode === "asn"){
+        return targetId ? `${targetLabel || "Configured network"} (${targetId})` : (targetLabel || "Configured network");
+      }
+      return targetLabel || "United States";
     }
 
     function updateInternetConditionsCard(data){
@@ -1826,17 +1864,17 @@
       const summary = String(data.summary || "").trim() || "No regional Internet disruptions detected.";
       const status = String(data.status || "normal").trim().toLowerCase();
       const scopeLabel = String((data.scope && data.scope.label) || "").trim() || "—";
+      const fallbackUsed = Boolean(data.fallback_used);
+      const targetLabel = internetConditionsTargetLabel(data);
       const items = Array.isArray(data.items) ? data.items.slice(0, 3) : [];
-      let label = "Normal";
+      let label = internetConditionsPrimaryLabel(data, status, items);
       let cardAccent = "accent-ok";
       let valueAccent = "ok";
 
       if (status === "advisory"){
-        label = "Advisory";
         cardAccent = "accent-watch";
         valueAccent = "watch";
       } else if (status === "disruption"){
-        label = "Disruption";
         cardAccent = "accent-risk";
         valueAccent = "risk";
       }
@@ -1844,6 +1882,8 @@
       document.getElementById("internetConditionsValue").textContent = label;
       document.getElementById("internetConditionsSummary").textContent = summary;
       document.getElementById("internetConditionsScope").textContent = scopeLabel;
+      document.getElementById("internetConditionsTarget").textContent = targetLabel;
+      document.getElementById("internetConditionsFallback").textContent = fallbackUsed ? "Used US-scoped fallback" : "None";
       renderInternetConditionItems("internetConditionsItemsWrap", "internetConditionsItems", items);
       document.getElementById("internetConditionsUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("internetConditionsSource").textContent = "Cloudflare Radar";
@@ -1854,6 +1894,8 @@
       document.getElementById("mobileInternetConditionsValue").textContent = label;
       document.getElementById("mobileInternetConditionsSummary").textContent = summary;
       document.getElementById("mobileInternetConditionsScope").textContent = scopeLabel;
+      document.getElementById("mobileInternetConditionsTarget").textContent = targetLabel;
+      document.getElementById("mobileInternetConditionsFallback").textContent = fallbackUsed ? "Used US-scoped fallback" : "None";
       renderInternetConditionItems("mobileInternetConditionsItemsWrap", "mobileInternetConditionsItems", items);
       document.getElementById("mobileInternetConditionsUpdated").textContent = toRelativeAge(generatedAt);
       document.getElementById("mobileInternetConditionsSource").textContent = "Cloudflare Radar";

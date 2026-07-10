@@ -91,6 +91,11 @@ class BuildInvestigationTest(unittest.TestCase):
             "provider": "cloudflare_radar",
             "status": "normal",
             "summary": "No United States Internet outages or traffic anomalies detected.",
+            "query_mode": "country",
+            "query_target_label": "United States",
+            "query_target_id": "US",
+            "provider_display_name": "US Radar",
+            "fallback_used": False,
             "scope": {
                 "country": "US",
                 "region": None,
@@ -290,12 +295,59 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(context["provider"], "cloudflare_radar")
         self.assertEqual(context["status"], "disruption")
         self.assertEqual(context["summary"], "United States Internet outage reported in Arizona and 1 more location(s).")
+        self.assertEqual(context["query_mode"], "country")
+        self.assertEqual(context["query_target_label"], "United States")
+        self.assertEqual(context["query_target_id"], "US")
+        self.assertEqual(context["provider_display_name"], "US Radar")
+        self.assertFalse(context["fallback_used"])
         self.assertEqual(context["scope"]["label"], "United States context")
         self.assertEqual(context["signals_checked"], ["Outages", "Traffic anomalies"])
         self.assertEqual(context["items"][0]["region"], "Arizona")
         self.assertNotIn("ignored_field", context["items"][0])
         self.assertEqual(context["minutes_from_event_midpoint"], 4.0)
         self.assertIn("not historical proof or attribution", context["note"])
+
+    def test_internet_conditions_context_copies_asn_query_metadata(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.write_internet_conditions(
+            status="advisory",
+            summary="Recent Cloudflare Radar traffic anomaly detected for Cox.",
+            query_mode="asn",
+            query_target_label="Cox",
+            query_target_id="AS22773",
+            provider_display_name="Cox",
+            fallback_used=True,
+            scope={
+                "country": "US",
+                "region": None,
+                "label": "United States context",
+            },
+            signals_checked=["Outages", "Traffic anomalies"],
+            items=[
+                {
+                    "signal": "traffic_anomaly",
+                    "region": "United States",
+                    "started": "2026-06-08T11:40:00Z",
+                    "description": "Elevated traffic anomaly detected in United States",
+                    "reference": "",
+                },
+            ],
+        )
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["internet_conditions_context"]
+        self.assertEqual(context["query_mode"], "asn")
+        self.assertEqual(context["query_target_label"], "Cox")
+        self.assertEqual(context["query_target_id"], "AS22773")
+        self.assertEqual(context["provider_display_name"], "Cox")
+        self.assertTrue(context["fallback_used"])
 
     def test_internet_conditions_context_preserves_unavailable_status_without_affecting_schema(self):
         self.write_rows([
