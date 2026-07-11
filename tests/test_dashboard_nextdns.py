@@ -142,9 +142,12 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn("data.dns_context", html)
         self.assertIn("Total queries", html)
         self.assertIn("Blocked", html)
+        self.assertIn("operator_assistant_output.json", html)
+        self.assertIn("Operator Assistant Review", html)
         self.assertIn('role="status" aria-live="polite" aria-atomic="true"', html)
         self.assertNotIn("api.nextdns.io", html)
         self.assertNotIn("X-Api-Key", html)
+        self.assertNotIn("openrouter.ai/api/v1/chat/completions", html)
 
 
 if __name__ == "__main__":

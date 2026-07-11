@@ -34,6 +34,36 @@ Phase 1 adds:
 
 The output is local-only and generated. It must not be committed.
 
+## Local Review Surface
+
+The current local review prototype also includes:
+
+- review producer: `bin/build_operator_assistant_output.py`
+- review artifact: `viz/operator_assistant_output.json`
+- review surface: `viz/investigate.html`
+
+The browser remains renderer-only. It reads the generated review artifact and
+does not call OpenRouter directly. The review producer computes a deterministic
+hash of the normalized evidence package, stores that hash in
+`viz/operator_assistant_output.json`, and reuses an existing successful review
+only when both the evidence hash and requested model are unchanged.
+
+The review artifact includes:
+
+- `schema_version`
+- `generated_at`
+- `status`
+- `input_hash`
+- requested model (`google/gemini-3.5-flash` by default, configurable locally)
+- concrete provider model returned by OpenRouter, when available
+- structured assessment fields
+- unavailable or failure reason, when applicable
+- provider usage metadata, when available
+
+`viz/investigate.html` treats the review artifact as optional and
+non-authoritative. It only renders the assessment as current when the artifact
+`input_hash` matches the current investigation-derived evidence package hash.
+
 ## Included Evidence
 
 The prototype keeps only bounded fields already present in

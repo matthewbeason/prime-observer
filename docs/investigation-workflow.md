@@ -81,7 +81,18 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 - local generated NextDNS context, when available
 - local generated Internet Conditions context, when available
 - local generated Power Infrastructure context, when available
+- local generated Operator Assistant review, when `viz/operator_assistant_output.json`
+  is available
 - telemetry source files used
+
+The Operator Assistant review is local-only, additive, and clearly
+non-authoritative. Prime Observer evidence and deterministic observations remain
+the source of truth. `viz/investigate.html` consumes `viz/investigation.json`
+as authoritative deterministic evidence and `viz/operator_assistant_output.json`
+as optional non-authoritative interpretation. The page remains usable when the
+assistant artifact is missing, unavailable, malformed, or stale, and it only
+shows an assistant assessment as current when the artifact `input_hash`
+matches the current investigation-derived evidence package.
 
 ## Deep-Link Shape
 

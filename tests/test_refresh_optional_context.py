@@ -41,7 +41,7 @@ class RefreshOptionalContextTest(unittest.TestCase):
         )
         return result
 
-    def test_wrapper_runs_nextdns_then_cloudflare_then_aps(self):
+    def test_wrapper_runs_nextdns_then_cloudflare_then_aps_then_operator_assistant(self):
         order_file = self.base / "order.txt"
         self.write_python_script(
             "fetch_nextdns_summary.py",
@@ -70,14 +70,37 @@ class RefreshOptionalContextTest(unittest.TestCase):
                 'print("aps ok")\n'
             ),
         )
+        self.write_python_script(
+            "build_operator_assistant_input.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
+                'print("assistant input ok")\n'
+            ),
+        )
+        self.write_python_script(
+            "build_operator_assistant_output.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-output\\n")\n'
+                'print("assistant output ok")\n'
+            ),
+        )
 
         result = self.run_wrapper()
 
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(order_file.read_text().splitlines(), ["nextdns", "cloudflare", "aps"])
+        self.assertEqual(
+            order_file.read_text().splitlines(),
+            ["nextdns", "cloudflare", "aps", "assistant-input", "assistant-output"],
+        )
         self.assertIn("Starting NextDNS summary refresh.", result.stdout)
         self.assertIn("Starting Internet Conditions refresh.", result.stdout)
         self.assertIn("Starting APS power context refresh.", result.stdout)
+        self.assertIn("Starting Operator assistant input refresh.", result.stdout)
+        self.assertIn("Starting Operator assistant output refresh.", result.stdout)
         self.assertIn("Optional context refresh finished.", result.stdout)
 
     def test_wrapper_keeps_later_steps_after_nextdns_failure(self):
@@ -109,11 +132,32 @@ class RefreshOptionalContextTest(unittest.TestCase):
                 'print("aps ok")\n'
             ),
         )
+        self.write_python_script(
+            "build_operator_assistant_input.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
+                'print("assistant input ok")\n'
+            ),
+        )
+        self.write_python_script(
+            "build_operator_assistant_output.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-output\\n")\n'
+                'print("assistant output ok")\n'
+            ),
+        )
 
         result = self.run_wrapper()
 
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(order_file.read_text().splitlines(), ["nextdns", "cloudflare", "aps"])
+        self.assertEqual(
+            order_file.read_text().splitlines(),
+            ["nextdns", "cloudflare", "aps", "assistant-input", "assistant-output"],
+        )
         self.assertIn("non-fatal exit code 2", result.stdout)
 
     def test_wrapper_keeps_aps_step_after_cloudflare_failure(self):
@@ -145,12 +189,100 @@ class RefreshOptionalContextTest(unittest.TestCase):
                 'print("aps ok")\n'
             ),
         )
+        self.write_python_script(
+            "build_operator_assistant_input.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
+                'print("assistant input ok")\n'
+            ),
+        )
+        self.write_python_script(
+            "build_operator_assistant_output.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-output\\n")\n'
+                'print("assistant output ok")\n'
+            ),
+        )
 
         result = self.run_wrapper()
 
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(order_file.read_text().splitlines(), ["nextdns", "cloudflare", "aps"])
+        self.assertEqual(
+            order_file.read_text().splitlines(),
+            ["nextdns", "cloudflare", "aps", "assistant-input", "assistant-output"],
+        )
         self.assertIn("non-fatal exit code 3", result.stdout)
+
+    def test_wrapper_keeps_operator_output_step_after_input_failure(self):
+        order_file = self.base / "order.txt"
+        self.write_python_script(
+            "fetch_nextdns_summary.py",
+            "#!/usr/bin/env python3\nprint('nextdns ok')\n",
+        )
+        self.write_python_script(
+            "fetch_cloudflare_radar.py",
+            "#!/usr/bin/env python3\nprint('cloudflare ok')\n",
+        )
+        self.write_python_script(
+            "fetch_aps_power_context.py",
+            "#!/usr/bin/env python3\nprint('aps ok')\n",
+        )
+        self.write_python_script(
+            "build_operator_assistant_input.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
+                "raise SystemExit(4)\n"
+            ),
+        )
+        self.write_python_script(
+            "build_operator_assistant_output.py",
+            (
+                "#!/usr/bin/env python3\n"
+                f"from pathlib import Path\n"
+                f'Path(r"{order_file}").open("a").write("assistant-output\\n")\n'
+                "print('assistant output ok')\n"
+            ),
+        )
+
+        result = self.run_wrapper()
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(order_file.read_text().splitlines(), ["assistant-input", "assistant-output"])
+        self.assertIn("non-fatal exit code 4", result.stdout)
+
+    def test_wrapper_remains_non_fatal_after_operator_output_failure(self):
+        self.write_python_script(
+            "fetch_nextdns_summary.py",
+            "#!/usr/bin/env python3\nprint('nextdns ok')\n",
+        )
+        self.write_python_script(
+            "fetch_cloudflare_radar.py",
+            "#!/usr/bin/env python3\nprint('cloudflare ok')\n",
+        )
+        self.write_python_script(
+            "fetch_aps_power_context.py",
+            "#!/usr/bin/env python3\nprint('aps ok')\n",
+        )
+        self.write_python_script(
+            "build_operator_assistant_input.py",
+            "#!/usr/bin/env python3\nprint('assistant input ok')\n",
+        )
+        self.write_python_script(
+            "build_operator_assistant_output.py",
+            "#!/usr/bin/env python3\nraise SystemExit(5)\n",
+        )
+
+        result = self.run_wrapper()
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Starting Operator assistant output refresh.", result.stdout)
+        self.assertIn("non-fatal exit code 5", result.stdout)
 
     def test_launchagent_uses_refresh_wrapper(self):
         body = PLIST_PATH.read_text()
@@ -161,8 +293,11 @@ class RefreshOptionalContextTest(unittest.TestCase):
         body = DOC_PATH.read_text()
         self.assertIn("bin/refresh_optional_context.sh", body)
         self.assertIn(".env.cloudflare", body)
+        self.assertIn(".env.openrouter", body)
         self.assertIn("viz/internet_conditions.json", body)
         self.assertIn("viz/aps_power_context.json", body)
+        self.assertIn("viz/operator_assistant_output.json", body)
+        self.assertIn("bin/build_operator_assistant_output.py", body)
         self.assertIn("bin/fetch_aps_power_context.py", body)
         self.assertIn("No token values are printed.", body)
 

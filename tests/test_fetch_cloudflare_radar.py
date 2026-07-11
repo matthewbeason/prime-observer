@@ -533,7 +533,10 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertIn("CLOUDFLARE_API_TOKEN=replace-with-token", body)
         self.assertIn("PRIME_OBSERVER_INTERNET_ASN=22773", body)
         self.assertIn("PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox", body)
+        self.assertIn("OPENROUTER_API_KEY=replace-with-openrouter-api-key", body)
+        self.assertIn("OPENROUTER_MODEL=google/gemini-3.5-flash", body)
         self.assertNotRegex(body, r"CLOUDFLARE_API_TOKEN=(?!replace-with-token)[^\s#]+")
+        self.assertNotRegex(body, r"OPENROUTER_API_KEY=(?!replace-with-openrouter-api-key)[^\s#]+")
 
     def test_gitignore_excludes_env_cloudflare(self):
         gitignore = (ROOT / ".gitignore").read_text()

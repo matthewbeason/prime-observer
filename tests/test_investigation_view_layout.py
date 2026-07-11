@@ -13,6 +13,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_investigation_view_uses_narrative_section_order(self):
         section_ids = [
             'id="summarySection"',
+            'id="assistantReviewSection"',
             'id="timelineSection"',
             'id="coreEvidenceSection"',
             'id="environmentalContextSection"',
@@ -21,6 +22,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         indexes = [self.html.index(section_id) for section_id in section_ids]
         self.assertEqual(indexes, sorted(indexes))
         self.assertIn("Investigation Summary", self.html)
+        self.assertIn("Operator Assistant Review", self.html)
         self.assertIn("Timeline", self.html)
         self.assertIn("Core Evidence", self.html)
         self.assertIn("Environmental Context", self.html)
@@ -49,11 +51,18 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertNotIn("./internet_conditions.json", self.html)
         self.assertNotIn("./aps_power_context.json", self.html)
 
-    def test_investigation_view_stays_driven_by_investigation_json_only(self):
+    def test_investigation_view_stays_artifact_driven_without_direct_model_calls(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)
+        self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";', self.html)
         self.assertIn('fetch(INVESTIGATION_URL, {cache: "no-store"})', self.html)
+        self.assertIn("fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL)", self.html)
+        self.assertIn("operatorAssistantInputHashForInvestigation(data)", self.html)
+        self.assertIn('renderChip("Requested model"', self.html)
+        self.assertIn('review.input_hash !== currentInputHash', self.html)
+        self.assertIn("Stale assistant evidence is hidden until the artifact matches the current investigation package.", self.html)
         self.assertNotIn("./observations.json", self.html)
         self.assertNotIn("./network_attribution.json", self.html)
+        self.assertNotIn("openrouter.ai/api/v1/chat/completions", self.html)
 
 
 if __name__ == "__main__":

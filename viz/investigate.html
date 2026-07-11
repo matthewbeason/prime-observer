@@ -133,6 +133,16 @@
     .context-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
     .context-block{background:rgba(255,252,247,.54);}
     .environmental-section{background:linear-gradient(180deg, rgba(246,243,238,.9), rgba(243,240,235,.74));}
+    .assistant-review-section{display:none;}
+    .assistant-review-section.visible{display:block;}
+    .assistant-callout{
+      border-radius:24px;padding:18px 20px;background:linear-gradient(180deg, rgba(250,246,240,.88), rgba(245,240,233,.74));
+      border:1px solid rgba(112,97,78,.1);
+    }
+    .assistant-assessment{font-size:17px;line-height:1.6;color:var(--ink);margin:0;}
+    .assistant-list{display:grid;gap:10px;margin-top:14px;}
+    .assistant-list-item{padding-top:10px;border-top:1px solid rgba(112,97,78,.1);font-size:13px;line-height:1.55;color:var(--muted-strong);}
+    .assistant-list-item:first-child{padding-top:0;border-top:0;}
     .provider-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px;}
     .provider-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
     .provider-items{display:grid;gap:8px;margin-top:12px;}
@@ -203,6 +213,35 @@
           <div id="summaryNotes" class="summary-list"></div>
         </div>
       </div>
+    </section>
+
+    <section id="assistantReviewSection" class="section assistant-review-section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Operator Assistant Review</div>
+          <h2>What the local review says</h2>
+          <p class="section-note">This section is a local OpenRouter-derived review from a generated evidence package. Prime Observer evidence and deterministic observations remain authoritative.</p>
+        </div>
+        <div id="assistantReviewPills" class="pill-group"></div>
+      </div>
+      <div class="assistant-callout">
+        <h3>Assessment</h3>
+        <p id="assistantReviewAssessment" class="assistant-assessment"></p>
+      </div>
+      <div class="panel-grid" style="margin-top:14px;">
+        <div class="card">
+          <h3>Supporting Evidence</h3>
+          <div id="assistantReviewEvidence" class="assistant-list"></div>
+        </div>
+        <div class="card">
+          <h3>Limitations</h3>
+          <div id="assistantReviewLimitations" class="assistant-list"></div>
+        </div>
+      </div>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Recommended Next Steps <span class="small">Derived review guidance only</span></summary>
+        <div id="assistantReviewNextSteps" class="disclosure-body assistant-list"></div>
+      </details>
     </section>
 
     <section id="timelineSection" class="section">
@@ -292,6 +331,7 @@
 
   <script>
     const INVESTIGATION_URL = "./investigation.json";
+    const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
     const LOCAL_SERVER_COMMAND = "python3 -m http.server 8000 --directory viz";
     const LOCAL_INVESTIGATION_URL = "http://localhost:8000/investigate.html";
 
@@ -315,6 +355,7 @@
       const map = {
         available: "Observed",
         unavailable: "Unavailable",
+        stale: "Stale",
         ok: "Healthy",
         normal: "Healthy",
         advisory: "Advisory",
@@ -333,6 +374,7 @@
     function toneForStatus(value){
       const status = String(value || "").toLowerCase();
       if (["ok", "normal", "healthy", "available"].includes(status)) return "tone-ok";
+      if (["stale"].includes(status)) return "tone-watch";
       if (["advisory", "watch", "observed", "sustained_degradation"].includes(status)) return "tone-watch";
       if (["degraded", "events_reported", "likely_upstream", "likely_local", "mixed"].includes(status)) return "tone-warn";
       if (["error", "failed", "significant", "outage"].includes(status)) return "tone-risk";
@@ -358,6 +400,193 @@
 
     function renderChip(label, value, tone = "tone-muted"){
       return `<span class="chip ${tone}"><strong>${label}</strong> ${fmt(value)}</span>`;
+    }
+
+    function renderAssistantListItem(text, detail = ""){
+      return `<div class="assistant-list-item">${fmt(text)}${detail ? `<div class="summary-detail">${detail}</div>` : ""}</div>`;
+    }
+
+    function safeDict(value){
+      return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    }
+
+    function safeList(value){
+      return Array.isArray(value) ? value : [];
+    }
+
+    function boundedObjectItems(items, limit){
+      return safeList(items).slice(0, limit).filter(item => item && typeof item === "object" && !Array.isArray(item));
+    }
+
+    function normalizeOperatorAssistantContext(value, options = {}){
+      const context = safeDict(value);
+      const normalized = {
+        available: Boolean(context.available),
+        status: context.status ?? null,
+        summary: context.summary ?? null,
+      };
+      if (options.includeProvider){
+        normalized.provider_display_name = context.provider_display_name ?? context.provider ?? null;
+        normalized.fallback_used = Boolean(context.fallback_used);
+      }
+      return normalized;
+    }
+
+    function operatorAssistantObservationReferences(data){
+      return safeList(data.observation_references).filter(item => item && typeof item === "object" && !Array.isArray(item));
+    }
+
+    function operatorAssistantAttributionEntry(observationRefs, viewName){
+      for (const item of observationRefs){
+        const scope = safeDict(item.scope);
+        if (item.type !== "attribution" || scope.view !== viewName) continue;
+        const state = safeDict(item.state);
+        const interval = safeDict(item.interval);
+        return {
+          status: state.status ?? null,
+          label: state.label ?? null,
+          start: interval.start ?? null,
+          end: interval.end ?? null,
+          observation_id: item.id ?? null,
+        };
+      }
+      return {
+        status: null,
+        label: null,
+        start: null,
+        end: null,
+        observation_id: null,
+      };
+    }
+
+    function operatorAssistantEpisode(observationRefs){
+      const episodes = [];
+      for (const item of observationRefs){
+        if (item.type !== "episode") continue;
+        const interval = safeDict(item.interval);
+        const state = safeDict(item.state);
+        const scope = safeDict(item.scope);
+        episodes.push({
+          target_class: scope.target_class ?? null,
+          status: state.status ?? null,
+          label: state.label ?? null,
+          start: interval.start ?? null,
+          end: interval.end ?? null,
+          observation_id: item.id ?? null,
+        });
+      }
+      episodes.sort((left, right) => {
+        const leftKey = `${left.start || ""}|${left.end || ""}|${left.observation_id || ""}`;
+        const rightKey = `${right.start || ""}|${right.end || ""}|${right.observation_id || ""}`;
+        return leftKey.localeCompare(rightKey);
+      });
+      return episodes[0] || {
+        target_class: null,
+        status: null,
+        label: null,
+        start: null,
+        end: null,
+        observation_id: null,
+      };
+    }
+
+    function operatorAssistantEvidenceSummary(periods, periodName, targetClass){
+      const period = safeDict(safeDict(periods)[periodName]);
+      if (targetClass === "gateway_probe"){
+        const lan = safeDict(period.lan);
+        const section = safeDict(safeDict(lan.target_groups)[targetClass]);
+        return {
+          elevated_count: lan.elevated_p95_count ?? null,
+          sample_count: section.sample_count ?? null,
+          max_p95_ms: lan.max_p95_ms ?? null,
+          max_loss_pct: lan.max_loss_pct ?? null,
+        };
+      }
+      const wan = safeDict(period.wan);
+      const section = safeDict(safeDict(wan.target_groups)[targetClass]);
+      const buckets = boundedObjectItems(period.wan_buckets, 32).filter(item => item.target_class === targetClass);
+      const p95Values = buckets.map(item => item.max_p95_ms).filter(value => value !== null && value !== undefined);
+      const lossValues = buckets.map(item => item.max_loss_pct).filter(value => value !== null && value !== undefined);
+      return {
+        raw_bad_count: section.raw_bad_count ?? null,
+        sustained_bad_count: section.sustained_bad_count ?? null,
+        sample_count: section.sample_count ?? null,
+        max_p95_ms: p95Values.length ? Math.max(...p95Values) : null,
+        max_loss_pct: lossValues.length ? Math.max(...lossValues) : null,
+      };
+    }
+
+    function operatorAssistantDnsContext(context){
+      const value = safeDict(context);
+      const summary = safeDict(value.summary);
+      let text = null;
+      if (summary.total_queries !== null && summary.total_queries !== undefined && summary.blocked_queries !== null && summary.blocked_queries !== undefined){
+        text = `NextDNS summary window ${fmt(value.window)} captured ${summary.total_queries} queries with ${summary.blocked_queries} blocked`;
+        if (summary.block_rate_pct !== null && summary.block_rate_pct !== undefined){
+          text += ` (${summary.block_rate_pct}% block rate)`;
+        }
+        text += ".";
+      }
+      return {
+        available: Boolean(value.available),
+        status: value.status ?? null,
+        summary: text,
+      };
+    }
+
+    function operatorAssistantHashSourceFromInvestigation(data){
+      const requestedWindow = safeDict(data.requested_window);
+      const observationRefs = operatorAssistantObservationReferences(data);
+      return {
+        schema_version: 1,
+        investigation: {
+          id: data.id ?? null,
+          window_start: requestedWindow.start ?? null,
+          window_end: requestedWindow.end ?? null,
+          duration_minutes: requestedWindow.duration_minutes ?? null,
+          source_status: data.status ?? null,
+        },
+        attribution: {
+          current: operatorAssistantAttributionEntry(observationRefs, "current_attribution"),
+          window: operatorAssistantAttributionEntry(observationRefs, "window_attribution"),
+        },
+        episode: operatorAssistantEpisode(observationRefs),
+        evidence: {
+          internet: operatorAssistantEvidenceSummary(data.periods, "during", "internet_probe"),
+          resolver: operatorAssistantEvidenceSummary(data.periods, "during", "resolver_probe"),
+          lan: operatorAssistantEvidenceSummary(data.periods, "during", "gateway_probe"),
+        },
+        environmental_context: {
+          dns: operatorAssistantDnsContext(data.dns_context),
+          internet_conditions: normalizeOperatorAssistantContext(
+            data.internet_conditions_context,
+            {includeProvider: true},
+          ),
+          power: normalizeOperatorAssistantContext(data.power_infrastructure_context),
+        },
+      };
+    }
+
+    function stableStringify(value){
+      if (Array.isArray(value)){
+        return `[${value.map(item => stableStringify(item)).join(",")}]`;
+      }
+      if (value && typeof value === "object"){
+        const entries = Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+        return `{${entries.join(",")}}`;
+      }
+      return JSON.stringify(value);
+    }
+
+    async function sha256Hex(value){
+      const bytes = new TextEncoder().encode(value);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function operatorAssistantInputHashForInvestigation(data){
+      const normalized = operatorAssistantHashSourceFromInvestigation(data);
+      return sha256Hex(stableStringify(normalized));
     }
 
     function observationReferencesByType(data, type){
@@ -708,6 +937,74 @@
         `Requested URL window: <span class="mono">${fmt(start)}</span> to <span class="mono">${fmt(end)}</span>. Generate matching evidence with <span class="mono">bin/build_investigation.py</span>.`;
     }
 
+    async function fetchOptionalJson(url){
+      try {
+        const response = await fetch(url, {cache: "no-store"});
+        if (!response.ok) return null;
+        return await response.json();
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    function renderAssistantReview(review, currentInputHash){
+      const section = document.getElementById("assistantReviewSection");
+      if (!review || !review.status){
+        section.classList.remove("visible");
+        return;
+      }
+
+      const reviewStatus = review.input_hash && currentInputHash && review.input_hash !== currentInputHash
+        ? "stale"
+        : review.status;
+      section.classList.add("visible");
+      const pills = [
+        renderChip("Status", statusLabel(reviewStatus), toneForStatus(reviewStatus)),
+      ];
+      if (reviewStatus === "ok"){
+        pills.push(renderChip("Confidence", fmt(review.confidence || "unavailable"), toneForStatus(review.status)));
+      }
+      pills.push(renderChip("Requested model", fmt(review.requested_model), "tone-accent"));
+      if (review.provider_model){
+        pills.push(renderChip("Provider model", fmt(review.provider_model), "tone-accent"));
+      }
+      document.getElementById("assistantReviewPills").innerHTML = pills.join("");
+
+      const assessment = reviewStatus === "stale"
+        ? "A previous Operator Assistant review exists, but it does not match the current evidence package and is hidden."
+        : review.status === "ok"
+          ? review.assessment
+          : (review.reason || "Operator Assistant review is unavailable.");
+      document.getElementById("assistantReviewAssessment").textContent = assessment || "Operator Assistant review is unavailable.";
+
+      document.getElementById("assistantReviewEvidence").innerHTML = reviewStatus === "ok" && (review.evidence || []).length
+        ? review.evidence.map(item => renderAssistantListItem(item)).join("")
+        : reviewStatus === "stale"
+          ? '<div class="empty-note">Stale assistant evidence is hidden until the artifact matches the current investigation package.</div>'
+          : '<div class="empty-note">No derived supporting evidence available.</div>';
+
+      const limitationItems = [];
+      if (review.note){
+        limitationItems.push(renderAssistantListItem(review.note));
+      }
+      for (const item of (reviewStatus === "ok" ? (review.limitations || []) : [])){
+        limitationItems.push(renderAssistantListItem(item));
+      }
+      if (reviewStatus === "stale"){
+        limitationItems.push(renderAssistantListItem("Assistant artifact hash does not match the current investigation evidence package."));
+      }
+      if (review.reason && review.status !== "ok"){
+        limitationItems.push(renderAssistantListItem(review.reason));
+      }
+      document.getElementById("assistantReviewLimitations").innerHTML = limitationItems.length
+        ? limitationItems.join("")
+        : '<div class="empty-note">No additional limitations reported.</div>';
+
+      document.getElementById("assistantReviewNextSteps").innerHTML = reviewStatus === "ok" && (review.next_steps || []).length
+        ? review.next_steps.map(step => renderAssistantListItem(step.label, `${fmt(step.id)} · ${fmt(step.reason)}`)).join("")
+        : '<div class="empty-note">No derived next steps available.</div>';
+    }
+
     function investigationLoadErrorMessage(err){
       const details = err?.message ? ` ${err.message}.` : "";
       const fileHint = window.location.protocol === "file:"
@@ -726,8 +1023,11 @@
       const response = await fetch(INVESTIGATION_URL, {cache: "no-store"});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
+      const assistantReview = await fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL);
+      const currentAssistantInputHash = await operatorAssistantInputHashForInvestigation(data);
       document.getElementById("status").textContent = "Loaded investigation.json";
       renderSummary(data);
+      renderAssistantReview(assistantReview, currentAssistantInputHash);
       renderPeriodTable(data);
       renderBucketTable(data);
       renderObservationReferenceList(data);

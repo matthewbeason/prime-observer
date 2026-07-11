@@ -230,6 +230,28 @@ Stage ownership:
 - Generated: yes
 - Should be committed: no
 
+### `viz/operator_assistant_output.json`
+
+- Producer: `bin/build_operator_assistant_output.py`
+- Consumers: `viz/investigate.html`
+- Purpose: local operator-assistant review artifact derived from
+  `viz/operator_assistant_input.json`
+- Required fields: top-level `schema_version`, `generated_at`, `status`,
+  `provider`, `input_hash`, `requested_model`, `source_file`, `assessment`,
+  `confidence`, `evidence`, `limitations`, `next_steps`, and `note`
+- Optional fields: `provider_model`, `reason`, `usage`, and
+  `provider_response_id`
+- Unavailable behavior: the producer writes an explicit `unavailable` artifact
+  when the input artifact is missing, OpenRouter is not configured, the request
+  fails, or the provider response is invalid
+- Reuse behavior: the producer skips a new OpenRouter request and preserves the
+  existing successful artifact only when the normalized input hash and
+  requested model are unchanged
+- Authoritative: no; Prime Observer evidence and deterministic observations
+  remain authoritative
+- Generated: yes
+- Should be committed: no
+
 ## Relationships
 
 - `viz/latest.csv` is factual telemetry projection, not attribution.
@@ -248,6 +270,11 @@ Stage ownership:
 - `viz/operator_assistant_input.json` is a compact downstream evidence package,
   not a replacement for `viz/investigation.json`, `viz/observations.json`, or
   any authoritative Prime Observer artifact.
+- `viz/operator_assistant_output.json` is a derived review artifact, not a
+  source of telemetry truth, attribution truth, or deterministic Prime Observer
+  semantics. The browser should only present an assistant assessment as current
+  when its `input_hash` matches the current investigation-derived evidence
+  package.
 - The browser consumes artifacts and renders views, but it does not create the
   primary semantic meaning Prime Observer owns.
 

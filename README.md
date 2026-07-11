@@ -284,6 +284,21 @@ bin/build_operator_assistant_input.py
 viz/operator_assistant_input.json
 ```
 
+Operator Assistant review prototype:
+
+```text
+viz/operator_assistant_input.json
+        |
+        v
+bin/build_operator_assistant_output.py
+        |
+        v
+viz/operator_assistant_output.json
+        |
+        v
+viz/investigate.html
+```
+
 Projection roles:
 
 - `viz/latest.csv` remains the dashboard telemetry window and factual chart input.
@@ -291,6 +306,7 @@ Projection roles:
 - `viz/observations.json` is the authoritative Observation projection for deterministic attribution and episode semantics owned by Prime Observer.
 - `viz/investigation.json` organizes factual evidence and additive Observation references for a requested historical window.
 - `viz/operator_assistant_input.json` is a compact deterministic evidence package derived from `viz/investigation.json` for future assistant interpretation experiments.
+- `viz/operator_assistant_output.json` is an additive local review artifact derived from `viz/operator_assistant_input.json` for operator review in the investigation page.
 
 ### Key Files
 
@@ -342,8 +358,14 @@ Projection roles:
 - `viz/operator_assistant_input.json`
   Generated local operator-assistant evidence package. It preserves requested-window metadata, current and window attribution scope, overlapping episode observations, bounded during-window evidence summaries, and optional environmental-context summaries without copying the full investigation artifact.
 
+- `bin/build_operator_assistant_output.py`
+  Builds a local OpenRouter-backed review artifact from `viz/operator_assistant_input.json`. It computes a deterministic evidence hash, reuses an existing successful review when the hash is unchanged, and writes a bounded unavailable artifact when the input is missing, OpenRouter is not configured, or the provider response is invalid.
+
+- `viz/operator_assistant_output.json`
+  Generated local operator-assistant review artifact. It includes provenance such as `status`, `input_hash`, requested model, returned provider model when available, and any provider usage metadata. It stays secondary to Prime Observer evidence and is rendered only as a clearly non-authoritative review panel in `viz/investigate.html`.
+
 - `viz/investigate.html`
-  Static historical evidence view for `viz/investigation.json`.
+  Static historical evidence view for `viz/investigation.json` with an additive local-only Operator Assistant review panel when `viz/operator_assistant_output.json` is present.
 
 - `viz/index.html`
   Static D3 dashboard. Loads local CSV and JSON files with `cache: "no-store"` and renders the observability UI.
@@ -426,6 +448,15 @@ python3 bin/fetch_aps_power_context.py
 
 For automated macOS refresh of the scheduled optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context, Cloudflare Radar Internet Conditions, and APS Power Infrastructure context without storing tokens in the plist.
 
+To refresh the local Operator Assistant artifacts for the current `viz/investigation.json`:
+
+```bash
+python3 bin/build_operator_assistant_input.py
+python3 bin/build_operator_assistant_output.py
+```
+
+`bin/build_operator_assistant_output.py` can read `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from the process environment or a repo-local `.env.openrouter` file. If no model is configured, it defaults to `google/gemini-3.5-flash`. The scheduled refresh wrapper also runs both assistant steps after the optional provider refreshes, but the OpenRouter request is skipped only when the normalized operator-assistant evidence hash and requested model both match an existing successful review.
+
 Generate a historical investigation:
 
 ```bash
@@ -441,6 +472,8 @@ http://localhost:8000/investigate.html
 Open the investigation view through the local server, not directly from disk.
 Direct `file://` access can prevent the browser from loading
 `investigation.json`.
+
+When present, the investigation page also loads `viz/operator_assistant_output.json` and renders it as a clearly labeled local review panel. Prime Observer evidence remains authoritative. The page hides stale assistant assessments whose `input_hash` does not match the current investigation-derived evidence package, and it remains usable when the assistant artifact is missing, unavailable, malformed, or stale.
 
 See `docs/investigation-workflow.md` for details.
 
@@ -573,8 +606,8 @@ PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox
 
 Usage notes:
 
-- `.env.example` contains placeholder values only. Copy it to `.env.cloudflare` for local use.
-- Do not commit `.env.cloudflare`.
+- `.env.example` contains placeholder values only. Copy the relevant lines into `.env.cloudflare` and `.env.openrouter` for local use.
+- Do not commit `.env.cloudflare` or `.env.openrouter`.
 - Do not put Cloudflare tokens in browser code or generated artifacts.
 - `PRIME_OBSERVER_INTERNET_ASN` and `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` are optional. Prime Observer does not require them.
 - If both optional ASN settings are omitted, Internet Conditions stays in the current US-scoped mode.
