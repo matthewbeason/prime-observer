@@ -146,6 +146,14 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual(
             messages[1]["content"].split("\n\nEvidence package:\n", 1)[0],
+            "Explain this investigation to help the operator understand what happened. "
+            "In the assessment, lead with the incident conclusion, then explain only the decisive reasoning and material uncertainty. "
+            "Do not inventory the package or repeat metrics, timestamps, providers, or contextual signals unless they materially change the interpretation. "
+            "Do not mention environmental context based only on proximity or coincidence. "
+            "Express supporting evidence qualitatively when exact measurements are unnecessary. "
+            "Never call a measurement elevated, degraded, failed, or lossy unless the package supplies that classification; bad samples are not packet failures. "
+            "Preserve current attribution and investigation-window attribution as their exact supplied scopes, and calibrate confidence when they disagree. "
+            "Use the evidence list for only the facts that support that explanation, and recommend the observation most likely to reduce the remaining uncertainty.\n\n"
             "Return JSON only with the required schema.\n\n"
             "Suggested next-step IDs when appropriate: "
             "EXTEND_WINDOW, CHECK_GATEWAY, COMPARE_RESOLVER_AND_INTERNET, RECHECK_PROVIDER_CONTEXT.",
