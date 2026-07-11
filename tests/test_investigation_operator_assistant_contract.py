@@ -203,8 +203,9 @@ const section = document.getElementById("assistantReviewSection");
 console.log(JSON.stringify({{
   visible: section.classList.contains("visible"),
   pills: document.getElementById("assistantReviewPills").innerHTML,
+  provenance: document.getElementById("assistantReviewProvenance").innerHTML,
   assessment: document.getElementById("assistantReviewAssessment").textContent,
-  evidence: document.getElementById("assistantReviewEvidence").innerHTML,
+  materialLimitations: document.getElementById("assistantReviewMaterialLimitations").innerHTML,
   limitations: document.getElementById("assistantReviewLimitations").innerHTML,
   nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML,
 }}));
@@ -251,8 +252,13 @@ console.log(JSON.stringify({{
 
         self.assertTrue(rendered["visible"])
         self.assertIn("Grounded review", rendered["assessment"])
-        self.assertIn("Evidence item", rendered["evidence"])
-        self.assertIn("Provider model", rendered["pills"])
+        self.assertNotIn("Evidence item", json.dumps(rendered))
+        self.assertIn("Confidence", rendered["pills"])
+        self.assertNotIn("Provider model", rendered["pills"])
+        self.assertIn("Provider model", rendered["provenance"])
+        self.assertNotIn("CHECK_GATEWAY", rendered["nextSteps"])
+        self.assertIn("Review gateway latency and loss", rendered["nextSteps"])
+        self.assertIn("Why: Validate local path", rendered["nextSteps"])
 
     def test_stale_assistant_hash_hides_old_assessment_content(self):
         rendered = json.loads(
@@ -280,7 +286,7 @@ console.log(JSON.stringify({{
         self.assertTrue(rendered["visible"])
         self.assertIn("does not match the current evidence package", rendered["assessment"])
         self.assertNotIn("Old assessment", rendered["assessment"])
-        self.assertNotIn("Old evidence", rendered["evidence"])
+        self.assertNotIn("Old evidence", json.dumps(rendered))
         self.assertIn("Stale", rendered["pills"])
 
     def test_missing_input_artifact_hides_review(self):
@@ -318,8 +324,27 @@ globalThis.fetch = async (url) => {{
         rendered = json.loads(self.run_node(body))
 
         self.assertEqual(rendered["status"], "Loaded investigation.json")
-        self.assertIn("Investigation window", rendered["summary"])
+        self.assertIn("Selected interval", rendered["summary"])
         self.assertFalse(rendered["assistantVisible"])
+
+    def test_material_limitations_are_prominent_and_generic_notes_are_collapsed(self):
+        review = {
+            "status": "ok",
+            "input_hash": "a" * 64,
+            "assessment": "Grounded review",
+            "confidence": "medium",
+            "limitations": [
+                "No after-window telemetry samples were available.",
+                "Environmental context does not prove causality.",
+            ],
+            "next_steps": [],
+            "note": "Derived review only.",
+        }
+        rendered = json.loads(self.run_node(self.dom_harness(json.dumps(review), json.dumps({"input_hash": "a" * 64}))))
+
+        self.assertIn("No after-window", rendered["materialLimitations"])
+        self.assertNotIn("does not prove causality", rendered["materialLimitations"])
+        self.assertIn("does not prove causality", rendered["limitations"])
 
     def test_browser_fetches_local_artifacts_only(self):
         self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json"', self.script)

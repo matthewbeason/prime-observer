@@ -70,7 +70,7 @@
     .eyebrow{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
     .small{font-size:12px;color:var(--muted);line-height:1.55;}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
-    .summary-layout{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(280px,1fr);gap:18px;align-items:start;}
+    .summary-layout{display:grid;gap:18px;align-items:start;}
     .stack{display:grid;gap:14px;}
     .summary-list{display:grid;gap:10px;}
     .summary-item{padding-top:10px;border-top:1px solid rgba(112,97,78,.1);}
@@ -140,6 +140,11 @@
       border:1px solid rgba(112,97,78,.1);
     }
     .assistant-assessment{font-size:17px;line-height:1.6;color:var(--ink);margin:0;}
+    .assistant-next-steps{margin-top:14px;}
+    .assistant-next-step{padding:14px 0;border-top:1px solid rgba(112,97,78,.1);}
+    .assistant-next-step:first-child{border-top:0;padding-top:0;}
+    .assistant-next-step:last-child{padding-bottom:0;}
+    .assistant-next-step-title{font-size:14px;font-weight:750;line-height:1.45;}
     .assistant-list{display:grid;gap:10px;margin-top:14px;}
     .assistant-list-item{padding-top:10px;border-top:1px solid rgba(112,97,78,.1);font-size:13px;line-height:1.55;color:var(--muted-strong);}
     .assistant-list-item:first-child{padding-top:0;border-top:0;}
@@ -176,7 +181,7 @@
     <header class="page-header">
       <div>
         <h1>Prime Observer Investigation</h1>
-        <div class="subtitle">Historical evidence view for a selected telemetry window, organized for review rather than interpretation.</div>
+        <div class="subtitle">Review what likely happened, then inspect the deterministic evidence for the selected interval.</div>
       </div>
       <span class="pill">Evidence only</span>
     </header>
@@ -184,64 +189,57 @@
     <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
     <div id="deepLink" class="status" aria-live="polite" aria-atomic="true" style="display:none;"></div>
 
-    <section id="summarySection" class="section section-hero">
+    <section id="assistantReviewSection" class="section section-hero assistant-review-section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Investigation Summary</div>
-          <h2>What happened</h2>
-          <p class="section-note">Existing deterministic fields only: requested window, generated status, overlapping observation state, and the local evidence footprint for this investigation.</p>
-        </div>
-        <div id="summaryPills" class="pill-group"></div>
-      </div>
-      <div class="summary-layout">
-        <div class="stack">
-          <div id="summaryCards" class="card-grid"></div>
-          <div id="summarySignalChips" class="summary-signal-strip" aria-label="Evidence highlights"></div>
-          <div class="panel-grid">
-            <div class="card card-muted">
-              <h3>Observation State</h3>
-              <div id="summaryObservationList" class="summary-list"></div>
-            </div>
-            <div class="card card-muted">
-              <h3>Affected Probe Groups</h3>
-              <div id="summaryTargetGroups" class="summary-list"></div>
-            </div>
-          </div>
-        </div>
-        <div class="card card-muted">
-          <h3>Investigation Notes</h3>
-          <div id="summaryNotes" class="summary-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="assistantReviewSection" class="section assistant-review-section">
-      <div class="section-header">
-        <div>
-          <div class="section-kicker">Operator Assistant Review</div>
-          <h2>What the local review says</h2>
-          <p class="section-note">This section is a local OpenRouter-derived review from a generated evidence package. Prime Observer evidence and deterministic observations remain authoritative.</p>
+          <div class="section-kicker">Operator Review</div>
+          <h2>What likely happened</h2>
+          <p class="section-note supporting">A derived review of the current evidence package. The deterministic investigation below remains authoritative.</p>
         </div>
         <div id="assistantReviewPills" class="pill-group"></div>
       </div>
       <div class="assistant-callout">
         <h3>Assessment</h3>
         <p id="assistantReviewAssessment" class="assistant-assessment"></p>
+        <div id="assistantReviewMaterialLimitations" class="assistant-list"></div>
       </div>
-      <div class="panel-grid" style="margin-top:14px;">
-        <div class="card">
-          <h3>Supporting Evidence</h3>
-          <div id="assistantReviewEvidence" class="assistant-list"></div>
-        </div>
-        <div class="card">
-          <h3>Limitations</h3>
-          <div id="assistantReviewLimitations" class="assistant-list"></div>
-        </div>
+      <div class="card assistant-next-steps">
+        <h3>Recommended next steps</h3>
+        <div id="assistantReviewNextSteps"></div>
       </div>
       <details class="disclosure" style="margin-top:14px;">
-        <summary>Recommended Next Steps <span class="small">Derived review guidance only</span></summary>
-        <div id="assistantReviewNextSteps" class="disclosure-body assistant-list"></div>
+        <summary>Assessment details <span class="small">Limitations and review provenance</span></summary>
+        <div class="disclosure-body">
+          <div id="assistantReviewProvenance" class="chip-row"></div>
+          <div id="assistantReviewLimitations" class="assistant-list"></div>
+        </div>
       </details>
+    </section>
+
+    <section id="summarySection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Investigation Summary</div>
+          <h2>What happened</h2>
+          <p id="attributionScopeSummary" class="section-note supporting"></p>
+        </div>
+        <div id="summaryPills" class="pill-group"></div>
+      </div>
+      <div class="summary-layout">
+        <div class="stack">
+          <div id="summaryCards" class="card-grid"></div>
+          <div class="panel-grid">
+            <div class="card card-muted">
+              <h3>Episode status</h3>
+              <div id="summaryObservationList" class="summary-list"></div>
+            </div>
+            <div class="card card-muted">
+              <h3>Affected probe groups</h3>
+              <div id="summaryTargetGroups" class="summary-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section id="timelineSection" class="section">
@@ -326,6 +324,13 @@
           <table id="sourceTable"></table>
         </div>
       </details>
+      <details class="disclosure">
+        <summary>About this investigation <span class="small">Raw statuses and artifact notes</span></summary>
+        <div class="disclosure-body">
+          <div id="summaryRawStatuses" class="summary-list"></div>
+          <div id="summaryNotes" class="summary-list" style="margin-top:14px;"></div>
+        </div>
+      </details>
     </section>
   </div>
 
@@ -407,6 +412,30 @@
       return `<div class="assistant-list-item">${fmt(text)}${detail ? `<div class="summary-detail">${detail}</div>` : ""}</div>`;
     }
 
+    function humanizeProbeGroup(value){
+      const labels = {
+        resolver_probe: "Resolver probes",
+        internet_probe: "Internet probes",
+        gateway_probe: "Gateway",
+      };
+      return labels[value] || statusLabel(value);
+    }
+
+    function attributionScopeSentence(currentAttribution, windowAttribution){
+      const selected = currentAttribution?.state?.label;
+      const broader = windowAttribution?.state?.label;
+      if (!selected && !broader) return "No attribution observations are available for these scopes.";
+      if (!selected) return `The broader period is ${String(broader).toLowerCase()}.`;
+      if (!broader) return `The selected interval is ${String(selected).toLowerCase()}.`;
+      if (currentAttribution.state?.status === windowAttribution.state?.status){
+        return `The selected interval and broader period both indicate ${String(selected).toLowerCase()}.`;
+      }
+      const broaderDescription = windowAttribution.state?.status === "inconclusive"
+        ? "contains mixed evidence"
+        : `is ${String(broader).toLowerCase()}`;
+      return `The selected interval points ${String(selected).replace(/^Likely /i, "").replace(/\s*\([^)]*\)\s*$/, "").toLowerCase()}, while the surrounding period ${broaderDescription}.`;
+    }
+
     function observationReferencesByType(data, type){
       return (data.observation_references || []).filter(item => item.type === type);
     }
@@ -416,14 +445,19 @@
     }
 
     function affectedTargetGroups(data){
-      const groups = Object.entries(data.target_groups || {}).map(([name, group]) => ({
+      const duringGroups = data.periods?.during?.wan?.target_groups || {};
+      const groups = Object.entries(data.target_groups || {}).map(([name, group]) => {
+        const selectedGroup = duringGroups[name] || group;
+        return {
         name,
-        sampleCount: group.sample_count || 0,
-        rawBadCount: group.raw_bad_count || 0,
-        sustainedBadCount: group.sustained_bad_count || 0,
+        sampleCount: selectedGroup.sample_count || 0,
+        rawBadCount: selectedGroup.raw_bad_count || 0,
+        sustainedBadCount: selectedGroup.sustained_bad_count || 0,
         hostCount: Object.keys(group.host_counts || {}).length,
-      }));
-      const active = groups.filter(group => group.rawBadCount > 0 || group.sustainedBadCount > 0);
+        };
+      });
+      const episodeTargets = new Set(observationReferencesByType(data, "episode").map(item => item.scope?.target_class).filter(Boolean));
+      const active = groups.filter(group => episodeTargets.has(group.name) || group.rawBadCount > 0 || group.sustainedBadCount > 0);
       return active.length ? active : groups.filter(group => group.sampleCount > 0);
     }
 
@@ -436,56 +470,32 @@
       const episodes = observationReferencesByType(data, "episode");
       const activeGroups = affectedTargetGroups(data);
       const eventCount = (data.events || []).length;
-      const sampleCount = (data.timeline_samples || []).length;
-      const selectedCount = data.provenance?.observation_projection?.selected_count;
       const pills = [
         `<span class="pill pill-strong ${toneForStatus(data.status)}">Status: ${statusLabel(data.status)}</span>`,
-        `<span class="pill">Requested: ${fmt(requested.duration_minutes, " min")}</span>`,
+        `<span class="pill">Selected interval: ${fmt(requested.duration_minutes, " min")}</span>`,
         `<span class="pill">Context pad: ${fmt(context.pad_minutes, " min")}</span>`,
       ];
 
       document.getElementById("summaryPills").innerHTML = pills.join("");
+      document.getElementById("attributionScopeSummary").textContent = attributionScopeSentence(currentAttribution, windowAttribution);
       document.getElementById("summaryCards").innerHTML = [
-        renderMetricCard("Investigation window", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`, "tone-accent"),
-        renderMetricCard("Current attribution", currentAttribution?.state?.label || windowAttribution?.state?.label || "—", currentAttribution ? statusLabel(currentAttribution.state?.status) : "No current attribution reference selected.", toneForObservationState(currentAttribution?.state?.label || windowAttribution?.state?.label)),
-        renderMetricCard("Window attribution", windowAttribution?.state?.label || "—", windowAttribution ? statusLabel(windowAttribution.state?.status) : "No window attribution reference selected.", toneForObservationState(windowAttribution?.state?.label)),
-        renderMetricCard("Evidence volume", `${eventCount} events`, `${sampleCount} timeline samples across ${activeGroups.length} target groups`, eventCount ? "tone-watch" : "tone-muted"),
+        renderMetricCard("Selected interval", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`, "tone-accent"),
+        renderMetricCard("Selected interval assessment", currentAttribution?.state?.label || "—", "Assessment for the selected interval.", toneForObservationState(currentAttribution?.state?.label)),
+        renderMetricCard("Broader period", windowAttribution?.state?.status === "inconclusive" ? "Mixed evidence" : (windowAttribution?.state?.label || "—"), "Interpretation across the surrounding evidence period.", toneForObservationState(windowAttribution?.state?.label)),
+        renderMetricCard("Events", eventCount || "—", eventCount ? "Deterministic events in this investigation." : "No deterministic events recorded.", eventCount ? "tone-watch" : "tone-muted"),
       ].join("");
-
-      const summaryChips = [
-        renderChip("Observation refs", selectedCount ?? (data.observation_references || []).length, "tone-accent"),
-        renderChip("Episode overlap", episodes.length, episodes.length ? "tone-watch" : "tone-muted"),
-        renderChip("DNS", statusLabel(data.dns_context?.status), toneForStatus(data.dns_context?.status)),
-      ];
-      if (data.internet_conditions_context?.available){
-        summaryChips.push(renderChip("Internet Conditions", statusLabel(data.internet_conditions_context?.status), toneForStatus(data.internet_conditions_context?.status)));
-      }
-      if (data.power_infrastructure_context?.available){
-        summaryChips.push(renderChip("Power Infrastructure", statusLabel(data.power_infrastructure_context?.status), toneForStatus(data.power_infrastructure_context?.status)));
-      }
-      document.getElementById("summarySignalChips").innerHTML = summaryChips.join("");
 
       document.getElementById("summaryObservationList").innerHTML = [
         renderSummaryItem(
-          "Current attribution",
-          currentAttribution?.state?.label || "—",
-          currentAttribution ? `${fmt(currentAttribution.state?.status)} · ${fmt(currentAttribution.materialization?.conclusion_kind)} · ${shortTime(currentAttribution.generated_at)}` : "No current-attribution observation reference in this artifact."
-        ),
-        renderSummaryItem(
-          "Window attribution",
-          windowAttribution?.state?.label || "—",
-          windowAttribution ? `${fmt(windowAttribution.state?.status)} · ${fmt(windowAttribution.materialization?.conclusion_kind)} · ${shortTime(windowAttribution.generated_at)}` : "No window-attribution observation reference in this artifact."
-        ),
-        renderSummaryItem(
-          "Episode state",
+          "Episode status",
           episodes.length ? episodes.map(item => item.state?.label || item.type).join(" · ") : "No overlapping episode references",
-          episodes.length ? `${episodes.length} overlapping episode references in the requested window` : "Episode state remains available through the raw event and timeline sections."
+          episodes.length ? `${episodes.length} overlapping episode reference${episodes.length === 1 ? "" : "s"} in the selected interval` : "Episode detail remains available below."
         ),
       ].join("");
 
       document.getElementById("summaryTargetGroups").innerHTML = activeGroups.length
         ? activeGroups.map(group => renderSummaryItem(
-            group.name,
+            humanizeProbeGroup(group.name),
             `${group.sampleCount} samples`,
             `${group.rawBadCount} raw bad · ${group.sustainedBadCount} sustained bad · ${group.hostCount} hosts`
           )).join("")
@@ -494,6 +504,10 @@
       document.getElementById("summaryNotes").innerHTML = (data.notes || []).length
         ? data.notes.map(note => renderSummaryItem("Note", note, "")).join("")
         : '<div class="empty-note">No investigation notes available.</div>';
+      document.getElementById("summaryRawStatuses").innerHTML = [
+        renderSummaryItem("Selected interval raw status", currentAttribution?.state?.status || "—", currentAttribution?.materialization?.conclusion_kind || ""),
+        renderSummaryItem("Broader period raw status", windowAttribution?.state?.status || "—", windowAttribution?.materialization?.conclusion_kind || ""),
+      ].join("");
     }
 
     function renderPeriodTable(data){
@@ -536,7 +550,7 @@
             <td>${name}</td>
             <td>${shortTime(bucket.start)}</td>
             <td>${shortTime(bucket.end)}</td>
-            <td>${fmt(bucket.target_class)}</td>
+            <td>${humanizeProbeGroup(bucket.target_class)}</td>
             <td>${Object.keys(bucket.target_hosts || {}).join(", ") || "—"}</td>
             ${cell(bucket.sample_count)}
             ${cell(bucket.raw_bad_count)}
@@ -559,7 +573,7 @@
       const references = data.observation_references || [];
       document.getElementById("observationReferenceList").innerHTML = references.length
         ? references.map(reference => renderSummaryItem(
-            `${fmt(reference.type)} · ${fmt(reference.scope?.view || reference.scope?.target_class || "reference")}`,
+            `${statusLabel(reference.type)} · ${reference.scope?.target_class ? humanizeProbeGroup(reference.scope.target_class) : statusLabel(reference.scope?.view || "reference")}`,
             reference.state?.label || "—",
             `${fmt(reference.state?.status)} · ${shortTime(reference.interval?.start)} to ${shortTime(reference.interval?.end)}`
           )).join("")
@@ -629,7 +643,7 @@
         <td>${sample.kind}</td>
         <td class="mono">${sample.host}</td>
         <td>${fmt(sample.target_label)}</td>
-        <td>${fmt(sample.target_class)}</td>
+        <td>${humanizeProbeGroup(sample.target_class)}</td>
         <td>${sample.phase}</td>
         ${cell(sample.p95_ms, " ms")}
         ${cell(sample.jitter_ms, " ms")}
@@ -769,6 +783,35 @@
       return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
     }
 
+    function isMaterialLimitation(value){
+      const text = String(value || "").toLowerCase();
+      return text.includes("no after-window") ||
+        text.includes("disagree") ||
+        text.includes("conflict") ||
+        (text.includes("unavailable") && (text.includes("critical") || text.includes("evidence")));
+    }
+
+    function materialLimitationText(value){
+      const text = String(value || "");
+      if (/current attribution.+window attribution.+disagree/i.test(text)){
+        return "Selected interval and broader period assessments differ.";
+      }
+      return text;
+    }
+
+    function operatorNextStep(step){
+      const actions = {
+        EXTEND_WINDOW: "Extend the investigation by 30 minutes to determine whether the degradation continued or recovered.",
+        CHECK_GATEWAY: "Review gateway latency and loss during the same interval to rule out a local network issue.",
+        COMPARE_RESOLVER_AND_INTERNET: "Compare resolver latency with general internet probes during the same interval to confirm whether the issue was DNS-path-specific.",
+        RECHECK_PROVIDER_CONTEXT: "Check the available provider context again if the degradation recurs.",
+      };
+      const action = actions[step?.id] || String(step?.label || "").trim();
+      const reason = String(step?.reason || "").trim();
+      if (!action || action.length < 18 || !reason) return null;
+      return {action, reason};
+    }
+
     function renderAssistantReview(review, assistantInput){
       const section = document.getElementById("assistantReviewSection");
       const currentInputHash = assistantInput && typeof assistantInput === "object" && !Array.isArray(assistantInput)
@@ -793,17 +836,18 @@
         ? "stale"
         : review.status;
       section.classList.add("visible");
-      const pills = [
-        renderChip("Status", statusLabel(reviewStatus), toneForStatus(reviewStatus)),
-      ];
+      const pills = [];
       if (reviewStatus === "ok"){
         pills.push(renderChip("Confidence", fmt(review.confidence || "unavailable"), toneForStatus(review.status)));
-      }
-      pills.push(renderChip("Requested model", fmt(review.requested_model), "tone-accent"));
-      if (review.provider_model){
-        pills.push(renderChip("Provider model", fmt(review.provider_model), "tone-accent"));
+      } else {
+        pills.push(renderChip("Status", statusLabel(reviewStatus), toneForStatus(reviewStatus)));
       }
       document.getElementById("assistantReviewPills").innerHTML = pills.join("");
+      const provenance = [renderChip("Requested model", fmt(review.requested_model), "tone-accent")];
+      if (review.provider_model){
+        provenance.push(renderChip("Provider model", fmt(review.provider_model), "tone-accent"));
+      }
+      document.getElementById("assistantReviewProvenance").innerHTML = provenance.join("");
 
       const assessment = reviewStatus === "stale"
         ? "A previous Operator Assistant review exists, but it does not match the current evidence package and is hidden."
@@ -812,17 +856,17 @@
           : (review.reason || "Operator Assistant review is unavailable.");
       document.getElementById("assistantReviewAssessment").textContent = assessment || "Operator Assistant review is unavailable.";
 
-      document.getElementById("assistantReviewEvidence").innerHTML = reviewStatus === "ok" && (review.evidence || []).length
-        ? review.evidence.map(item => renderAssistantListItem(item)).join("")
-        : reviewStatus === "stale"
-          ? '<div class="empty-note">Stale assistant evidence is hidden until the artifact matches the current investigation package.</div>'
-          : '<div class="empty-note">No derived supporting evidence available.</div>';
+      const materialLimitations = reviewStatus === "ok"
+        ? (review.limitations || []).filter(isMaterialLimitation)
+        : [];
+      document.getElementById("assistantReviewMaterialLimitations").innerHTML = materialLimitations
+        .map(item => renderAssistantListItem(materialLimitationText(item))).join("");
 
       const limitationItems = [];
       if (review.note){
         limitationItems.push(renderAssistantListItem(review.note));
       }
-      for (const item of (reviewStatus === "ok" ? (review.limitations || []) : [])){
+      for (const item of (reviewStatus === "ok" ? (review.limitations || []).filter(item => !isMaterialLimitation(item)) : [])){
         limitationItems.push(renderAssistantListItem(item));
       }
       if (reviewStatus === "stale"){
@@ -835,9 +879,12 @@
         ? limitationItems.join("")
         : '<div class="empty-note">No additional limitations reported.</div>';
 
-      document.getElementById("assistantReviewNextSteps").innerHTML = reviewStatus === "ok" && (review.next_steps || []).length
-        ? review.next_steps.map(step => renderAssistantListItem(step.label, `${fmt(step.id)} · ${fmt(step.reason)}`)).join("")
-        : '<div class="empty-note">No derived next steps available.</div>';
+      const nextSteps = reviewStatus === "ok"
+        ? (review.next_steps || []).map(operatorNextStep).filter(Boolean)
+        : [];
+      document.getElementById("assistantReviewNextSteps").innerHTML = nextSteps.length
+        ? nextSteps.map(step => `<div class="assistant-next-step"><div class="assistant-next-step-title">${step.action}</div><div class="summary-detail">Why: ${step.reason}</div></div>`).join("")
+        : '<div class="empty-note">No specific next step is available.</div>';
     }
 
     function investigationLoadErrorMessage(err){

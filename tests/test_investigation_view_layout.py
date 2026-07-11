@@ -12,8 +12,8 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_investigation_view_uses_narrative_section_order(self):
         section_ids = [
-            'id="summarySection"',
             'id="assistantReviewSection"',
+            'id="summarySection"',
             'id="timelineSection"',
             'id="coreEvidenceSection"',
             'id="environmentalContextSection"',
@@ -22,18 +22,44 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         indexes = [self.html.index(section_id) for section_id in section_ids]
         self.assertEqual(indexes, sorted(indexes))
         self.assertIn("Investigation Summary", self.html)
-        self.assertIn("Operator Assistant Review", self.html)
+        self.assertIn("Operator Review", self.html)
         self.assertIn("Timeline", self.html)
         self.assertIn("Core Evidence", self.html)
         self.assertIn("Environmental Context", self.html)
         self.assertIn("Raw Detail", self.html)
 
     def test_investigation_view_exposes_presentation_only_status_and_chip_helpers(self):
-        self.assertIn('id="summarySignalChips"', self.html)
+        self.assertIn('id="attributionScopeSummary"', self.html)
         self.assertIn("function statusLabel(value)", self.html)
         self.assertIn("function toneForStatus(value)", self.html)
         self.assertIn("function renderChip(label, value, tone = \"tone-muted\")", self.html)
-        self.assertIn("Evidence highlights", self.html)
+        self.assertIn("function attributionScopeSentence(currentAttribution, windowAttribution)", self.html)
+
+    def test_operator_first_wording_replaces_ambiguous_attribution_labels(self):
+        self.assertIn("Selected interval assessment", self.html)
+        self.assertIn("Broader period", self.html)
+        self.assertNotIn('renderMetricCard("Investigation window"', self.html)
+        self.assertNotIn('renderMetricCard("Current attribution"', self.html)
+        self.assertNotIn('renderMetricCard("Window attribution"', self.html)
+
+    def test_notes_and_limitations_are_secondary_disclosures(self):
+        summary_start = self.html.index('id="summarySection"')
+        summary_end = self.html.index('</section>', summary_start)
+        self.assertNotIn("Investigation Notes", self.html[summary_start:summary_end])
+        self.assertIn("About this investigation", self.html)
+        self.assertIn("Assessment details", self.html)
+        self.assertNotIn("<h3>Limitations</h3>", self.html)
+
+    def test_assistant_evidence_is_not_rendered_and_actions_hide_ids(self):
+        self.assertNotIn('id="assistantReviewEvidence"', self.html)
+        self.assertNotIn("review.evidence.map", self.html)
+        self.assertIn("function operatorNextStep(step)", self.html)
+        self.assertNotIn("fmt(step.id)", self.html)
+
+    def test_probe_groups_are_humanized(self):
+        self.assertIn('resolver_probe: "Resolver probes"', self.html)
+        self.assertIn('internet_probe: "Internet probes"', self.html)
+        self.assertIn('gateway_probe: "Gateway"', self.html)
 
     def test_investigation_view_keeps_raw_detail_in_disclosures(self):
         self.assertIn("<details class=\"disclosure\" open>", self.html)
@@ -60,7 +86,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL)", self.html)
         self.assertIn('renderChip("Requested model"', self.html)
         self.assertIn("reviewHash !== currentInputHash", self.html)
-        self.assertIn("Stale assistant evidence is hidden until the artifact matches the current investigation package.", self.html)
+        self.assertIn("does not match the current evidence package and is hidden", self.html)
         self.assertNotIn("crypto.subtle", self.html)
         self.assertNotIn("operatorAssistantInputHashForInvestigation", self.html)
         self.assertNotIn("./observations.json", self.html)
