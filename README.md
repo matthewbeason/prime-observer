@@ -353,13 +353,13 @@ Projection roles:
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
 
 - `bin/build_operator_assistant_input.py`
-  Builds a compact deterministic evidence package from `viz/investigation.json` for future operator-assistant interpretation experiments. The output stays bounded, evidence-only, and additive; it does not call any model and does not change Prime Observer's existing investigation contract.
+  Builds a compact deterministic evidence package from `viz/investigation.json` for future operator-assistant interpretation experiments. The output includes its producer-generated `input_hash`, stays bounded, evidence-only, and additive, and does not call any model or change Prime Observer's existing investigation contract.
 
 - `viz/operator_assistant_input.json`
   Generated local operator-assistant evidence package. It preserves requested-window metadata, current and window attribution scope, overlapping episode observations, bounded during-window evidence summaries, and optional environmental-context summaries without copying the full investigation artifact.
 
 - `bin/build_operator_assistant_output.py`
-  Builds a local OpenRouter-backed review artifact from `viz/operator_assistant_input.json`. It computes a deterministic evidence hash, reuses an existing successful review when the hash is unchanged, and writes a bounded unavailable artifact when the input is missing, OpenRouter is not configured, or the provider response is invalid.
+  Builds a local OpenRouter-backed review artifact from `viz/operator_assistant_input.json`. It uses the input producer's deterministic evidence hash, reuses an existing successful review when the hash is unchanged, and writes a bounded unavailable artifact when the input is missing, OpenRouter is not configured, or the provider response is invalid.
 
 - `viz/operator_assistant_output.json`
   Generated local operator-assistant review artifact. It includes provenance such as `status`, `input_hash`, requested model, returned provider model when available, and any provider usage metadata. It stays secondary to Prime Observer evidence and is rendered only as a clearly non-authoritative review panel in `viz/investigate.html`.
@@ -473,7 +473,7 @@ Open the investigation view through the local server, not directly from disk.
 Direct `file://` access can prevent the browser from loading
 `investigation.json`.
 
-When present, the investigation page also loads `viz/operator_assistant_output.json` and renders it as a clearly labeled local review panel. Prime Observer evidence remains authoritative. The page hides stale assistant assessments whose `input_hash` does not match the current investigation-derived evidence package, and it remains usable when the assistant artifact is missing, unavailable, malformed, or stale.
+When present, the investigation page loads `viz/operator_assistant_input.json` and `viz/operator_assistant_output.json` and renders a clearly labeled local review panel only when their producer-generated `input_hash` values match. Prime Observer evidence remains authoritative. The browser does not hash or reconstruct evidence, and the page remains usable when either assistant artifact is missing, unavailable, malformed, or stale.
 
 See `docs/investigation-workflow.md` for details.
 

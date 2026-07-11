@@ -214,11 +214,11 @@ Stage ownership:
 ### `viz/operator_assistant_input.json`
 
 - Producer: `bin/build_operator_assistant_input.py`
-- Consumers: future manual LLM prompt experiments; not consumed by the current
-  browser views
+- Consumers: `bin/build_operator_assistant_output.py` and
+  `viz/investigate.html` for renderer-only current-hash comparison
 - Purpose: compact deterministic evidence package derived from
   `viz/investigation.json` for bounded operator-assistant interpretation tests
-- Required fields: top-level `schema_version`, `generated_at`,
+- Required fields: top-level `schema_version`, `generated_at`, `input_hash`,
   `investigation`, `observations`, `attribution`, `episode`, `evidence`,
   `environmental_context`, `limitations`, and `provenance`
 - Optional fields: additive provider details inside `environmental_context`
@@ -245,8 +245,8 @@ Stage ownership:
   when the input artifact is missing, OpenRouter is not configured, the request
   fails, or the provider response is invalid
 - Reuse behavior: the producer skips a new OpenRouter request and preserves the
-  existing successful artifact only when the normalized input hash and
-  requested model are unchanged
+  existing successful artifact only when the input producer's deterministic
+  hash and requested model are unchanged
 - Authoritative: no; Prime Observer evidence and deterministic observations
   remain authoritative
 - Generated: yes
@@ -273,8 +273,8 @@ Stage ownership:
 - `viz/operator_assistant_output.json` is a derived review artifact, not a
   source of telemetry truth, attribution truth, or deterministic Prime Observer
   semantics. The browser should only present an assistant assessment as current
-  when its `input_hash` matches the current investigation-derived evidence
-  package.
+  when its `input_hash` matches the producer-generated `input_hash` in
+  `viz/operator_assistant_input.json`.
 - The browser consumes artifacts and renders views, but it does not create the
   primary semantic meaning Prime Observer owns.
 

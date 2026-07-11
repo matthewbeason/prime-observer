@@ -53,13 +53,16 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_investigation_view_stays_artifact_driven_without_direct_model_calls(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)
+        self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";', self.html)
         self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";', self.html)
         self.assertIn('fetch(INVESTIGATION_URL, {cache: "no-store"})', self.html)
+        self.assertIn("fetchOptionalJson(OPERATOR_ASSISTANT_INPUT_URL)", self.html)
         self.assertIn("fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL)", self.html)
-        self.assertIn("operatorAssistantInputHashForInvestigation(data)", self.html)
         self.assertIn('renderChip("Requested model"', self.html)
-        self.assertIn('review.input_hash !== currentInputHash', self.html)
+        self.assertIn("reviewHash !== currentInputHash", self.html)
         self.assertIn("Stale assistant evidence is hidden until the artifact matches the current investigation package.", self.html)
+        self.assertNotIn("crypto.subtle", self.html)
+        self.assertNotIn("operatorAssistantInputHashForInvestigation", self.html)
         self.assertNotIn("./observations.json", self.html)
         self.assertNotIn("./network_attribution.json", self.html)
         self.assertNotIn("openrouter.ai/api/v1/chat/completions", self.html)

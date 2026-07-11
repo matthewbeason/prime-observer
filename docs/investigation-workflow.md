@@ -88,11 +88,13 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 The Operator Assistant review is local-only, additive, and clearly
 non-authoritative. Prime Observer evidence and deterministic observations remain
 the source of truth. `viz/investigate.html` consumes `viz/investigation.json`
-as authoritative deterministic evidence and `viz/operator_assistant_output.json`
-as optional non-authoritative interpretation. The page remains usable when the
-assistant artifact is missing, unavailable, malformed, or stale, and it only
-shows an assistant assessment as current when the artifact `input_hash`
-matches the current investigation-derived evidence package.
+as authoritative deterministic evidence, `viz/operator_assistant_input.json`
+only for its producer-generated current `input_hash`, and
+`viz/operator_assistant_output.json` as optional non-authoritative
+interpretation. The page remains usable when either assistant artifact is
+missing, unavailable, malformed, or stale. It only shows an assistant
+assessment as current when the input and output artifact hashes match; the
+browser does not reconstruct or hash evidence.
 
 ## Deep-Link Shape
 

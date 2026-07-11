@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import datetime as dt
-import hashlib
 import json
 import os
 import shlex
@@ -159,93 +158,6 @@ def bounded_list(items, limit, *, item_type=None):
             continue
         values.append(item)
     return values
-
-
-def normalized_input_payload(input_payload):
-    payload = safe_dict(input_payload)
-    investigation = safe_dict(payload.get("investigation"))
-    attribution = safe_dict(payload.get("attribution"))
-    environmental = safe_dict(payload.get("environmental_context"))
-
-    def normalized_context(value, *, include_provider=False):
-        context = safe_dict(value)
-        normalized = {
-            "available": bool(context.get("available")),
-            "status": context.get("status"),
-            "summary": context.get("summary"),
-        }
-        if include_provider:
-            normalized["provider_display_name"] = context.get("provider_display_name")
-            normalized["fallback_used"] = bool(context.get("fallback_used"))
-        return normalized
-
-    return {
-        "schema_version": payload.get("schema_version"),
-        "investigation": {
-            "id": investigation.get("id"),
-            "window_start": investigation.get("window_start"),
-            "window_end": investigation.get("window_end"),
-            "duration_minutes": investigation.get("duration_minutes"),
-            "source_status": investigation.get("source_status"),
-        },
-        "attribution": {
-            "current": {
-                "status": safe_dict(attribution.get("current")).get("status"),
-                "label": safe_dict(attribution.get("current")).get("label"),
-                "start": safe_dict(attribution.get("current")).get("start"),
-                "end": safe_dict(attribution.get("current")).get("end"),
-                "observation_id": safe_dict(attribution.get("current")).get("observation_id"),
-            },
-            "window": {
-                "status": safe_dict(attribution.get("window")).get("status"),
-                "label": safe_dict(attribution.get("window")).get("label"),
-                "start": safe_dict(attribution.get("window")).get("start"),
-                "end": safe_dict(attribution.get("window")).get("end"),
-                "observation_id": safe_dict(attribution.get("window")).get("observation_id"),
-            },
-        },
-        "episode": {
-            "target_class": safe_dict(payload.get("episode")).get("target_class"),
-            "status": safe_dict(payload.get("episode")).get("status"),
-            "label": safe_dict(payload.get("episode")).get("label"),
-            "start": safe_dict(payload.get("episode")).get("start"),
-            "end": safe_dict(payload.get("episode")).get("end"),
-            "observation_id": safe_dict(payload.get("episode")).get("observation_id"),
-        },
-        "evidence": {
-            "internet": safe_dict(payload.get("evidence")).get("internet"),
-            "resolver": safe_dict(payload.get("evidence")).get("resolver"),
-            "lan": safe_dict(payload.get("evidence")).get("lan"),
-        },
-        "environmental_context": {
-            "dns": normalized_context(environmental.get("dns")),
-            "internet_conditions": normalized_context(
-                environmental.get("internet_conditions"),
-                include_provider=True,
-            ),
-            "power": normalized_context(environmental.get("power")),
-        },
-    }
-
-
-def input_hash_for_payload(input_payload):
-    def canonicalize(value):
-        if isinstance(value, dict):
-            return {key: canonicalize(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [canonicalize(item) for item in value]
-        if isinstance(value, float) and value.is_integer():
-            return int(value)
-        return value
-
-    normalized = canonicalize(normalized_input_payload(input_payload))
-    encoded = json.dumps(
-        normalized,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def load_existing_output():
@@ -439,7 +351,7 @@ def review_payload(source_file, input_payload, model_review, api_payload, config
         source_file,
         input_payload,
         status="ok",
-        input_hash=input_hash_for_payload(input_payload),
+        input_hash=safe_dict(input_payload).get("input_hash"),
         requested_model=config["OPENROUTER_MODEL"],
         provider_model=api_payload.get("model"),
     )
@@ -493,7 +405,7 @@ def build_output_result():
     print(f"Configured OpenRouter model request: {config['OPENROUTER_MODEL']}")
 
     input_payload, source_file, error = load_input()
-    input_hash = input_hash_for_payload(input_payload) if input_payload else None
+    input_hash = safe_dict(input_payload).get("input_hash")
     if error:
         return {
             "payload": unavailable_payload(
@@ -501,6 +413,20 @@ def build_output_result():
                 None,
                 error,
                 input_hash=input_hash,
+                requested_model=config["OPENROUTER_MODEL"],
+            ),
+            "should_write": True,
+        }
+
+    if not isinstance(input_hash, str) or len(input_hash) != 64 or any(
+        character not in "0123456789abcdef" for character in input_hash
+    ):
+        return {
+            "payload": unavailable_payload(
+                source_file,
+                input_payload,
+                "Operator assistant input artifact is missing a valid producer-generated input_hash.",
+                input_hash=None,
                 requested_model=config["OPENROUTER_MODEL"],
             ),
             "should_write": True,

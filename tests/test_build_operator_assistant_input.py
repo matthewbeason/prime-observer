@@ -171,6 +171,7 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         self.assertEqual(payload["episode"]["target_class"], "resolver_probe")
         self.assertEqual(payload["evidence"]["resolver"]["raw_bad_count"], 8)
         self.assertEqual(payload["environmental_context"]["dns"]["status"], "ok")
+        self.assertRegex(payload["input_hash"], r"^[0-9a-f]{64}$")
         self.assertTrue(payload["observations"])
         self.assertEqual(payload["provenance"]["source_producer"], "bin/build_investigation.py")
 
@@ -253,6 +254,16 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         written = json.loads(self.module.OUT.read_text())
         self.assertEqual(written["investigation"]["id"], "investigation-1")
         self.assertNotEqual(self.module.OUT, self.module.INVESTIGATION)
+
+    def test_rebuild_timestamp_does_not_change_input_hash(self):
+        investigation = self.investigation_payload()
+        older = self.module.build_package(investigation, "viz/investigation.json")
+        investigation["generated_at"] = "2026-07-06T23:30:00+00:00"
+        investigation["dns_context"]["generated_at"] = "2026-07-06T23:29:00Z"
+        investigation["dns_context"]["minutes_from_event_midpoint"] = 42.0
+        newer = self.module.build_package(investigation, "viz/investigation.json")
+
+        self.assertEqual(older["input_hash"], newer["input_hash"])
 
 
 if __name__ == "__main__":

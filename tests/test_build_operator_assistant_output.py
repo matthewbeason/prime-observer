@@ -10,6 +10,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "bin" / "build_operator_assistant_output.py"
+INPUT_MODULE_PATH = ROOT / "bin" / "build_operator_assistant_input.py"
 
 
 def load_module():
@@ -22,6 +23,9 @@ def load_module():
 class BuildOperatorAssistantOutputTest(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
+        input_spec = importlib.util.spec_from_file_location("build_operator_assistant_input_for_output_tests", INPUT_MODULE_PATH)
+        self.input_module = importlib.util.module_from_spec(input_spec)
+        input_spec.loader.exec_module(self.input_module)
         self.original_load_config = self.module.load_config
         self.tmp = tempfile.TemporaryDirectory()
         self.base = Path(self.tmp.name)
@@ -53,7 +57,7 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
         return result, stream.getvalue()
 
     def input_payload(self):
-        return {
+        payload = {
             "schema_version": 1,
             "generated_at": "2026-07-10T22:00:00Z",
             "investigation": {
@@ -81,6 +85,8 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
             },
             "limitations": ["Current attribution and window attribution disagree and should be preserved as separate scopes."],
         }
+        payload["input_hash"] = self.input_module.input_hash_for_payload(payload)
+        return payload
 
     def test_missing_input_writes_unavailable_output(self):
         output = self.module.build_output()
@@ -113,6 +119,18 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
 
         self.assertEqual(output["status"], "unavailable")
         self.assertIn("input is unavailable", output["reason"])
+
+    def test_missing_producer_hash_does_not_call_provider(self):
+        payload = self.input_payload()
+        payload.pop("input_hash")
+        self.write_input(payload)
+        self.module.post_chat_completion = mock.Mock(side_effect=AssertionError("provider should not be called"))
+
+        output = self.module.build_output()
+
+        self.assertEqual(output["status"], "unavailable")
+        self.assertIn("producer-generated input_hash", output["reason"])
+        self.module.post_chat_completion.assert_not_called()
 
     def test_successful_review_writes_bounded_output(self):
         self.write_input(self.input_payload())
@@ -168,14 +186,14 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
 
     def test_rebuild_timestamp_does_not_change_input_hash(self):
         payload = self.input_payload()
-        older_hash = self.module.input_hash_for_payload(payload)
+        older_hash = self.input_module.input_hash_for_payload(payload)
         payload["generated_at"] = "2026-07-10T22:30:00Z"
         payload["investigation"]["source_generated_at"] = "2026-07-10T22:29:00Z"
         payload["environmental_context"]["dns"]["generated_at"] = "2026-07-10T22:28:00Z"
         payload["environmental_context"]["dns"]["minutes_from_event_midpoint"] = 42.0
         payload["environmental_context"]["internet_conditions"]["generated_at"] = "2026-07-10T22:27:00Z"
         payload["environmental_context"]["power"]["generated_at"] = "2026-07-10T22:26:00Z"
-        newer_hash = self.module.input_hash_for_payload(payload)
+        newer_hash = self.input_module.input_hash_for_payload(payload)
 
         self.assertEqual(older_hash, newer_hash)
 
@@ -198,7 +216,7 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
             "generated_at": "2026-07-10T22:10:00Z",
             "status": "ok",
             "provider": "openrouter",
-            "input_hash": self.module.input_hash_for_payload(payload),
+            "input_hash": payload["input_hash"],
             "requested_model": "google/gemini-3.5-flash",
             "provider_model": "openai/gpt-5",
             "source_file": "viz/operator_assistant_input.json",
@@ -290,7 +308,7 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
             "generated_at": "2026-07-10T22:10:00Z",
             "status": "ok",
             "provider": "openrouter",
-            "input_hash": self.module.input_hash_for_payload(payload),
+            "input_hash": payload["input_hash"],
             "requested_model": "openrouter/auto",
             "provider_model": "openai/gpt-5",
             "source_file": "viz/operator_assistant_input.json",

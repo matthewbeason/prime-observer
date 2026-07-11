@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse
 import datetime as dt
+import hashlib
 import json
 
 BASE = Path("/Users/mbeason/prime-observer")
@@ -68,6 +69,92 @@ def bounded_items(items, limit):
 
 def safe_dict(value):
     return value if isinstance(value, dict) else {}
+
+
+def normalized_input_payload(input_payload):
+    payload = safe_dict(input_payload)
+    investigation = safe_dict(payload.get("investigation"))
+    attribution = safe_dict(payload.get("attribution"))
+    environmental = safe_dict(payload.get("environmental_context"))
+
+    def normalized_context(value, *, include_provider=False):
+        context = safe_dict(value)
+        normalized = {
+            "available": bool(context.get("available")),
+            "status": context.get("status"),
+            "summary": context.get("summary"),
+        }
+        if include_provider:
+            normalized["provider_display_name"] = context.get("provider_display_name")
+            normalized["fallback_used"] = bool(context.get("fallback_used"))
+        return normalized
+
+    return {
+        "schema_version": payload.get("schema_version"),
+        "investigation": {
+            "id": investigation.get("id"),
+            "window_start": investigation.get("window_start"),
+            "window_end": investigation.get("window_end"),
+            "duration_minutes": investigation.get("duration_minutes"),
+            "source_status": investigation.get("source_status"),
+        },
+        "attribution": {
+            "current": {
+                "status": safe_dict(attribution.get("current")).get("status"),
+                "label": safe_dict(attribution.get("current")).get("label"),
+                "start": safe_dict(attribution.get("current")).get("start"),
+                "end": safe_dict(attribution.get("current")).get("end"),
+                "observation_id": safe_dict(attribution.get("current")).get("observation_id"),
+            },
+            "window": {
+                "status": safe_dict(attribution.get("window")).get("status"),
+                "label": safe_dict(attribution.get("window")).get("label"),
+                "start": safe_dict(attribution.get("window")).get("start"),
+                "end": safe_dict(attribution.get("window")).get("end"),
+                "observation_id": safe_dict(attribution.get("window")).get("observation_id"),
+            },
+        },
+        "episode": {
+            "target_class": safe_dict(payload.get("episode")).get("target_class"),
+            "status": safe_dict(payload.get("episode")).get("status"),
+            "label": safe_dict(payload.get("episode")).get("label"),
+            "start": safe_dict(payload.get("episode")).get("start"),
+            "end": safe_dict(payload.get("episode")).get("end"),
+            "observation_id": safe_dict(payload.get("episode")).get("observation_id"),
+        },
+        "evidence": {
+            "internet": safe_dict(payload.get("evidence")).get("internet"),
+            "resolver": safe_dict(payload.get("evidence")).get("resolver"),
+            "lan": safe_dict(payload.get("evidence")).get("lan"),
+        },
+        "environmental_context": {
+            "dns": normalized_context(environmental.get("dns")),
+            "internet_conditions": normalized_context(
+                environmental.get("internet_conditions"),
+                include_provider=True,
+            ),
+            "power": normalized_context(environmental.get("power")),
+        },
+    }
+
+
+def input_hash_for_payload(input_payload):
+    def canonicalize(value):
+        if isinstance(value, dict):
+            return {key: canonicalize(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [canonicalize(item) for item in value]
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        return value
+
+    encoded = json.dumps(
+        canonicalize(normalized_input_payload(input_payload)),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def extract_observation_refs(investigation):
@@ -319,11 +406,12 @@ def build_package(investigation, source_file):
     }
     package["observations"] = build_observations(package)
     package["limitations"] = build_limitations(investigation, package, [])
+    package["input_hash"] = input_hash_for_payload(package)
     return package
 
 
 def unavailable_package(source_file, limitations):
-    return {
+    package = {
         "schema_version": 1,
         "generated_at": iso_now(),
         "investigation": {
@@ -358,6 +446,8 @@ def unavailable_package(source_file, limitations):
             "observation_reference_count": 0,
         },
     }
+    package["input_hash"] = input_hash_for_payload(package)
+    return package
 
 
 def build_from_path(path):

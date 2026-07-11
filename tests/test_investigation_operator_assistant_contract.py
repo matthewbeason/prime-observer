@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import subprocess
 import textwrap
@@ -8,16 +7,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML_PATH = ROOT / "viz" / "investigate.html"
-INPUT_MODULE_PATH = ROOT / "bin" / "build_operator_assistant_input.py"
-OUTPUT_MODULE_PATH = ROOT / "bin" / "build_operator_assistant_output.py"
-
-
-def load_module(path, name):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
 
 def page_script():
     html = HTML_PATH.read_text()
@@ -42,8 +31,6 @@ class InvestigationOperatorAssistantContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.script = page_script()
-        cls.input_module = load_module(INPUT_MODULE_PATH, "build_operator_assistant_input")
-        cls.output_module = load_module(OUTPUT_MODULE_PATH, "build_operator_assistant_output")
 
     def run_node(self, body):
         script = f"""
@@ -190,20 +177,7 @@ globalThis.fetch = async () => ({{ok: false, status: 404, json: async () => ({{}
             ],
         }
 
-    def browser_hash(self, payload):
-        body = f"""
-globalThis.crypto = require("node:crypto").webcrypto;
-(async () => {{
-  const value = await operatorAssistantInputHashForInvestigation({json.dumps(payload)});
-  console.log(value);
-}})().catch(err => {{
-  console.error(err);
-  process.exit(1);
-}});
-"""
-        return self.run_node(body)
-
-    def dom_harness(self, review_js, current_hash_js):
+    def dom_harness(self, review_js, assistant_input_js):
         return f"""
 const elements = new Map();
 function makeElement() {{
@@ -224,7 +198,7 @@ globalThis.document = {{
     return elements.get(id);
   }},
 }};
-renderAssistantReview({review_js}, {current_hash_js});
+renderAssistantReview({review_js}, {assistant_input_js});
 const section = document.getElementById("assistantReviewSection");
 console.log(JSON.stringify({{
   visible: section.classList.contains("visible"),
@@ -236,20 +210,19 @@ console.log(JSON.stringify({{
 }}));
 """
 
-    def test_browser_hash_matches_python_hash_contract(self):
-        payload = self.investigation_payload()
-        input_payload = self.input_module.build_package(payload, "viz/investigation.json")
-        expected_hash = self.output_module.input_hash_for_payload(input_payload)
-
-        self.assertEqual(self.browser_hash(payload), expected_hash)
+    def test_no_browser_crypto_dependency_remains(self):
+        self.assertNotIn("crypto.subtle", self.script)
+        self.assertNotIn("subtle.digest", self.script)
+        self.assertNotIn("operatorAssistantInputHashForInvestigation", self.script)
+        self.assertNotIn("stableStringify", self.script)
 
     def test_missing_assistant_artifact_keeps_section_hidden(self):
-        rendered = json.loads(self.run_node(self.dom_harness("null", json.dumps("abc123"))))
+        rendered = json.loads(self.run_node(self.dom_harness("null", json.dumps({"input_hash": "a" * 64}))))
 
         self.assertFalse(rendered["visible"])
 
     def test_malformed_assistant_artifact_keeps_section_hidden(self):
-        rendered = json.loads(self.run_node(self.dom_harness(json.dumps({"reason": "missing status"}), json.dumps("abc123"))))
+        rendered = json.loads(self.run_node(self.dom_harness(json.dumps({"reason": "missing status"}), json.dumps({"input_hash": "a" * 64}))))
 
         self.assertFalse(rendered["visible"])
 
@@ -260,7 +233,7 @@ console.log(JSON.stringify({{
                     json.dumps(
                         {
                             "status": "ok",
-                            "input_hash": "match-hash",
+                            "input_hash": "a" * 64,
                             "requested_model": "openrouter/auto",
                             "provider_model": "openai/gpt-5",
                             "assessment": "Grounded review",
@@ -271,7 +244,7 @@ console.log(JSON.stringify({{
                             "note": "Derived review only.",
                         }
                     ),
-                    json.dumps("match-hash"),
+                    json.dumps({"input_hash": "a" * 64}),
                 )
             )
         )
@@ -288,7 +261,7 @@ console.log(JSON.stringify({{
                     json.dumps(
                         {
                             "status": "ok",
-                            "input_hash": "old-hash",
+                            "input_hash": "a" * 64,
                             "requested_model": "openrouter/auto",
                             "provider_model": "openai/gpt-5",
                             "assessment": "Old assessment that should be hidden",
@@ -299,7 +272,7 @@ console.log(JSON.stringify({{
                             "note": "Derived review only.",
                         }
                     ),
-                    json.dumps("new-hash"),
+                    json.dumps({"input_hash": "b" * 64}),
                 )
             )
         )
@@ -309,6 +282,49 @@ console.log(JSON.stringify({{
         self.assertNotIn("Old assessment", rendered["assessment"])
         self.assertNotIn("Old evidence", rendered["evidence"])
         self.assertIn("Stale", rendered["pills"])
+
+    def test_missing_input_artifact_hides_review(self):
+        review = json.dumps({"status": "ok", "input_hash": "a" * 64, "assessment": "Should stay hidden"})
+        rendered = json.loads(self.run_node(self.dom_harness(review, "null")))
+
+        self.assertFalse(rendered["visible"])
+
+    def test_malformed_input_artifact_hides_review(self):
+        review = json.dumps({"status": "ok", "input_hash": "a" * 64, "assessment": "Should stay hidden"})
+        rendered = json.loads(self.run_node(self.dom_harness(review, json.dumps({"generated_at": "missing hash"}))))
+
+        self.assertFalse(rendered["visible"])
+
+    def test_investigation_renders_without_web_crypto_or_assistant_artifacts(self):
+        investigation = self.investigation_payload()
+        body = f"""
+globalThis.crypto = undefined;
+globalThis.fetch = async (url) => {{
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(investigation)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{
+    status: document.getElementById("status").textContent,
+    summary: document.getElementById("summaryCards").innerHTML,
+    assistantVisible: document.getElementById("assistantReviewSection").classList.contains("visible"),
+  }}));
+}})().catch(err => {{
+  console.error(err);
+  process.exit(1);
+}});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["status"], "Loaded investigation.json")
+        self.assertIn("Investigation window", rendered["summary"])
+        self.assertFalse(rendered["assistantVisible"])
+
+    def test_browser_fetches_local_artifacts_only(self):
+        self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json"', self.script)
+        self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json"', self.script)
+        self.assertNotIn("openrouter.ai", self.script)
 
 
 if __name__ == "__main__":
