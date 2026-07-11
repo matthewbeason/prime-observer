@@ -359,7 +359,10 @@ Projection roles:
   Generated local operator-assistant evidence package. It preserves requested-window metadata, current and window attribution scope, overlapping episode observations, bounded during-window evidence summaries, and optional environmental-context summaries without copying the full investigation artifact.
 
 - `bin/build_operator_assistant_output.py`
-  Builds a local OpenRouter-backed review artifact from `viz/operator_assistant_input.json`. It uses the input producer's deterministic evidence hash, reuses an existing successful review when the hash is unchanged, and writes a bounded unavailable artifact when the input is missing, OpenRouter is not configured, or the provider response is invalid.
+  Builds a local OpenRouter-backed review artifact from `viz/operator_assistant_input.json`. It composes the reusable Operator Charter, evidence package, and unchanged response schema into the model prompt. It uses the input producer's deterministic evidence hash, reuses an existing successful review when the hash is unchanged, and writes a bounded unavailable artifact when the charter or input is missing, OpenRouter is not configured, or the provider response is invalid.
+
+- `docs/operator-charter.md`
+  Defines the model-independent communication contract for Operator Assistant interpretation. Prime Observer determines evidence; the charter keeps evidence-first language, uncertainty, and engineering tone consistent when models change.
 
 - `viz/operator_assistant_output.json`
   Generated local operator-assistant review artifact. It includes provenance such as `status`, `input_hash`, requested model, returned provider model when available, and any provider usage metadata. It stays secondary to Prime Observer evidence and is rendered only as a clearly non-authoritative review panel in `viz/investigate.html`.
@@ -456,6 +459,12 @@ python3 bin/build_operator_assistant_output.py
 ```
 
 `bin/build_operator_assistant_output.py` can read `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from the process environment or a repo-local `.env.openrouter` file. If no model is configured, it defaults to `google/gemini-3.5-flash`. The scheduled refresh wrapper also runs both assistant steps after the optional provider refreshes, but the OpenRouter request is skipped only when the normalized operator-assistant evidence hash and requested model both match an existing successful review.
+
+Every new request composes `docs/operator-charter.md` + the deterministic
+evidence package + the response schema. Prime Observer owns the facts and
+deterministic observations; the charter governs how a selected model
+communicates its non-authoritative interpretation. Models may change without
+changing that operator communication standard.
 
 Generate a historical investigation:
 

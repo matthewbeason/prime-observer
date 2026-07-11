@@ -242,8 +242,11 @@ Stage ownership:
 - Optional fields: `provider_model`, `reason`, `usage`, and
   `provider_response_id`
 - Unavailable behavior: the producer writes an explicit `unavailable` artifact
-  when the input artifact is missing, OpenRouter is not configured, the request
-  fails, or the provider response is invalid
+  when the Operator Charter or input artifact is missing, OpenRouter is not
+  configured, the request fails, or the provider response is invalid
+- Prompt contract: the producer composes `docs/operator-charter.md`, the
+  deterministic evidence package, and the unchanged response schema; model
+  selection does not redefine operator communication behavior
 - Reuse behavior: the producer skips a new OpenRouter request and preserves the
   existing successful artifact only when the input producer's deterministic
   hash and requested model are unchanged

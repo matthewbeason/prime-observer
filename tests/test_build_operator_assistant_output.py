@@ -36,6 +36,9 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
         self.module.INPUT = self.viz_dir / "operator_assistant_input.json"
         self.module.OUT = self.viz_dir / "operator_assistant_output.json"
         self.module.ENV_FILE = self.base / ".env.openrouter"
+        self.module.OPERATOR_CHARTER = self.base / "docs" / "operator-charter.md"
+        self.module.OPERATOR_CHARTER.parent.mkdir()
+        self.module.OPERATOR_CHARTER.write_text("# Operator Charter v1.0\n\nUse only supplied evidence.\n")
         self.module.load_config = lambda: {
             "OPENROUTER_API_KEY": "test-key",
             "OPENROUTER_MODEL": "google/gemini-3.5-flash",
@@ -109,6 +112,44 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
 
         self.assertEqual(output["status"], "unavailable")
         self.assertIn("OPENROUTER_API_KEY not configured", output["reason"])
+
+    def test_operator_charter_is_loaded_into_prompt(self):
+        charter = "# Operator Charter v1.0\n\nCurrent evidence is most consistent with careful engineering."
+        self.module.OPERATOR_CHARTER.write_text(charter)
+
+        loaded, error = self.module.load_operator_charter()
+        messages = self.module.prompt_messages(self.input_payload(), loaded)
+
+        self.assertIsNone(error)
+        self.assertEqual(messages[0], {"role": "system", "content": charter})
+        self.assertIn("Evidence package:\n", messages[1]["content"])
+
+    def test_missing_operator_charter_fails_without_provider_request(self):
+        self.write_input(self.input_payload())
+        self.module.OPERATOR_CHARTER.unlink()
+        self.module.post_chat_completion = mock.Mock(side_effect=AssertionError("provider should not be called"))
+
+        output = self.module.build_output()
+
+        self.assertEqual(output["status"], "unavailable")
+        self.assertIn("Operator Charter was not available", output["reason"])
+        self.module.post_chat_completion.assert_not_called()
+
+    def test_response_schema_and_structured_output_instructions_are_unchanged(self):
+        schema = self.module.response_schema()["json_schema"]["schema"]
+        messages = self.module.prompt_messages(self.input_payload(), "charter")
+
+        self.assertEqual(
+            schema["required"],
+            ["assessment", "confidence", "evidence", "limitations", "next_steps"],
+        )
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(
+            messages[1]["content"].split("\n\nEvidence package:\n", 1)[0],
+            "Return JSON only with the required schema.\n\n"
+            "Suggested next-step IDs when appropriate: "
+            "EXTEND_WINDOW, CHECK_GATEWAY, COMPARE_RESOLVER_AND_INTERNET, RECHECK_PROVIDER_CONTEXT.",
+        )
 
     def test_unavailable_input_short_circuits_review(self):
         payload = self.input_payload()

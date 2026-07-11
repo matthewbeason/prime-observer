@@ -14,6 +14,7 @@ VIZ_DIR = BASE / "viz"
 INPUT = VIZ_DIR / "operator_assistant_input.json"
 OUT = VIZ_DIR / "operator_assistant_output.json"
 ENV_FILE = BASE / ".env.openrouter"
+OPERATOR_CHARTER = BASE / "docs" / "operator-charter.md"
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 USER_AGENT = "PrimeObserver/0.9.0"
@@ -21,6 +22,11 @@ DEFAULT_MODEL = "google/gemini-3.5-flash"
 DEFAULT_TIMEOUT_SECONDS = 45
 DEFAULT_MAX_TOKENS = 700
 MAX_LIST_ITEMS = 5
+STRUCTURED_OUTPUT_INSTRUCTIONS = (
+    "Return JSON only with the required schema.\n\n"
+    "Suggested next-step IDs when appropriate: "
+    "EXTEND_WINDOW, CHECK_GATEWAY, COMPARE_RESOLVER_AND_INTERNET, RECHECK_PROVIDER_CONTEXT."
+)
 
 
 def utc_now():
@@ -151,6 +157,16 @@ def load_input():
     return payload, source_file, None
 
 
+def load_operator_charter():
+    try:
+        charter = OPERATOR_CHARTER.read_text().strip()
+    except OSError:
+        return None, "Operator Charter was not available. No OpenRouter review was requested."
+    if not charter:
+        return None, "Operator Charter was empty. No OpenRouter review was requested."
+    return charter, None
+
+
 def bounded_list(items, limit, *, item_type=None):
     values = []
     for item in safe_list(items)[:limit]:
@@ -216,25 +232,17 @@ def unavailable_payload(source_file, input_payload, reason, *, input_hash, reque
     return payload
 
 
-def prompt_messages(input_payload):
+def prompt_messages(input_payload, operator_charter):
     body = json.dumps(input_payload, indent=2, sort_keys=True)
     return [
         {
             "role": "system",
-            "content": (
-                "You are reviewing a Prime Observer operator-assistant evidence package. "
-                "Use only the supplied evidence. Do not invent facts. Do not claim causality beyond the evidence. "
-                "Distinguish deterministic Prime Observer output from hypothesis. Treat unavailable evidence as unavailable. "
-                "Preserve conflicting current and window attribution scopes when they differ. "
-                "Do not override Prime Observer. Keep the answer concise. Recommend only practical follow-up checks supported by the package."
-            ),
+            "content": operator_charter,
         },
         {
             "role": "user",
             "content": (
-                "Return JSON only with the required schema.\n\n"
-                "Suggested next-step IDs when appropriate: "
-                "EXTEND_WINDOW, CHECK_GATEWAY, COMPARE_RESOLVER_AND_INTERNET, RECHECK_PROVIDER_CONTEXT.\n\n"
+                f"{STRUCTURED_OUTPUT_INSTRUCTIONS}\n\n"
                 f"Evidence package:\n{body}"
             ),
         },
@@ -337,10 +345,10 @@ def parse_model_review(api_payload):
     return parsed
 
 
-def build_request_payload(input_payload, config):
+def build_request_payload(input_payload, config, operator_charter):
     return {
         "model": config["OPENROUTER_MODEL"],
-        "messages": prompt_messages(input_payload),
+        "messages": prompt_messages(input_payload, operator_charter),
         "response_format": response_schema(),
         "max_tokens": config["OPENROUTER_MAX_TOKENS"],
     }
@@ -444,6 +452,19 @@ def build_output_result():
             "should_write": True,
         }
 
+    operator_charter, charter_error = load_operator_charter()
+    if charter_error:
+        return {
+            "payload": unavailable_payload(
+                source_file,
+                input_payload,
+                charter_error,
+                input_hash=input_hash,
+                requested_model=config["OPENROUTER_MODEL"],
+            ),
+            "should_write": True,
+        }
+
     existing_output = load_existing_output()
     existing_requested_model = safe_dict(existing_output).get("requested_model")
     reused = reusable_success_output(
@@ -487,7 +508,7 @@ def build_output_result():
             "should_write": True,
         }
 
-    request_payload = build_request_payload(input_payload, config)
+    request_payload = build_request_payload(input_payload, config, operator_charter)
     print(f"Sending OpenRouter request with configured model: {config['OPENROUTER_MODEL']}")
     try:
         api_payload = post_chat_completion(request_payload, config)

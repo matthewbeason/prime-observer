@@ -38,6 +38,7 @@ The output is local-only and generated. It must not be committed.
 
 The current local review prototype also includes:
 
+- communication contract: `docs/operator-charter.md`
 - review producer: `bin/build_operator_assistant_output.py`
 - review artifact: `viz/operator_assistant_output.json`
 - review surface: `viz/investigate.html`
@@ -49,6 +50,17 @@ producer computes the normalized evidence-package hash and stores it as
 that hash into `viz/operator_assistant_output.json` and reuses an existing
 successful review only when both the evidence hash and requested model are
 unchanged.
+
+The review prompt is composed from three reusable parts:
+
+```text
+Operator Charter + Evidence Package + Response Schema = Prompt
+```
+
+Prime Observer determines evidence. The Operator Charter defines how a model
+communicates its interpretation, including evidence-first wording, explicit
+uncertainty, and useful follow-up observations. The selected model may change;
+operator behavior should remain consistent with the charter.
 
 The review artifact includes:
 
@@ -97,14 +109,9 @@ The package is a compact derivative, not a second full investigation export.
 
 ## Grounding Requirements
 
-Downstream consumers should:
-
-- use only supplied evidence
-- preserve current versus window attribution scope
-- treat unavailable context as unavailable
-- avoid causal claims beyond the evidence
-- avoid overriding Prime Observer's deterministic output
-- keep interpretation concise and factual
+Downstream model communication is governed by the canonical
+`docs/operator-charter.md`. This evidence-package document defines what is
+supplied; the charter defines how it is interpreted and communicated.
 
 ## Failure Behavior
 
@@ -129,25 +136,15 @@ That boundary matters because:
 - provider context remains supporting evidence only
 - the model must not invent new facts or replace the source investigation
 
-## Manual Prompt Template
+## Manual Prompt Composition
 
-Use this template for manual OpenCode or OpenRouter experiments only after
-generating `viz/operator_assistant_input.json`:
+For manual OpenCode or OpenRouter experiments, compose the complete contents of
+`docs/operator-charter.md`, the generated `viz/operator_assistant_input.json`,
+and the unchanged response shape below. Do not copy communication rules into a
+model-specific prompt.
 
 ```text
-You are reviewing a Prime Observer operator-assistant evidence package.
-
 Return JSON only. Do not include markdown fences or extra narration.
-
-Use only the supplied evidence package.
-Do not invent facts.
-Do not claim causality beyond the evidence.
-Distinguish deterministic Prime Observer output from hypothesis.
-Treat unavailable evidence as unavailable.
-Preserve conflicting current and window attribution scopes when they differ.
-Do not override Prime Observer.
-Keep the answer concise.
-Recommend only practical follow-up checks supported by the package.
 
 Required response shape:
 {
