@@ -96,6 +96,18 @@ missing, unavailable, malformed, or stale. It only shows an assistant
 assessment as current when the input and output artifact hashes match; the
 browser does not reconstruct or hash evidence.
 
+Generate a current review explicitly after building the assistant input:
+
+```bash
+python3 bin/build_operator_assistant_input.py
+python3 bin/build_operator_assistant_output.py
+```
+
+The optional-context schedule rebuilds the input package but does not call
+OpenRouter. During prompt and Operator Charter refinement, every valid explicit
+output-producer run requests a fresh review. The input hash remains solely for
+artifact freshness and stale-output protection in the browser.
+
 ## Deep-Link Shape
 
 The page accepts future URL parameters:

@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -257,7 +258,19 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
         self.assertEqual(output["status"], "unavailable")
         self.assertIn("response was invalid", output["reason"])
 
-    def test_unchanged_input_skips_request_and_preserves_existing_output(self):
+    def test_provider_failure_remains_non_fatal(self):
+        self.write_input(self.input_payload())
+        self.module.post_chat_completion = mock.Mock(
+            side_effect=urllib.error.URLError("temporary outage")
+        )
+
+        output = self.module.build_output()
+
+        self.assertEqual(output["status"], "unavailable")
+        self.assertIn("temporary outage", output["reason"])
+        self.assertEqual(output["input_hash"], self.input_payload()["input_hash"])
+
+    def test_matching_successful_output_does_not_skip_fresh_request(self):
         payload = self.input_payload()
         self.write_input(payload)
         existing = {
@@ -284,16 +297,54 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
 
         def fake_post(_request_payload, _config):
             call_count["count"] += 1
-            raise AssertionError("OpenRouter should not be called for unchanged evidence")
+            return {
+                "id": "gen-fresh",
+                "model": "openai/gpt-5",
+                "choices": [{"message": {"content": json.dumps({
+                    "assessment": "Fresh assessment",
+                    "confidence": "high",
+                    "evidence": ["Fresh evidence"],
+                    "limitations": [],
+                    "next_steps": [],
+                })}}],
+            }
 
         self.module.post_chat_completion = fake_post
         result, stdout = self.capture_stdout(self.module.build_output_result)
 
-        self.assertFalse(result["should_write"])
-        self.assertEqual(call_count["count"], 0)
-        self.assertEqual(result["payload"], existing)
-        self.assertIn("Configured OpenRouter model request: google/gemini-3.5-flash", stdout)
-        self.assertIn("Reusing cached Operator Assistant review because evidence hash and requested model match", stdout)
+        self.assertTrue(result["should_write"])
+        self.assertEqual(call_count["count"], 1)
+        self.assertEqual(result["payload"]["assessment"], "Fresh assessment")
+        self.assertEqual(result["payload"]["input_hash"], payload["input_hash"])
+        self.assertIn("Requested OpenRouter model: google/gemini-3.5-flash", stdout)
+        self.assertIn("Requesting a fresh Operator Assistant review for this explicit execution.", stdout)
+
+    def test_repeated_explicit_runs_each_call_provider(self):
+        payload = self.input_payload()
+        self.write_input(payload)
+        responses = iter(["First assessment", "Second assessment"])
+        post = mock.Mock(side_effect=lambda *_args: {
+            "id": "gen-repeated",
+            "model": "openai/gpt-5",
+            "choices": [{"message": {"content": json.dumps({
+                "assessment": next(responses),
+                "confidence": "medium",
+                "evidence": [],
+                "limitations": [],
+                "next_steps": [],
+            })}}],
+        })
+        self.module.post_chat_completion = post
+
+        first = self.module.build_output_result()["payload"]
+        self.module.write_json_atomic(first)
+        second = self.module.build_output_result()["payload"]
+
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(first["assessment"], "First assessment")
+        self.assertEqual(second["assessment"], "Second assessment")
+        self.assertEqual(first["input_hash"], payload["input_hash"])
+        self.assertEqual(second["input_hash"], payload["input_hash"])
 
     def test_changed_input_requests_new_assessment(self):
         payload = self.input_payload()
@@ -403,10 +454,7 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
         self.assertTrue(result["should_write"])
         self.assertEqual(call_count["count"], 1)
         self.assertEqual(result["payload"]["requested_model"], "google/gemini-3.5-flash")
-        self.assertIn(
-            "configured model changed from openrouter/auto to google/gemini-3.5-flash",
-            stdout,
-        )
+        self.assertIn("Requesting a fresh Operator Assistant review for this explicit execution.", stdout)
 
     def test_default_model_is_google_gemini_flash(self):
         with mock.patch.dict(os.environ, {}, clear=True):

@@ -176,16 +176,6 @@ def bounded_list(items, limit, *, item_type=None):
     return values
 
 
-def load_existing_output():
-    if not OUT.exists():
-        return None
-    try:
-        payload = json.loads(OUT.read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
 def base_payload(
     source_file,
     input_payload,
@@ -395,17 +385,6 @@ def review_payload(source_file, input_payload, model_review, api_payload, config
     return payload
 
 
-def reusable_success_output(existing_payload, current_input_hash, requested_model):
-    payload = safe_dict(existing_payload)
-    if payload.get("status") != "ok":
-        return None
-    if payload.get("input_hash") != current_input_hash:
-        return None
-    if payload.get("requested_model") != requested_model:
-        return None
-    return payload
-
-
 def write_json_atomic(payload):
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
     tmp = OUT.with_suffix(".json.tmp")
@@ -418,7 +397,8 @@ def write_json_atomic(payload):
 def build_output_result():
     config = load_config()
     print_configuration_diagnostics(config)
-    print(f"Configured OpenRouter model request: {config['OPENROUTER_MODEL']}")
+    print(f"Requested OpenRouter model: {config['OPENROUTER_MODEL']}")
+    print("Requesting a fresh Operator Assistant review for this explicit execution.")
 
     input_payload, source_file, error = load_input()
     input_hash = safe_dict(input_payload).get("input_hash")
@@ -472,37 +452,6 @@ def build_output_result():
             ),
             "should_write": True,
         }
-
-    existing_output = load_existing_output()
-    existing_requested_model = safe_dict(existing_output).get("requested_model")
-    reused = reusable_success_output(
-        existing_output,
-        input_hash,
-        config["OPENROUTER_MODEL"],
-    )
-    if reused:
-        print(
-            "Reusing cached Operator Assistant review because evidence hash and requested model match: "
-            f"{input_hash} ({config['OPENROUTER_MODEL']})"
-        )
-        return {
-            "payload": reused,
-            "should_write": False,
-        }
-
-    if existing_output and safe_dict(existing_output).get("status") == "ok":
-        existing_hash = safe_dict(existing_output).get("input_hash")
-        if existing_hash == input_hash and existing_requested_model != config["OPENROUTER_MODEL"]:
-            print(
-                "Requesting a fresh Operator Assistant review because the configured model changed "
-                f"from {existing_requested_model or 'unknown'} to {config['OPENROUTER_MODEL']}."
-            )
-        else:
-            print(
-                "Requesting a fresh Operator Assistant review because the evidence package changed."
-            )
-    else:
-        print("Requesting a fresh Operator Assistant review because no reusable successful cache was found.")
 
     if not config["OPENROUTER_API_KEY"]:
         return {
@@ -567,11 +516,11 @@ def build_output():
 
 def main():
     result = build_output_result()
-    if result["should_write"]:
-        write_json_atomic(result["payload"])
-        print(f"Wrote operator assistant output to {OUT}")
+    write_json_atomic(result["payload"])
+    if result["payload"].get("status") == "ok":
+        print(f"Successfully wrote fresh Operator Assistant output to {OUT}")
     else:
-        print(f"Preserved existing operator assistant output at {OUT}")
+        print(f"Wrote unavailable Operator Assistant output to {OUT}")
     return 0
 
 

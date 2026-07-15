@@ -47,9 +47,21 @@ The browser remains renderer-only. It reads the generated input and review
 artifacts and does not call OpenRouter directly. The deterministic input
 producer computes the normalized evidence-package hash and stores it as
 `input_hash` in `viz/operator_assistant_input.json`. The review producer copies
-that hash into `viz/operator_assistant_output.json` and reuses an existing
-successful review only when both the evidence hash and requested model are
-unchanged.
+that hash into `viz/operator_assistant_output.json`. The hash protects browser
+artifact freshness: the browser presents a review as current only when input and
+output hashes match. It is not currently used to reuse provider responses.
+
+For this phase, run `python3 bin/build_operator_assistant_output.py` explicitly
+to generate a review. Every valid execution requests a fresh OpenRouter review
+using the current Operator Charter and prompt, replacing any prior output.
+Successful-output reuse is temporarily disabled during prompt and charter
+refinement. The scheduled optional-context refresh rebuilds the input package
+but does not invoke OpenRouter.
+
+Safe reuse may later be restored with a request fingerprint that includes the
+evidence input hash, requested model, Operator Charter content or version,
+prompt template or version, and response schema version. That fingerprint is
+not implemented in this phase.
 
 The review prompt is composed from three reusable parts:
 

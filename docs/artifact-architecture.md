@@ -247,9 +247,16 @@ Stage ownership:
 - Prompt contract: the producer composes `docs/operator-charter.md`, the
   deterministic evidence package, and the unchanged response schema; model
   selection does not redefine operator communication behavior
-- Reuse behavior: the producer skips a new OpenRouter request and preserves the
-  existing successful artifact only when the input producer's deterministic
-  hash and requested model are unchanged
+- Execution behavior: reviews are currently generated only by explicitly
+  running `python3 bin/build_operator_assistant_output.py`; every valid run
+  requests a fresh review and replaces the prior output artifact
+- Reuse behavior: successful-output reuse is temporarily disabled during prompt
+  and Operator Charter refinement; `input_hash` remains for browser artifact
+  freshness and mismatch protection, not provider-call reuse
+- Future reuse: safe reuse may later use a request fingerprint containing the
+  evidence input hash, requested model, Operator Charter content or version,
+  prompt template or version, and response schema version; it is not implemented
+  in this phase
 - Authoritative: no; Prime Observer evidence and deterministic observations
   remain authoritative
 - Generated: yes

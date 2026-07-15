@@ -32,6 +32,5 @@ run_step "NextDNS summary" "$BASE/bin/fetch_nextdns_summary.py"
 run_step "Internet Conditions" "$BASE/bin/fetch_cloudflare_radar.py"
 run_step "APS power context" "$BASE/bin/fetch_aps_power_context.py"
 run_step "Operator assistant input" "$BASE/bin/build_operator_assistant_input.py"
-run_step "Operator assistant output" "$BASE/bin/build_operator_assistant_output.py"
 
 log "Optional context refresh finished."
