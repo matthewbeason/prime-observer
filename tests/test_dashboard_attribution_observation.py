@@ -54,7 +54,7 @@ class DashboardAttributionObservationStaticTest(unittest.TestCase):
         self.assertIn("loadObservationsPayload()", self.html)
         self.assertIn("loadNetworkAttributionPayload()", self.html)
         self.assertIn("resolveCurrentAttribution({", self.html)
-        self.assertIn("computeFallbackAttribution: () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked)", self.html)
+        self.assertIn("computeFallbackAttribution: useHealthFallback ? () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked) : null", self.html)
         self.assertIn('return await res.json();', self.html)
         self.assertIn('return null;', self.html)
 

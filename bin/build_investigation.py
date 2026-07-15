@@ -7,6 +7,15 @@ import json
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from health_model import (
+    HEAT_BIN_MINUTES,
+    TURBULENCE_MIN_RAW_BAD,
+    WAN_BAD,
+    WAN_BAD_PERSISTENCE,
+    bucket_start,
+    is_turbulence_bucket,
+    is_wan_bad as health_model_is_wan_bad,
+)
 from target_metadata import is_gateway_probe, is_wan_probe, target_metadata
 
 BASE = Path("/Users/mbeason/prime-observer")
@@ -20,10 +29,6 @@ APS_POWER_CONTEXT = VIZ_DIR / "aps_power_context.json"
 OBSERVATIONS = VIZ_DIR / "observations.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
-WAN_BAD = {"p95": 140.0, "jitter": 50.0, "loss": 1.0}
-WAN_BAD_PERSISTENCE = 2
-TURBULENCE_MIN_RAW_BAD = 4
-HEAT_BIN_MINUTES = 15
 
 
 def parse_ts(value):
@@ -160,11 +165,7 @@ def read_samples(window_start_utc, window_end_utc):
 
 
 def is_wan_bad(sample):
-    return (
-        sample["p95_ms"] > WAN_BAD["p95"]
-        or sample["jitter_ms"] > WAN_BAD["jitter"]
-        or sample["loss_pct"] > WAN_BAD["loss"]
-    )
+    return health_model_is_wan_bad(sample, p95_key="p95_ms", jitter_key="jitter_ms", loss_key="loss_pct")
 
 
 def mark_sustained_wan(samples):
@@ -186,13 +187,13 @@ def classify_buckets(wan_samples):
     bin_seconds = HEAT_BIN_MINUTES * 60
 
     for sample in wan_samples:
-        bucket_start = int(sample["ts_utc"].timestamp() // bin_seconds) * bin_seconds
-        key = (sample.get("target_class"), bucket_start)
+        start = bucket_start(sample["ts_utc"])
+        key = (sample.get("target_class"), start)
         bucket = buckets.setdefault(
             key,
             {
-                "start": dt.datetime.fromtimestamp(bucket_start, tz=dt.timezone.utc),
-                "end": dt.datetime.fromtimestamp(bucket_start + bin_seconds, tz=dt.timezone.utc),
+                "start": dt.datetime.fromtimestamp(start, tz=dt.timezone.utc),
+                "end": dt.datetime.fromtimestamp(start + bin_seconds, tz=dt.timezone.utc),
                 "target_class": sample.get("target_class") or "unknown_probe",
                 "samples": [],
             },
@@ -219,7 +220,7 @@ def classify_buckets(wan_samples):
             "raw_bad_count": raw_bad,
             "sustained_bad_count": sustained_bad,
             "max_raw_bad_run": max_raw_run,
-            "turbulence": sustained_bad == 0 and raw_bad >= TURBULENCE_MIN_RAW_BAD and max_raw_run < WAN_BAD_PERSISTENCE,
+            "turbulence": is_turbulence_bucket(raw_bad, sustained_bad, max_raw_run),
             "max_p95_ms": rounded(max((row["p95_ms"] for row in rows), default=None)),
             "max_jitter_ms": rounded(max((row["jitter_ms"] for row in rows), default=None)),
             "max_loss_pct": rounded(max((row["loss_pct"] for row in rows), default=None), 2),

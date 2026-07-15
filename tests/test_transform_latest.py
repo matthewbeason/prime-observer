@@ -35,6 +35,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.OUT = self.viz_dir / "latest.csv"
         self.module.ATTRIBUTION_OUT = self.viz_dir / "network_attribution.json"
         self.module.OBSERVATIONS_OUT = self.viz_dir / "observations.json"
+        self.module.DASHBOARD_HEALTH_OUT = self.viz_dir / "dashboard_health.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -126,8 +127,11 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(attribution["resolver_probe_summary"]["sample_count"], 2)
         self.assertIn("target_group_facts", attribution["attribution_evidence"])
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
+        dashboard_health = json.loads(self.module.DASHBOARD_HEALTH_OUT.read_text())
         self.assertEqual(observations["schema_version"], 1)
         self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
+        self.assertEqual(dashboard_health["schema_version"], 1)
+        self.assertEqual(dashboard_health["model_version"], "prime_observer.dashboard_health.v1")
         self.assertEqual(len(observations["observations"]), 2)
         self.assertEqual({item["type"] for item in observations["observations"]}, {"attribution"})
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
@@ -196,6 +200,7 @@ class TransformLatestTest(unittest.TestCase):
         investigation_html = INVESTIGATE_HTML_PATH.read_text()
 
         self.assertIn("./latest.csv", dashboard_html)
+        self.assertIn("./dashboard_health.json", dashboard_html)
         self.assertIn("./observations.json", dashboard_html)
         self.assertIn("./network_attribution.json", dashboard_html)
         self.assertIn("selectEpisodeObservations(observationsPayload)", dashboard_html)
@@ -206,6 +211,119 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("observations.json", investigation_html)
         self.assertNotIn("internet_conditions.json", investigation_html)
         self.assertNotIn("aps_power_context.json", investigation_html)
+
+    def test_dashboard_health_projection_matches_python_classification(self):
+        base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        rows = [
+            self.dashboard_sample(base + dt.timedelta(minutes=0), "1.1.1.1", 180),
+            self.dashboard_sample(base + dt.timedelta(minutes=1), "1.1.1.1", 181),
+            self.dashboard_sample(base + dt.timedelta(minutes=2), "45.90.28.134", 180),
+            self.dashboard_sample(base + dt.timedelta(minutes=3), "45.90.28.134", 30),
+            self.dashboard_sample(base + dt.timedelta(minutes=4), "45.90.28.134", 181),
+            self.dashboard_sample(base + dt.timedelta(minutes=5), "45.90.28.134", 31),
+            self.dashboard_sample(base + dt.timedelta(minutes=6), "45.90.28.134", 182),
+            self.dashboard_sample(base + dt.timedelta(minutes=7), "45.90.28.134", 32),
+            self.dashboard_sample(base + dt.timedelta(minutes=8), "45.90.28.134", 183),
+            self.dashboard_sample(base + dt.timedelta(minutes=9), "192.168.1.1", 130),
+            self.dashboard_sample(base + dt.timedelta(minutes=10), "192.168.1.1", 131),
+            self.dashboard_sample(base + dt.timedelta(minutes=11), "192.168.1.1", 132),
+        ]
+        rows_out = [
+            self.telemetry_row(sample["t"].isoformat(), sample["host"], sample["p95"], jitter=sample["jitter"], loss=sample["loss"])
+            for sample in rows
+        ]
+        for row in rows_out:
+            row.update(self.module.target_metadata(row["host"]))
+
+        generated_at = base + dt.timedelta(minutes=12)
+        attribution = self.module.compute_network_attribution(rows_out, generated_at)
+        dashboard_health = self.module.build_dashboard_health(rows_out, attribution, generated_at)
+        lan_series, wan_series = self.module.to_dashboard_series(rows_out)
+        marked = self.module.mark_persistent_wan_bad(wan_series)
+        buckets = self.module.classify_buckets(marked)
+
+        self.assertNotIn("thresholds", dashboard_health)
+
+        legacy_sample_classification = {
+            (sample["t"].isoformat(), sample["target_class"], sample["host"]): (sample["raw_bad"], sample["is_bad"])
+            for sample in marked
+        }
+        projected_sample_classification = {
+            (sample["ts"], sample["targetClass"], sample["host"]): (sample["rawBad"], sample["isBad"])
+            for sample in dashboard_health["wan_samples"]
+        }
+        self.assertEqual(projected_sample_classification, legacy_sample_classification)
+
+        projected_buckets = dashboard_health["wan_target_group_buckets"]
+        self.assertEqual(len(projected_buckets), len(buckets))
+        projected_by_group = {bucket["targetClass"]: bucket for bucket in projected_buckets}
+        legacy_bucket_semantics = {
+            bucket["target_class"]: {
+                "bad": bucket["bad"],
+                "rawBad": bucket["raw_bad"],
+                "isBadBucket": bucket["bad"] > 0,
+                "isTurbulence": bucket["is_turbulence"],
+                "maxRawRun": bucket["max_raw_run"],
+            }
+            for bucket in buckets
+        }
+        projected_bucket_semantics = {
+            target_class: {
+                "bad": bucket["bad"],
+                "rawBad": bucket["rawBad"],
+                "isBadBucket": bucket["isBadBucket"],
+                "isTurbulence": bucket["isTurbulence"],
+                "maxRawRun": bucket["maxRawRun"],
+            }
+            for target_class, bucket in projected_by_group.items()
+        }
+        self.assertEqual(projected_bucket_semantics, legacy_bucket_semantics)
+
+        composite = dashboard_health["composite_wan_buckets"][0]
+        legacy_lan = self.module.lan_elevation(lan_series)
+        legacy_selected_evidence = {
+            "internetSustainedBadSamples": legacy_bucket_semantics["internet_probe"]["bad"],
+            "internetRawBadSamples": legacy_bucket_semantics["internet_probe"]["rawBad"],
+            "internetSamples": projected_by_group["internet_probe"]["total"],
+            "resolverSustainedBadSamples": legacy_bucket_semantics["resolver_probe"]["bad"],
+            "resolverRawBadSamples": legacy_bucket_semantics["resolver_probe"]["rawBad"],
+            "resolverSamples": projected_by_group["resolver_probe"]["total"],
+            "lanElevatedSamples": len(legacy_lan["elevated"]),
+            "lanSamples": len(lan_series),
+        }
+        projected_selected_evidence = {
+            key: composite["selectedEvidence"][key]
+            for key in legacy_selected_evidence
+        }
+        self.assertEqual(projected_selected_evidence, legacy_selected_evidence)
+
+        legacy_composite_semantics = {
+            "isBadBucket": any(bucket["isBadBucket"] for bucket in legacy_bucket_semantics.values()),
+            "isTurbulence": False,
+            "bad": sum(bucket["bad"] for bucket in legacy_bucket_semantics.values()),
+            "rawBad": sum(bucket["rawBad"] for bucket in legacy_bucket_semantics.values()),
+        }
+        legacy_composite_semantics["isTurbulence"] = (
+            not legacy_composite_semantics["isBadBucket"]
+            and any(bucket["isTurbulence"] for bucket in legacy_bucket_semantics.values())
+        )
+        projected_composite_semantics = {
+            "isBadBucket": composite["isBadBucket"],
+            "isTurbulence": composite["isTurbulence"],
+            "bad": composite["bad"],
+            "rawBad": composite["rawBad"],
+        }
+        self.assertEqual(projected_composite_semantics, legacy_composite_semantics)
+
+        window_counts = self.module.attribution_evidence_counts(
+            self.module.target_group_summary(marked),
+            lan_series,
+            self.module.lan_elevation(lan_series)["elevated"],
+        )
+        self.assertEqual(
+            dashboard_health["attribution_evidence_counts"],
+            self.module.camelize_classification_counts(window_counts),
+        )
 
     def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):
         base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)

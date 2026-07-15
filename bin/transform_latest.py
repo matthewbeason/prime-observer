@@ -13,6 +13,16 @@ from target_metadata import (
     is_wan_probe,
     target_metadata,
 )
+from health_model import (
+    ATTRIBUTION_CUT_MINUTES,
+    HEAT_BIN_MINUTES,
+    WAN_BAD,
+    WAN_BAD_PERSISTENCE,
+    bucket_start,
+    is_turbulence_bucket,
+    is_wan_bad,
+    lan_elevation,
+)
 from observation_domain import (
     OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observations,
@@ -26,6 +36,7 @@ VIZ_DIR  = BASE / "viz"
 OUT      = VIZ_DIR / "latest.csv"
 ATTRIBUTION_OUT = VIZ_DIR / "network_attribution.json"
 OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
+DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -38,13 +49,6 @@ BASELINE_FILE_COUNT = 10
 
 TARGET_COLUMNS = ("target_label", "target_class")
 BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct", "baseline_sample_count")
-
-WAN_BAD = {"p95": 140.0, "jitter": 50.0, "loss": 1.0}
-WAN_BAD_PERSISTENCE = 2
-TURBULENCE_MIN_RAW_BAD = 4
-HEAT_BIN_MINUTES = 15
-ATTRIBUTION_CUT_MINUTES = 15
-LAN_BAD_P95 = 120.0
 
 
 def sanitize_field(s: str) -> str:
@@ -259,11 +263,7 @@ def to_dashboard_series(rows):
 
 
 def is_wan_bad_row(sample):
-    return (
-        sample["p95"] > WAN_BAD["p95"]
-        or sample["jitter"] > WAN_BAD["jitter"]
-        or sample["loss"] > WAN_BAD["loss"]
-    )
+    return is_wan_bad(sample)
 
 
 def mark_persistent_wan_bad(series, min_streak=WAN_BAD_PERSISTENCE):
@@ -287,8 +287,8 @@ def classify_buckets(wan_series):
     buckets = {}
 
     for sample in wan_series:
-        bucket_start = int(sample["t"].timestamp() // bin_seconds) * bin_seconds
-        key = (sample.get("phase"), sample.get("target_class"), bucket_start)
+        start = bucket_start(sample["t"])
+        key = (sample.get("phase"), sample.get("target_class"), start)
         obj = buckets.setdefault(key, {
             "phase": sample["phase"] or "FIBER",
             "target_class": sample.get("target_class") or "unknown_probe",
@@ -297,11 +297,14 @@ def classify_buckets(wan_series):
         obj["rows"].append(sample)
 
     out = []
-    for (_phase, target_class, bucket_start), bucket in buckets.items():
+    for (_phase, target_class, start), bucket in buckets.items():
         rows = sorted(bucket["rows"], key=lambda d: d["t"])
         total = len(rows)
         bad = len([d for d in rows if d.get("is_bad")])
         raw_bad = len([d for d in rows if d.get("raw_bad")])
+        p95_bad = len([d for d in rows if d.get("p95", 0.0) > WAN_BAD["p95"]])
+        jitter_bad = len([d for d in rows if d.get("jitter", 0.0) > WAN_BAD["jitter"]])
+        loss_bad = len([d for d in rows if d.get("loss", 0.0) > WAN_BAD["loss"]])
         raw_run = 0
         max_raw_run = 0
 
@@ -312,13 +315,16 @@ def classify_buckets(wan_series):
         out.append({
             "phase": bucket["phase"],
             "target_class": target_class,
-            "t": dt.datetime.fromtimestamp(bucket_start, tz=dt.timezone.utc),
-            "t2": dt.datetime.fromtimestamp(bucket_start + bin_seconds, tz=dt.timezone.utc),
+            "t": dt.datetime.fromtimestamp(start, tz=dt.timezone.utc),
+            "t2": dt.datetime.fromtimestamp(start + bin_seconds, tz=dt.timezone.utc),
             "total": total,
             "bad": bad,
             "raw_bad": raw_bad,
+            "p95_bad": p95_bad,
+            "jitter_bad": jitter_bad,
+            "loss_bad": loss_bad,
             "max_raw_run": max_raw_run,
-            "is_turbulence": bad == 0 and raw_bad >= TURBULENCE_MIN_RAW_BAD and max_raw_run < WAN_BAD_PERSISTENCE,
+            "is_turbulence": is_turbulence_bucket(raw_bad, bad, max_raw_run),
         })
 
     return sorted(out, key=lambda d: d["t"])
@@ -457,9 +463,10 @@ def compute_recent_attribution(lan_series, wan_series_marked, generated_at):
     wan_bad = any(d.get("is_bad") for d in recent_wan)
     wan_turbulence = any(b.get("is_turbulence") for b in recent_buckets)
 
-    lan_elevated = [d for d in recent_lan if (d.get("p95") or 0.0) > LAN_BAD_P95]
-    lan_elevated_rate = len(lan_elevated) / len(recent_lan) if recent_lan else 0.0
-    lan_bad = len(lan_elevated) >= 3 and lan_elevated_rate > 0.2
+    lan = lan_elevation(recent_lan)
+    lan_elevated = lan["elevated"]
+    lan_elevated_rate = lan["elevated_rate"]
+    lan_bad = lan["lan_bad"]
     group_facts = target_group_fact(groups, recent_lan, lan_elevated, lan_bad)
     evidence_counts = attribution_evidence_counts(groups, recent_lan, lan_elevated)
 
@@ -564,18 +571,7 @@ def find_sustained_wan_incidents(wan_series_marked):
 
 def lan_evidence_for_interval(lan_series, start, end):
     samples = [d for d in lan_series if start <= d["t"] <= end]
-    elevated = [d for d in samples if (d.get("p95") or 0.0) > LAN_BAD_P95]
-    elevated_rate = len(elevated) / len(samples) if samples else 0.0
-    lan_bad = len(elevated) >= 3 and elevated_rate > 0.2
-    lan_stable = bool(samples) and not elevated
-
-    return {
-        "samples": samples,
-        "elevated": elevated,
-        "elevated_rate": elevated_rate,
-        "lan_bad": lan_bad,
-        "lan_stable": lan_stable,
-    }
+    return lan_elevation(samples)
 
 
 def classify_incident(run, lan_series):
@@ -742,6 +738,180 @@ def compute_network_attribution(rows, generated_at):
     }
 
 
+def camelize_classification_counts(counts):
+    return {
+        "internetProbeDegraded": counts.get("internet_probe_degraded", False),
+        "resolverProbeDegraded": counts.get("resolver_probe_degraded", False),
+        "lanElevated": counts.get("lan_elevated", False),
+        "internetBadBuckets": counts.get("internet_bad_buckets", 0),
+        "resolverBadBuckets": counts.get("resolver_bad_buckets", 0),
+        "internetSustainedBadSamples": counts.get("internet_sustained_bad_samples", 0),
+        "resolverSustainedBadSamples": counts.get("resolver_sustained_bad_samples", 0),
+        "internetTurbulenceBuckets": counts.get("internet_turbulence_buckets", 0),
+        "resolverTurbulenceBuckets": counts.get("resolver_turbulence_buckets", 0),
+        "wanDegradedTargetGroups": counts.get("wan_degraded_target_groups", 0),
+        "wanBadBuckets": counts.get("wan_bad_buckets", 0),
+        "wanTurbulenceBuckets": counts.get("wan_turbulence_buckets", 0),
+        "wanSustainedBadSamples": counts.get("wan_sustained_bad_samples", 0),
+        "wanEvidencePoints": counts.get("wan_evidence_points", 0),
+        "lanRecentSamples": counts.get("lan_recent_samples", 0),
+        "lanElevatedSamples": counts.get("lan_elevated_samples", 0),
+    }
+
+
+def dashboard_bucket(bucket, generated_at):
+    recent_cut = generated_at - dt.timedelta(minutes=60)
+    return {
+        "phase": bucket.get("phase"),
+        "targetClass": bucket.get("target_class"),
+        "t": bucket["t"].isoformat(),
+        "t2": bucket["t2"].isoformat(),
+        "total": bucket.get("total", 0),
+        "bad": bucket.get("bad", 0),
+        "rawBad": bucket.get("raw_bad", 0),
+        "p95Bad": bucket.get("p95_bad", 0),
+        "jitterBad": bucket.get("jitter_bad", 0),
+        "lossBad": bucket.get("loss_bad", 0),
+        "rate": (bucket.get("bad", 0) / bucket.get("total", 0)) if bucket.get("total") else 0,
+        "rawRate": (bucket.get("raw_bad", 0) / bucket.get("total", 0)) if bucket.get("total") else 0,
+        "maxRawRun": bucket.get("max_raw_run", 0),
+        "isBadBucket": bucket.get("bad", 0) > 0,
+        "isTurbulence": bucket.get("is_turbulence", False),
+        "recent": bucket["t2"] >= recent_cut,
+        "semanticSource": "dashboard_health",
+    }
+
+
+def empty_dashboard_group():
+    return {
+        "total": 0,
+        "bad": 0,
+        "rawBad": 0,
+        "p95Bad": 0,
+        "jitterBad": 0,
+        "lossBad": 0,
+        "maxRawRun": 0,
+        "isBadBucket": False,
+        "isTurbulence": False,
+        "semanticSource": "dashboard_health",
+    }
+
+
+def lan_bucket_evidence(lan_series, start, end):
+    samples = [d for d in lan_series if start <= d["t"] < end]
+    lan = lan_elevation(samples)
+    return {
+        "lanElevatedSamples": len(lan["elevated"]),
+        "lanSamples": len(samples),
+        "lanElevatedRatePct": round(lan["elevated_rate"] * 100, 1),
+        "lanBad": lan["lan_bad"],
+        "lanStable": lan["lan_stable"],
+    }
+
+
+def build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at):
+    composites = {}
+    for bucket in wan_buckets:
+        key = (bucket["phase"], bucket["t"])
+        obj = composites.setdefault(key, {
+            "phase": bucket["phase"],
+            "targetClass": "composite_wan",
+            "t": bucket["t"],
+            "t2": bucket["t2"],
+            "groups": {},
+            "total": 0,
+            "bad": 0,
+            "rawBad": 0,
+            "p95Bad": 0,
+            "jitterBad": 0,
+            "lossBad": 0,
+            "maxRawRun": 0,
+        })
+        group = dashboard_bucket(bucket, generated_at)
+        obj["groups"][bucket["target_class"]] = group
+        obj["total"] += group["total"]
+        obj["bad"] += group["bad"]
+        obj["rawBad"] += group["rawBad"]
+        obj["p95Bad"] += group["p95Bad"]
+        obj["jitterBad"] += group["jitterBad"]
+        obj["lossBad"] += group["lossBad"]
+        obj["maxRawRun"] = max(obj["maxRawRun"], group["maxRawRun"])
+
+    out = []
+    for bucket in composites.values():
+        bucket["groups"].setdefault("internet_probe", empty_dashboard_group())
+        bucket["groups"].setdefault("resolver_probe", empty_dashboard_group())
+        bucket["isBadBucket"] = bool(
+            bucket["groups"]["internet_probe"]["isBadBucket"]
+            or bucket["groups"]["resolver_probe"]["isBadBucket"]
+        )
+        bucket["isTurbulence"] = not bucket["isBadBucket"] and bool(
+            bucket["groups"]["internet_probe"]["isTurbulence"]
+            or bucket["groups"]["resolver_probe"]["isTurbulence"]
+        )
+        bucket["rate"] = bucket["bad"] / bucket["total"] if bucket["total"] else 0
+        bucket["rawRate"] = bucket["rawBad"] / bucket["total"] if bucket["total"] else 0
+        bucket["recent"] = bucket["t2"] >= (generated_at - dt.timedelta(minutes=60))
+        bucket["selectedEvidence"] = {
+            "internetSustainedBadSamples": bucket["groups"]["internet_probe"]["bad"],
+            "internetRawBadSamples": bucket["groups"]["internet_probe"]["rawBad"],
+            "internetSamples": bucket["groups"]["internet_probe"]["total"],
+            "resolverSustainedBadSamples": bucket["groups"]["resolver_probe"]["bad"],
+            "resolverRawBadSamples": bucket["groups"]["resolver_probe"]["rawBad"],
+            "resolverSamples": bucket["groups"]["resolver_probe"]["total"],
+            **lan_bucket_evidence(lan_series, bucket["t"], bucket["t2"]),
+        }
+        bucket["semanticSource"] = "dashboard_health"
+        bucket["t"] = bucket["t"].isoformat()
+        bucket["t2"] = bucket["t2"].isoformat()
+        out.append(bucket)
+    return sorted(out, key=lambda item: item["t"])
+
+
+def build_dashboard_health(rows, attribution, generated_at):
+    lan_series, wan_series = to_dashboard_series(rows)
+    wan_series_marked = mark_persistent_wan_bad(wan_series)
+    wan_buckets = classify_buckets(wan_series_marked)
+    window_groups = target_group_summary(wan_series_marked)
+    window_lan = lan_elevation(lan_series)
+    window_counts = attribution_evidence_counts(window_groups, lan_series, window_lan["elevated"])
+    window_start = min((d["t"] for d in (lan_series + wan_series_marked)), default=None)
+    window_end = max((d["t"] for d in (lan_series + wan_series_marked)), default=None)
+    return {
+        "schema_version": 1,
+        "generated_at": generated_at.isoformat(),
+        "model_version": "prime_observer.dashboard_health.v1",
+        "dashboard_window": {
+            "hours": WINDOW_HOURS,
+            "start": window_start.isoformat() if window_start else None,
+            "end": window_end.isoformat() if window_end else None,
+            "lan_samples": len(lan_series),
+            "wan_samples": len(wan_series_marked),
+        },
+        "wan_samples": [
+            {
+                "ts": sample["t"].isoformat(),
+                "phase": sample.get("phase"),
+                "host": sample.get("host"),
+                "targetClass": sample.get("target_class"),
+                "rawBad": sample.get("raw_bad", False),
+                "isBad": sample.get("is_bad", False),
+            }
+            for sample in wan_series_marked
+        ],
+        "wan_target_group_buckets": [dashboard_bucket(bucket, generated_at) for bucket in wan_buckets],
+        "composite_wan_buckets": build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at),
+        "lan_evidence": {
+            "window": {
+                "lanSamples": len(lan_series),
+                "lanElevatedSamples": len(lan_elevation(lan_series)["elevated"]),
+                "lanBad": lan_elevation(lan_series)["lan_bad"],
+            }
+        },
+        "attribution_evidence_counts": camelize_classification_counts(window_counts),
+    }
+
+
 def write_json_atomic(path, data):
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w") as f:
@@ -806,6 +976,8 @@ def main():
 
     attribution = compute_network_attribution(rows_out, now)
     write_json_atomic(ATTRIBUTION_OUT, attribution)
+    dashboard_health = build_dashboard_health(rows_out, attribution, now)
+    write_json_atomic(DASHBOARD_HEALTH_OUT, dashboard_health)
     lan_series, wan_series = to_dashboard_series(rows_out)
     wan_series_marked = mark_persistent_wan_bad(wan_series)
     incident_runs = find_sustained_wan_incidents(wan_series_marked)
@@ -832,6 +1004,7 @@ def main():
 
     print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")
+    print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"WAN baseline files used: {', '.join(baseline_sources) if baseline_sources else 'none'}")
     print(f"WAN baseline hours available: {sorted(baseline_by_hour.keys())}")

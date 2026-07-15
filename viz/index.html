@@ -521,6 +521,7 @@
       <div>Last sample: <span id="statusLastSample">—</span></div>
       <div>Refresh: <span id="statusRefresh">every 5s</span></div>
       <div>Window: <span id="statusWindow">last 24h</span></div>
+      <div id="healthModelMode" style="display:none;">Degraded health-model compatibility mode</div>
     </div>
   </div>
 
@@ -832,6 +833,7 @@
     const WINDOW_HOURS = 24;
     const HEAT_BIN_MINUTES = 15;
     const CSV_URL = "./latest.csv";
+    const DASHBOARD_HEALTH_URL = "./dashboard_health.json";
     const OBSERVATIONS_URL = "./observations.json";
     const NETWORK_ATTRIBUTION_URL = "./network_attribution.json";
     const NEXTDNS_URL = "./nextdns_summary.json";
@@ -858,6 +860,7 @@
     let currentVizState = null;
     let resizeObserver = null;
     let renderFrame = null;
+    let warnedHealthModelFallback = false;
     let powerInfrastructureDisclosureState = { lastStatus: null, itemsCount: 0 };
 
     function bucketKey(d){
@@ -1607,6 +1610,79 @@
       }
     }
 
+    async function loadDashboardHealthPayload(){
+      try {
+        const res = await fetch(DASHBOARD_HEALTH_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("Dashboard health unavailable");
+        return await res.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function healthSampleKey(sample){
+      const timestamp = sample?.t instanceof Date ? sample.t.toISOString() : String(sample?.ts || "");
+      return `${timestamp}|${sample?.phase || "FIBER"}|${sample?.targetClass || "unknown_probe"}|${sample?.host || ""}`;
+    }
+
+    function normalizeDashboardHealthBucket(bucket){
+      const start = parseTs(bucket?.t || "");
+      const end = parseTs(bucket?.t2 || "");
+      if (!start || !end) return null;
+      const normalized = {
+        ...bucket,
+        t: start,
+        t2: end,
+        targetClass: bucket.targetClass || bucket.target_class || "composite_wan",
+        groups: bucket.groups || {},
+        selectedEvidence: bucket.selectedEvidence || null,
+        semanticSource: bucket.semanticSource || "dashboard_health",
+      };
+      normalized.key = bucketKey(normalized);
+      normalized.selected = selectedBucketKey === normalized.key;
+      normalized.evidenceLabel = normalized.evidenceLabel || compositeEvidenceLabel(normalized);
+      return normalized;
+    }
+
+    function normalizeDashboardHealthPayload(payload){
+      if (!payload || payload.schema_version !== 1) return null;
+      if (!Array.isArray(payload.wan_samples) || !Array.isArray(payload.composite_wan_buckets)) return null;
+      const sampleClassifications = new Map();
+      for (const sample of payload.wan_samples){
+        const timestamp = parseTs(sample.ts || "");
+        if (!timestamp) continue;
+        sampleClassifications.set(
+          `${timestamp.toISOString()}|${sample.phase || "FIBER"}|${sample.targetClass || "unknown_probe"}|${sample.host || ""}`,
+          { rawBad: Boolean(sample.rawBad), isBad: Boolean(sample.isBad) }
+        );
+      }
+      const compositeWanBuckets = payload.composite_wan_buckets
+        .map(normalizeDashboardHealthBucket)
+        .filter(Boolean)
+        .sort((a,b)=>a.t-b.t);
+      if (!sampleClassifications.size && compositeWanBuckets.length) return null;
+      return {
+        sampleClassifications,
+        compositeWanBuckets,
+        attributionEvidenceCounts: payload.attribution_evidence_counts || null,
+      };
+    }
+
+    function applyDashboardHealthClassifications(series, dashboardHealth){
+      if (!dashboardHealth?.sampleClassifications) return series;
+      return series.map(sample => {
+        const classification = dashboardHealth.sampleClassifications.get(healthSampleKey(sample));
+        if (!classification) return { ...sample, rawBad: false, isBad: false };
+        return { ...sample, rawBad: classification.rawBad, isBad: classification.isBad };
+      });
+    }
+
+    function setHealthModelMode(isFallback){
+      const el = document.getElementById("healthModelMode");
+      if (!el) return;
+      el.style.display = isFallback ? "block" : "none";
+    }
+
     function normalizeAttributionConfidence(confidence){
       if (typeof confidence !== "string" || !confidence.trim()) return null;
       return confidence
@@ -2240,6 +2316,7 @@
     }
 
     function selectedBucketEvidence(bucket, internetSeries, resolverSeries, lanSeries){
+      if (bucket?.selectedEvidence) return bucket.selectedEvidence;
       const interval = normalizeBucketInterval(bucket);
       if (!interval) return null;
       const within = d => d.t >= interval.start && d.t < interval.end;
@@ -2897,29 +2974,43 @@
 
     async function tick() {
       try {
-        const [raw, observationsPayload, networkAttributionPayload] = await Promise.all([
+        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload] = await Promise.all([
           loadData(),
+          loadDashboardHealthPayload(),
           loadObservationsPayload(),
           loadNetworkAttributionPayload(),
         ]);
+        const dashboardHealth = normalizeDashboardHealthPayload(dashboardHealthPayload);
+        const useHealthFallback = !dashboardHealth;
+        setHealthModelMode(useHealthFallback);
+        if (useHealthFallback && !warnedHealthModelFallback){
+          console.warn("Prime Observer: Degraded health-model compatibility mode; dashboard_health.json is missing, malformed, or unavailable.");
+          warnedHealthModelFallback = true;
+        }
         updateHeader(raw);
         computeTelemetry(raw);
 
         const { lanSeries, internetSeries, resolverSeries } = toSeries(raw);
-        const internetSeriesMarked = markPersistentWanBad(internetSeries);
-        const resolverSeriesMarked = markPersistentWanBad(resolverSeries);
+        const internetSeriesMarked = dashboardHealth
+          ? applyDashboardHealthClassifications(internetSeries, dashboardHealth)
+          : markPersistentWanBad(internetSeries);
+        const resolverSeriesMarked = dashboardHealth
+          ? applyDashboardHealthClassifications(resolverSeries, dashboardHealth)
+          : markPersistentWanBad(resolverSeries);
         const episodeObservations = selectEpisodeObservations(observationsPayload);
-        const compositeWanBuckets = buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked, episodeObservations);
+        const compositeWanBuckets = dashboardHealth
+          ? dashboardHealth.compositeWanBuckets.map(bucket => ({ ...bucket, selected: selectedBucketKey === bucket.key }))
+          : buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked, episodeObservations);
         const noticeSummary = getNoticeabilitySummary([...internetSeriesMarked, ...resolverSeriesMarked].sort((a,b)=>a.t-b.t), compositeWanBuckets);
         const patternSummary = getPatternAwarenessSummary(internetSeriesMarked);
         const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
         const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
         const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
-        const attributionEvidence = attributionEvidenceCounts(internetSeriesMarked, resolverSeriesMarked, lanSeries);
+        const attributionEvidence = dashboardHealth?.attributionEvidenceCounts || attributionEvidenceCounts(internetSeriesMarked, resolverSeriesMarked, lanSeries);
         const attribution = resolveCurrentAttribution({
           observationsPayload,
           networkAttributionPayload,
-          computeFallbackAttribution: () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked)
+          computeFallbackAttribution: useHealthFallback ? () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked) : null
         });
         const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;

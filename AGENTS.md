@@ -55,7 +55,8 @@ If something cannot be supported from the repository, mark it:
 ## Primary Files
 
 - `bin/transform_latest.py` generates `viz/latest.csv`,
-  `viz/network_attribution.json`, and `viz/observations.json`.
+  `viz/network_attribution.json`, `viz/observations.json`, and
+  `viz/dashboard_health.json`.
 - `bin/build_investigation.py` generates `viz/investigation.json` and
   `viz/investigation_index.json`.
 - `bin/build_operator_assistant_input.py` generates
@@ -93,6 +94,7 @@ These are local/generated artifacts and must not be committed:
 - `viz/latest.csv`
 - `viz/network_attribution.json`
 - `viz/observations.json`
+- `viz/dashboard_health.json`
 - `viz/investigation.json`
 - `viz/investigation_index.json`
 - `viz/operator_assistant_input.json`
