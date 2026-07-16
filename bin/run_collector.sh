@@ -1,7 +1,8 @@
 #!/bin/zsh
 set -euo pipefail
 
-BASE="/Users/mbeason/prime-observer"
+SCRIPT_DIR="${0:A:h}"
+BASE="${SCRIPT_DIR:h}"
 PHASE_FILE="$BASE/phase.txt"
 
 PHASE="UNKNOWN"

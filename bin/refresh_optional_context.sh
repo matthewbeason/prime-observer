@@ -1,7 +1,8 @@
 #!/bin/zsh
 set -u
 
-BASE="${PRIME_OBSERVER_BASE:-/Users/mbeason/prime-observer}"
+SCRIPT_DIR="${0:A:h}"
+BASE="${PRIME_OBSERVER_BASE:-${SCRIPT_DIR:h}}"
 PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
 
 timestamp() {

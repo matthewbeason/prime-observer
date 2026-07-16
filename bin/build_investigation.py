@@ -18,7 +18,7 @@ from health_model import (
 )
 from target_metadata import is_gateway_probe, is_wan_probe, target_metadata
 
-BASE = Path("/Users/mbeason/prime-observer")
+BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
 VIZ_DIR = BASE / "viz"
 OUT = VIZ_DIR / "investigation.json"

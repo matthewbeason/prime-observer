@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 
 
-BASE = Path("/Users/mbeason/prime-observer")
+BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 INPUT = VIZ_DIR / "operator_assistant_input.json"
 OUT = VIZ_DIR / "operator_assistant_output.json"

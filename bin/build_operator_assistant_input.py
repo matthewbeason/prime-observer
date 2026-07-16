@@ -5,7 +5,7 @@ import datetime as dt
 import hashlib
 import json
 
-BASE = Path("/Users/mbeason/prime-observer")
+BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 INVESTIGATION = VIZ_DIR / "investigation.json"
 OUT = VIZ_DIR / "operator_assistant_input.json"

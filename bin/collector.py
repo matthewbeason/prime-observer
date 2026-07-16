@@ -16,7 +16,7 @@ TRACEROUTE_EVERY_MIN = 15
 SPEEDTEST_EVERY_MIN = 30
 MAX_HOPS = 20
 
-BASE = Path("/Users/mbeason/prime-observer")
+BASE = Path(__file__).resolve().parents[1]
 OUTDIR = BASE / "data"
 PHASE_FILE = BASE / "phase.txt"
 

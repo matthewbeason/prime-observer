@@ -14,7 +14,7 @@
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/mbeason/prime-observer</string>
+  <string>/Users/mbeason/Projects/prime-observer</string>
 
   <key>RunAtLoad</key>
   <true/>
@@ -23,10 +23,10 @@
   <integer>1800</integer>
 
   <key>StandardOutPath</key>
-  <string>/Users/mbeason/prime-observer/logs/nextdns-refresh.log</string>
+  <string>/Users/mbeason/Projects/prime-observer/logs/nextdns-refresh.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/mbeason/prime-observer/logs/nextdns-refresh.log</string>
+  <string>/Users/mbeason/Projects/prime-observer/logs/nextdns-refresh.log</string>
 
   <key>ProcessType</key>
   <string>Background</string>

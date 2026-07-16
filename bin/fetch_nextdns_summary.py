@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 
 
-BASE = Path("/Users/mbeason/prime-observer")
+BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 OUT = VIZ_DIR / "nextdns_summary.json"
 ENV_FILE = BASE / ".env.nextdns"

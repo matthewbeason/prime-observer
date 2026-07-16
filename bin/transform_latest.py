@@ -30,7 +30,7 @@ from observation_domain import (
     build_projection,
 )
 
-BASE = Path("/Users/mbeason/prime-observer")
+BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
 VIZ_DIR  = BASE / "viz"
 OUT      = VIZ_DIR / "latest.csv"
