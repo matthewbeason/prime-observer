@@ -36,6 +36,8 @@ class TransformLatestTest(unittest.TestCase):
         self.module.ATTRIBUTION_OUT = self.viz_dir / "network_attribution.json"
         self.module.OBSERVATIONS_OUT = self.viz_dir / "observations.json"
         self.module.DASHBOARD_HEALTH_OUT = self.viz_dir / "dashboard_health.json"
+        self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
+        self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -128,10 +130,14 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("target_group_facts", attribution["attribution_evidence"])
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
         dashboard_health = json.loads(self.module.DASHBOARD_HEALTH_OUT.read_text())
+        investigation = json.loads(self.module.INVESTIGATION_OUT.read_text())
         self.assertEqual(observations["schema_version"], 1)
         self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
         self.assertEqual(dashboard_health["schema_version"], 1)
         self.assertEqual(dashboard_health["model_version"], "prime_observer.dashboard_health.v1")
+        self.assertEqual(investigation["schema_version"], 2)
+        self.assertEqual(investigation["mode"], "automatic")
+        self.assertTrue(self.module.OPERATOR_ASSISTANT_INPUT_OUT.exists())
         self.assertEqual(len(observations["observations"]), 2)
         self.assertEqual({item["type"] for item in observations["observations"]}, {"attribution"})
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
@@ -211,6 +217,11 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("observations.json", investigation_html)
         self.assertNotIn("internet_conditions.json", investigation_html)
         self.assertNotIn("aps_power_context.json", investigation_html)
+
+    def test_transform_module_does_not_call_openrouter_or_output_producer(self):
+        source = MODULE_PATH.read_text()
+        self.assertNotIn("openrouter", source.lower())
+        self.assertNotIn("build_operator_assistant_output", source)
 
     def test_dashboard_health_projection_matches_python_classification(self):
         base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)

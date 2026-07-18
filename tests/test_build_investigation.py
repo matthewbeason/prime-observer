@@ -141,6 +141,9 @@ class BuildInvestigationTest(unittest.TestCase):
         )
 
         self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["mode"], "manual_requested_window")
+        self.assertEqual(payload["artifact_state"]["label"], "Historical investigation")
+        self.assertTrue(payload["artifact_state"]["is_historical"])
         self.assertIn("periods", payload)
         self.assertIn("timeline_samples", payload)
         self.assertIn("target_groups", payload)

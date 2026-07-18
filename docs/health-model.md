@@ -22,8 +22,10 @@ The health model is implemented in three main places:
 - `bin/transform_latest.py` generates `viz/latest.csv` and
   `viz/network_attribution.json` for the current 24-hour dashboard window.
 - `viz/index.html` renders the dashboard from `viz/latest.csv`.
-- `bin/build_investigation.py` generates factual historical evidence in
-  `viz/investigation.json`.
+- `bin/investigation_model.py` generates automatic current-event investigation
+  evidence in `viz/investigation.json` during the transform cycle.
+- `bin/build_investigation.py` generates manual requested-window historical
+  evidence in `viz/investigation.json` when explicitly run.
 
 ## Samples
 
@@ -93,6 +95,51 @@ Implementation sources:
 - `bin/transform_latest.py`: `mark_persistent_wan_bad()`
 - `viz/index.html`: `markPersistentWanBad()`
 - `bin/build_investigation.py`: `mark_sustained_wan()`
+
+## Automatic Investigation Lifecycle
+
+Automatic investigations use the same WAN bad thresholds and
+`WAN_BAD_PERSISTENCE` rule. An isolated abnormal sample is not a confirmed
+incident. A confirmed incident starts at the first anomalous sample in the run
+and is confirmed at the sample where persistence is satisfied.
+
+Lifecycle states:
+
+- `active`: sustained degradation has been confirmed and recovery has not
+  started.
+- `recovering`: healthy persistence has been satisfied after the last anomalous
+  sample, but the stable recovery window is not complete.
+- `complete`: recovery stayed stable for the configured stable window.
+- `none`: no sustained incident is present in the available evidence.
+
+Recovery constants are centralized in `bin/health_model.py`:
+
+- `RECOVERY_HEALTHY_PERSISTENCE = 2`
+- `RECOVERY_STABLE_WINDOW_MINUTES = 15`
+
+Recovery timestamps:
+
+- `recovery_candidate_at`: first healthy sample after the last anomalous sample.
+- `recovery_started_at`: set only after `RECOVERY_HEALTHY_PERSISTENCE` healthy
+  samples.
+- `recovered_at`: set only after the stable recovery window completes.
+
+One healthy sample does not establish recovery. A new anomaly before completion
+cancels the recovery candidate and keeps the same event active.
+
+Automatic window semantics:
+
+- `baseline`: available evidence strictly before `first_anomalous_at`; it may be
+  unavailable and may be classified as already unstable.
+- `degradation`: evidence associated with the selected sustained event beginning
+  at `first_anomalous_at`.
+- `recovery`: evidence beginning at `recovery_candidate_at`; unavailable until
+  post-event evidence exists, provisional while recovering, complete only when
+  `recovered_at` is set.
+
+Legacy `periods.before`, `periods.during`, and `periods.after` remain in the
+artifact for compatibility, but automatic mode derives them from baseline,
+degradation, and recovery instead of arbitrary CLI timestamps.
 
 ## Turbulence Sample
 

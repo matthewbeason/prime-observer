@@ -32,15 +32,28 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn('id="attributionScopeSummary"', self.html)
         self.assertIn("function statusLabel(value)", self.html)
         self.assertIn("function toneForStatus(value)", self.html)
+        self.assertIn("function toneClass(value)", self.html)
         self.assertIn("function renderChip(label, value, tone = \"tone-muted\")", self.html)
-        self.assertIn("function attributionScopeSentence(currentAttribution, windowAttribution)", self.html)
+        self.assertNotIn("function attributionScopeSentence", self.html)
+        self.assertNotIn("function affectedTargetGroups", self.html)
+        self.assertNotIn("function toneForObservationState", self.html)
 
     def test_operator_first_wording_replaces_ambiguous_attribution_labels(self):
-        self.assertIn("Selected interval assessment", self.html)
-        self.assertIn("Broader period", self.html)
+        self.assertIn("Artifact state", self.html)
+        self.assertIn("Selected event", self.html)
+        self.assertIn("Lifecycle", self.html)
         self.assertNotIn('renderMetricCard("Investigation window"', self.html)
         self.assertNotIn('renderMetricCard("Current attribution"', self.html)
         self.assertNotIn('renderMetricCard("Window attribution"', self.html)
+
+    def test_renderer_uses_python_generated_timeline_assessments(self):
+        self.assertIn("data.timeline", self.html)
+        self.assertIn("row.assessment_code", self.html)
+        self.assertIn("row.assessment_label", self.html)
+        self.assertIn("row.summary", self.html)
+        self.assertIn("row.supporting_metrics", self.html)
+        self.assertNotIn("bucket.sustained_bad_count > 0", self.html)
+        self.assertNotIn("? '<span class=\"risk\">bad</span>'", self.html)
 
     def test_notes_and_limitations_are_secondary_disclosures(self):
         summary_start = self.html.index('id="summarySection"')

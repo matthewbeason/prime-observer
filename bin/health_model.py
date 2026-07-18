@@ -15,6 +15,8 @@ ATTRIBUTION_CUT_MINUTES = 15
 LAN_BAD_P95 = 120.0
 LAN_BAD_MIN_ELEVATED = 3
 LAN_BAD_MIN_RATE = 0.2
+RECOVERY_HEALTHY_PERSISTENCE = 2
+RECOVERY_STABLE_WINDOW_MINUTES = 15
 
 
 def is_wan_bad(sample, *, p95_key="p95", jitter_key="jitter", loss_key="loss"):

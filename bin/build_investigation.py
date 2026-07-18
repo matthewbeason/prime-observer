@@ -851,10 +851,18 @@ def build_investigation(start, end, pad_minutes):
 
     payload = {
         "schema_version": 1,
+        "mode": "manual_requested_window",
         "generated_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(),
         "id": event_id("investigation", start_utc, end_utc),
         "title": f"Investigation {iso(start_utc)} to {iso(end_utc)}",
         "status": "available" if samples else "no_samples",
+        "artifact_state": {
+            "is_current": False,
+            "is_stale": False,
+            "is_historical": True,
+            "label": "Historical investigation",
+            "stale_reason": None,
+        },
         "input": {
             "start": start,
             "end": end,

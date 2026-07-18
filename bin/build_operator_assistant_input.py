@@ -93,10 +93,19 @@ def normalized_input_payload(input_payload):
         "schema_version": payload.get("schema_version"),
         "investigation": {
             "id": investigation.get("id"),
+            "mode": investigation.get("mode"),
             "window_start": investigation.get("window_start"),
             "window_end": investigation.get("window_end"),
             "duration_minutes": investigation.get("duration_minutes"),
             "source_status": investigation.get("source_status"),
+            "artifact_label": investigation.get("artifact_label"),
+        },
+        "selected_event": safe_dict(payload.get("selected_event")),
+        "artifact_state": safe_dict(payload.get("artifact_state")),
+        "freshness": {
+            "telemetry_latest_at": safe_dict(payload.get("freshness")).get("telemetry_latest_at"),
+            "evidence_latest_at": safe_dict(payload.get("freshness")).get("evidence_latest_at"),
+            "evidence_lag_seconds": safe_dict(payload.get("freshness")).get("evidence_lag_seconds"),
         },
         "attribution": {
             "current": {
@@ -240,6 +249,23 @@ def evidence_summary(periods, period_name, target_class):
     }
 
 
+def window_evidence_summary(windows, window_name, target_class=None):
+    window = safe_dict(windows.get(window_name))
+    metrics = safe_dict(window.get("supporting_metrics"))
+    return {
+        "assessment_code": window.get("assessment_code"),
+        "assessment_label": window.get("assessment_label"),
+        "summary": window.get("summary"),
+        "confidence": window.get("confidence"),
+        "target_class": target_class,
+        "raw_bad_count": metrics.get("raw_bad_count"),
+        "sustained_bad_count": metrics.get("sustained_bad_count"),
+        "sample_count": metrics.get("wan_samples"),
+        "max_p95_ms": metrics.get("max_p95_ms"),
+        "max_loss_pct": metrics.get("max_loss_pct"),
+    }
+
+
 def compact_dns_context(context):
     if not isinstance(context, dict):
         return {"available": False}
@@ -286,6 +312,15 @@ def build_observations(package):
     window = safe_dict(safe_dict(package.get("attribution")).get("window"))
     episode = safe_dict(package.get("episode"))
     evidence = safe_dict(package.get("evidence"))
+    artifact_state = safe_dict(package.get("artifact_state"))
+    selected_event = safe_dict(package.get("selected_event"))
+
+    if artifact_state.get("label"):
+        items.append(f"Investigation state: {artifact_state['label']}.")
+    if selected_event.get("id"):
+        items.append(
+            f"Selected event: {selected_event.get('target_class')} {selected_event.get('lifecycle_state')} from {selected_event.get('first_anomalous_at')} to {selected_event.get('last_anomalous_at')}."
+        )
 
     if current.get("label"):
         items.append(f"Current attribution: {current['label']}.")
@@ -329,7 +364,7 @@ def build_limitations(investigation, package, base_limitations):
 
     periods = safe_dict(investigation.get("periods"))
     after = safe_dict(periods.get("after"))
-    if after.get("total_samples") == 0:
+    if investigation.get("schema_version") == 1 and after.get("total_samples") == 0:
         limitations.append("No after-window telemetry samples were available in this investigation package.")
 
     if not current.get("status"):
@@ -364,30 +399,48 @@ def build_limitations(investigation, package, base_limitations):
 def build_package(investigation, source_file):
     requested_window = safe_dict(investigation.get("requested_window"))
     periods = safe_dict(investigation.get("periods"))
+    windows = safe_dict(investigation.get("windows"))
     observation_refs = extract_observation_refs(investigation)
     current_attribution = attribution_entry(observation_refs, "current_attribution")
     window_attribution = attribution_entry(observation_refs, "window_attribution")
+    selected_event = safe_dict(investigation.get("selected_event"))
+    artifact_state = safe_dict(investigation.get("artifact_state"))
+    freshness = safe_dict(investigation.get("freshness"))
+    target_class = selected_event.get("target_class")
+    use_schema2 = investigation.get("schema_version") == 2 and bool(windows)
 
     package = {
         "schema_version": 1,
         "generated_at": iso_now(),
         "investigation": {
             "id": investigation.get("id"),
+            "mode": investigation.get("mode"),
             "window_start": requested_window.get("start"),
             "window_end": requested_window.get("end"),
             "duration_minutes": requested_window.get("duration_minutes"),
             "source_generated_at": investigation.get("generated_at"),
             "source_status": investigation.get("status"),
+            "artifact_label": artifact_state.get("label"),
         },
+        "selected_event": selected_event,
+        "artifact_state": artifact_state,
+        "freshness": {
+            "telemetry_latest_at": freshness.get("telemetry_latest_at"),
+            "evidence_latest_at": freshness.get("evidence_latest_at"),
+            "evidence_lag_seconds": freshness.get("evidence_lag_seconds"),
+        },
+        "timeline": bounded_items(investigation.get("timeline"), 8),
         "attribution": {
             "current": current_attribution,
             "window": window_attribution,
         },
-        "episode": select_episode(observation_refs),
+        "episode": selected_event if selected_event else select_episode(observation_refs),
         "evidence": {
-            "internet": evidence_summary(periods, "during", "internet_probe"),
-            "resolver": evidence_summary(periods, "during", "resolver_probe"),
+            "internet": window_evidence_summary(windows, "degradation", "internet_probe") if use_schema2 and target_class == "internet_probe" else evidence_summary(periods, "during", "internet_probe"),
+            "resolver": window_evidence_summary(windows, "degradation", "resolver_probe") if use_schema2 and target_class == "resolver_probe" else evidence_summary(periods, "during", "resolver_probe"),
             "lan": evidence_summary(periods, "during", "gateway_probe"),
+            "baseline": window_evidence_summary(windows, "baseline", target_class) if use_schema2 else None,
+            "recovery": window_evidence_summary(windows, "recovery", target_class) if use_schema2 else None,
         },
         "environmental_context": {
             "dns": compact_dns_context(investigation.get("dns_context")),

@@ -29,6 +29,9 @@ from observation_domain import (
     build_episode_observations,
     build_projection,
 )
+from investigation_model import build_automatic_investigation, write_if_changed as write_investigation_if_changed
+from build_operator_assistant_input import build_from_path as build_assistant_input_from_path
+from build_operator_assistant_input import write_json as write_assistant_input_json
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -37,6 +40,8 @@ OUT      = VIZ_DIR / "latest.csv"
 ATTRIBUTION_OUT = VIZ_DIR / "network_attribution.json"
 OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
 DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
+INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
+OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -1001,11 +1006,27 @@ def main():
         generated_at=now,
     )
     write_json_atomic(OBSERVATIONS_OUT, observations_projection)
+    investigation = build_automatic_investigation(
+        rows_out=rows_out,
+        generated_at=now,
+        wan_series_marked=wan_series_marked,
+        attribution=attribution,
+        dashboard_health=dashboard_health,
+        observations_projection=observations_projection,
+    )
+    investigation_write = write_investigation_if_changed(INVESTIGATION_OUT, investigation)
+    investigation_changed = investigation_write["artifact_written"]
+    assistant_semantic_changed = investigation_write["assistant_semantic_changed"]
+    if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
+        assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
+        write_assistant_input_json(OPERATOR_ASSISTANT_INPUT_OUT, assistant_input)
 
     print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
+    print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
+    print(f"Operator Assistant input {'updated' if assistant_semantic_changed else 'unchanged'} at {OPERATOR_ASSISTANT_INPUT_OUT}")
     print(f"WAN baseline files used: {', '.join(baseline_sources) if baseline_sources else 'none'}")
     print(f"WAN baseline hours available: {sorted(baseline_by_hour.keys())}")
 

@@ -245,9 +245,9 @@
     <section id="timelineSection" class="section">
       <div class="section-kicker">Timeline</div>
       <h2>When it happened</h2>
-      <p class="section-note">Before, during, and after summaries stay grouped with the 15-minute WAN buckets so the time window can be reviewed as one continuous timeline.</p>
+      <p class="section-note">Automatic investigations use Python-generated baseline, degradation, and recovery rows. Legacy artifacts are shown as compatibility evidence only.</p>
       <div class="table-block">
-        <h3>Before / During / After</h3>
+        <h3>Primary Timeline</h3>
         <div class="wide table-wide">
           <table id="periodTable"></table>
         </div>
@@ -387,12 +387,13 @@
       return "tone-muted";
     }
 
-    function toneForObservationState(label){
-      const value = String(label || "").toLowerCase();
-      if (value.includes("no network issue") || value.includes("healthy")) return "tone-ok";
-      if (value.includes("inconclusive")) return "tone-muted";
-      if (value.includes("mixed")) return "tone-watch";
-      if (value.includes("sustained") || value.includes("issue") || value.includes("upstream") || value.includes("local")) return "tone-warn";
+    function toneClass(value){
+      const tone = String(value || "").toLowerCase();
+      if (tone === "ok") return "tone-ok";
+      if (tone === "watch") return "tone-watch";
+      if (tone === "warn") return "tone-warn";
+      if (tone === "risk") return "tone-risk";
+      if (tone === "accent") return "tone-accent";
       return "tone-muted";
     }
 
@@ -421,21 +422,6 @@
       return labels[value] || statusLabel(value);
     }
 
-    function attributionScopeSentence(currentAttribution, windowAttribution){
-      const selected = currentAttribution?.state?.label;
-      const broader = windowAttribution?.state?.label;
-      if (!selected && !broader) return "No attribution observations are available for these scopes.";
-      if (!selected) return `The broader period is ${String(broader).toLowerCase()}.`;
-      if (!broader) return `The selected interval is ${String(selected).toLowerCase()}.`;
-      if (currentAttribution.state?.status === windowAttribution.state?.status){
-        return `The selected interval and broader period both indicate ${String(selected).toLowerCase()}.`;
-      }
-      const broaderDescription = windowAttribution.state?.status === "inconclusive"
-        ? "contains mixed evidence"
-        : `is ${String(broader).toLowerCase()}`;
-      return `The selected interval points ${String(selected).replace(/^Likely /i, "").replace(/\s*\([^)]*\)\s*$/, "").toLowerCase()}, while the surrounding period ${broaderDescription}.`;
-    }
-
     function observationReferencesByType(data, type){
       return (data.observation_references || []).filter(item => item.type === type);
     }
@@ -444,44 +430,31 @@
       return (data.observation_references || []).find(item => item.scope?.view === view);
     }
 
-    function affectedTargetGroups(data){
-      const duringGroups = data.periods?.during?.wan?.target_groups || {};
-      const groups = Object.entries(data.target_groups || {}).map(([name, group]) => {
-        const selectedGroup = duringGroups[name] || group;
-        return {
-        name,
-        sampleCount: selectedGroup.sample_count || 0,
-        rawBadCount: selectedGroup.raw_bad_count || 0,
-        sustainedBadCount: selectedGroup.sustained_bad_count || 0,
-        hostCount: Object.keys(group.host_counts || {}).length,
-        };
-      });
-      const episodeTargets = new Set(observationReferencesByType(data, "episode").map(item => item.scope?.target_class).filter(Boolean));
-      const active = groups.filter(group => episodeTargets.has(group.name) || group.rawBadCount > 0 || group.sustainedBadCount > 0);
-      return active.length ? active : groups.filter(group => group.sampleCount > 0);
-    }
-
     function renderSummary(data){
       const requested = data.requested_window || {};
-      const eventWindow = data.event_window || {};
       const context = data.context_window || {};
-      const currentAttribution = findObservationReference(data, "current_attribution");
-      const windowAttribution = findObservationReference(data, "window_attribution");
       const episodes = observationReferencesByType(data, "episode");
-      const activeGroups = affectedTargetGroups(data);
+      const artifact = data.artifact_state || {};
+      const freshness = data.freshness || {};
+      const selected = data.selected_event || null;
+      const legacy = data.schema_version !== 2;
       const eventCount = (data.events || []).length;
       const pills = [
-        `<span class="pill pill-strong ${toneForStatus(data.status)}">Status: ${statusLabel(data.status)}</span>`,
-        `<span class="pill">Selected interval: ${fmt(requested.duration_minutes, " min")}</span>`,
-        `<span class="pill">Context pad: ${fmt(context.pad_minutes, " min")}</span>`,
+        `<span class="pill pill-strong ${legacy ? "tone-watch" : toneForStatus(data.status)}">${legacy ? "Compatibility fallback" : fmt(artifact.label || statusLabel(data.status))}</span>`,
+        `<span class="pill">Generated: ${shortTime(data.generated_at)}</span>`,
+        `<span class="pill">Latest evidence: ${shortTime(freshness.evidence_latest_at)}</span>`,
+        `<span class="pill">Latest telemetry: ${shortTime(freshness.telemetry_latest_at)}</span>`,
       ];
 
       document.getElementById("summaryPills").innerHTML = pills.join("");
-      document.getElementById("attributionScopeSummary").textContent = attributionScopeSentence(currentAttribution, windowAttribution);
+      document.getElementById("attributionScopeSummary").textContent = legacy
+        ? "Legacy schema 1 artifact: requested-window evidence is shown without automatic incident semantics."
+        : (artifact.stale_reason || selected?.selection_reason || data.message || "Python generated the current investigation lifecycle and freshness fields.");
       document.getElementById("summaryCards").innerHTML = [
         renderMetricCard("Selected interval", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`, "tone-accent"),
-        renderMetricCard("Selected interval assessment", currentAttribution?.state?.label || "—", "Assessment for the selected interval.", toneForObservationState(currentAttribution?.state?.label)),
-        renderMetricCard("Broader period", windowAttribution?.state?.status === "inconclusive" ? "Mixed evidence" : (windowAttribution?.state?.label || "—"), "Interpretation across the surrounding evidence period.", toneForObservationState(windowAttribution?.state?.label)),
+        renderMetricCard("Artifact state", artifact.label || (legacy ? "Historical investigation" : "—"), artifact.stale_reason || "Lifecycle and freshness are Python generated.", legacy ? "tone-watch" : toneForStatus(data.status)),
+        renderMetricCard("Selected event", selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident", selected ? `${shortTime(selected.first_anomalous_at)} to ${shortTime(selected.last_anomalous_at)}` : (data.message || "No selected event."), selected ? "tone-warn" : "tone-ok"),
+        renderMetricCard("Lifecycle", selected?.lifecycle_state || "none", selected ? `Severity ${fmt(selected.severity)} · confidence ${fmt(selected.confidence)}` : "No confirmed sustained event selected.", selected ? "tone-accent" : "tone-muted"),
         renderMetricCard("Events", eventCount || "—", eventCount ? "Deterministic events in this investigation." : "No deterministic events recorded.", eventCount ? "tone-watch" : "tone-muted"),
       ].join("");
 
@@ -493,30 +466,46 @@
         ),
       ].join("");
 
-      document.getElementById("summaryTargetGroups").innerHTML = activeGroups.length
-        ? activeGroups.map(group => renderSummaryItem(
-            humanizeProbeGroup(group.name),
-            `${group.sampleCount} samples`,
-            `${group.rawBadCount} raw bad · ${group.sustainedBadCount} sustained bad · ${group.hostCount} hosts`
-          )).join("")
+      document.getElementById("summaryTargetGroups").innerHTML = selected
+        ? renderSummaryItem(
+            humanizeProbeGroup(selected.target_class),
+            (selected.affected_targets || []).join(", ") || "Affected hosts unavailable",
+            `${fmt(selected.raw_bad_count)} raw bad · ${fmt(selected.sustained_bad_count)} sustained bad`
+          )
         : '<div class="empty-note">No target-group evidence available.</div>';
 
       document.getElementById("summaryNotes").innerHTML = (data.notes || []).length
         ? data.notes.map(note => renderSummaryItem("Note", note, "")).join("")
         : '<div class="empty-note">No investigation notes available.</div>';
       document.getElementById("summaryRawStatuses").innerHTML = [
-        renderSummaryItem("Selected interval raw status", currentAttribution?.state?.status || "—", currentAttribution?.materialization?.conclusion_kind || ""),
-        renderSummaryItem("Broader period raw status", windowAttribution?.state?.status || "—", windowAttribution?.materialization?.conclusion_kind || ""),
+        renderSummaryItem("Schema", data.schema_version || "—", data.mode || "legacy"),
+        renderSummaryItem("Artifact stale reason", artifact.stale_reason || "—", ""),
       ].join("");
     }
 
     function renderPeriodTable(data){
+      if (data.schema_version === 2 && Array.isArray(data.timeline)){
+        const rows = data.timeline.map(row => {
+          const metrics = row.supporting_metrics || {};
+          return `<tr class="${toneClass(row.tone)}">
+          <td><b>${fmt(row.phase)}</b><div class="small">${shortTime(row.start)} to ${shortTime(row.end)}</div></td>
+          <td>${fmt(row.assessment_label)}<div class="small">${fmt(row.assessment_code)}</div></td>
+          <td>${fmt(row.affected_probes)}</td>
+          <td>${fmt(row.evidence)}<div class="small">${fmt(row.summary)} · max p95 ${fmt(metrics.max_p95_ms, " ms")}</div></td>
+          <td>${fmt(row.confidence)}</td>
+        </tr>`;
+        }).join("");
+        document.getElementById("periodTable").innerHTML = `
+          <thead><tr><th>Phase</th><th>Assessment</th><th>Affected probes</th><th>Evidence</th><th>Confidence</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5">No Python-generated timeline rows available.</td></tr>'}</tbody>`;
+        return;
+      }
       const rows = ["before","during","after"].map(name => {
         const period = data.periods?.[name] || {};
         const wan = period.wan || {};
         const lan = period.lan || {};
         return `<tr>
-          <td><b>${name}</b><div class="small">${shortTime(period.start)} to ${shortTime(period.end)}</div></td>
+          <td><b>${name}</b><div class="small">Compatibility fallback · ${shortTime(period.start)} to ${shortTime(period.end)}</div></td>
           ${cell(period.total_samples)}
           ${cell(wan.sample_count)}
           ${cell(wan.median_p95_ms, " ms")}
@@ -545,7 +534,7 @@
       const rows = [];
       for (const name of ["before","during","after"]){
         for (const bucket of (data.periods?.[name]?.wan_buckets || [])){
-          const state = bucket.sustained_bad_count > 0 ? '<span class="risk">bad</span>' : bucket.turbulence ? '<span class="watch">turbulence</span>' : '<span class="ok">observed</span>';
+          const state = bucket.assessment_label || "Legacy bucket evidence";
           rows.push(`<tr>
             <td>${name}</td>
             <td>${shortTime(bucket.start)}</td>
@@ -559,7 +548,7 @@
             ${cell(bucket.max_p95_ms, " ms")}
             ${cell(bucket.max_jitter_ms, " ms")}
             ${cell(bucket.max_loss_pct, "%")}
-            <td>${state}</td>
+            <td>${fmt(state)}<div class="small">${fmt(bucket.summary)}</div></td>
           </tr>`);
         }
       }

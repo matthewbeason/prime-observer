@@ -52,8 +52,10 @@ Stage ownership:
 - Rendering: browser-owned, renderer-only. `viz/index.html` and
   `viz/investigate.html` read local artifacts and render views.
 - Investigation: Python-owned generation plus browser rendering.
-  `bin/build_investigation.py` generates the factual investigation package, and
-  `viz/investigate.html` renders it.
+  `bin/investigation_model.py` generates the automatic current-event package
+  during `bin/transform_latest.py`, `bin/build_investigation.py` retains the
+  manual requested-window historical package, and `viz/investigate.html` renders
+  generated fields without owning lifecycle or health semantics.
 - Historical Review: browser-owned review of generated evidence packages
   through `viz/investigate.html`.
 
@@ -176,24 +178,39 @@ Stage ownership:
 
 ### `viz/investigation.json`
 
-- Producer: `bin/build_investigation.py`
+- Producer: `bin/transform_latest.py` via `bin/investigation_model.py` for
+  automatic mode; `bin/build_investigation.py` for manual historical mode
 - Consumers: `viz/investigate.html`
-- Purpose: factual historical investigation package for a requested window,
-  including evidence organization, event navigation, and additive Observation or
-  provider context snapshots when available
-- Required fields: `schema_version`, `generated_at`, `id`, `title`, `status`,
-  `input`, `requested_window`, `context_window`, `event_window`, `thresholds`,
-  `sources`, `target_groups`, `periods`, `observation_references`, `events`,
-  `navigation`, `event_neighborhoods`, `timeline_samples`, `dns_context`,
-  `provenance`, `notes`
+- Purpose: factual investigation package. Schema 2 automatic mode selects the
+  current confirmed event and renders baseline/degradation/recovery lifecycle
+  evidence. Schema 1 manual mode preserves requested-window historical evidence.
+- Required schema 2 fields: `schema_version`, `mode`, `generated_at`, `id`,
+  `title`, `status`, `artifact_state`, `freshness`, `selected_event`,
+  `secondary_context`, `windows`, `timeline`, `periods`, `thresholds`,
+  `target_groups`, `observation_references`, `events`, `timeline_samples`,
+  `sources`, `provenance`, `notes`
+- Required schema 1/manual fields: `schema_version`, `mode`, `generated_at`,
+  `id`, `title`, `status`, `artifact_state`, `input`, `requested_window`,
+  `context_window`, `event_window`, `thresholds`, `sources`, `target_groups`,
+  `periods`, `observation_references`, `events`, `navigation`,
+  `event_neighborhoods`, `timeline_samples`, `dns_context`, `provenance`,
+  `notes`
 - Optional fields: `internet_conditions_context`; observation references inside
-  event details; empty evidence sections when no samples are present
+  event details; empty evidence sections when no samples are present;
+  automatic `message` when no sustained incident is present
 - Unavailable behavior: no dedicated unavailable artifact; the script still
   writes a valid investigation payload and uses `status: "no_samples"` when no
-  telemetry matches the requested window
+  telemetry matches the selected source window. Automatic mode emits a valid
+  no-incident artifact when no sustained event exists.
 - Authoritative: yes, for the generated investigation package
 - Generated: yes
 - Should be committed: no
+
+Automatic freshness and lifecycle are separate. `artifact_state` reports whether
+the artifact is current, stale, historical, active, recovering, completed, or a
+no-incident package. `freshness` reports generated, latest telemetry, and latest
+evidence timestamps. A completed event can be current when it was generated from
+the latest transform telemetry.
 
 ### `viz/investigation_index.json`
 
@@ -211,13 +228,21 @@ Stage ownership:
 - Generated: yes
 - Should be committed: no
 
+Current limitation: index entries are catalog rows and generally point to the
+mutable `viz/investigation.json` path. Automatic current-event generation does
+not add entries to this historical index. Manual callers that need immutable
+historical artifacts should pass a unique `--out` path.
+
 ### `viz/operator_assistant_input.json`
 
 - Producer: `bin/build_operator_assistant_input.py`
 - Consumers: `bin/build_operator_assistant_output.py` and
   `viz/investigate.html` for renderer-only current-hash comparison
 - Purpose: compact deterministic evidence package derived from
-  `viz/investigation.json` for bounded operator-assistant interpretation tests
+  `viz/investigation.json` for bounded operator-assistant interpretation tests.
+  Schema 2 inputs prefer `selected_event`, `windows`, `timeline`, `freshness`,
+  and `artifact_state`; schema 1 inputs fall back to `requested_window`,
+  `periods.during`, and existing observation references.
 - Required fields: top-level `schema_version`, `generated_at`, `input_hash`,
   `investigation`, `observations`, `attribution`, `episode`, `evidence`,
   `environmental_context`, `limitations`, and `provenance`

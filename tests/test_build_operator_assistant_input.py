@@ -265,6 +265,90 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
 
         self.assertEqual(older["input_hash"], newer["input_hash"])
 
+    def test_schema_2_prefers_event_windows_and_freshness(self):
+        payload = self.investigation_payload()
+        payload.update({
+            "schema_version": 2,
+            "mode": "automatic",
+            "artifact_state": {
+                "is_current": True,
+                "is_stale": False,
+                "is_historical": False,
+                "label": "Active investigation",
+                "stale_reason": None,
+            },
+            "freshness": {
+                "telemetry_latest_at": "2026-07-17T23:04:07+00:00",
+                "evidence_latest_at": "2026-07-17T22:56:53+00:00",
+                "generated_at": "2026-07-17T23:04:46+00:00",
+                "telemetry_age_seconds": 39,
+                "evidence_lag_seconds": 434,
+            },
+            "selected_event": {
+                "id": "event-resolver_probe-2026-07-17t22-53-23z",
+                "target_class": "resolver_probe",
+                "lifecycle_state": "active",
+                "first_anomalous_at": "2026-07-17T22:53:23+00:00",
+                "last_anomalous_at": "2026-07-17T22:56:53+00:00",
+                "severity": "medium",
+                "confidence": "high",
+            },
+            "windows": {
+                "baseline": {
+                    "assessment_code": "stable_baseline",
+                    "assessment_label": "Stable baseline",
+                    "summary": "Resolver latency was stable before the event.",
+                    "confidence": "high",
+                    "supporting_metrics": {"wan_samples": 10, "raw_bad_count": 0, "sustained_bad_count": 0},
+                },
+                "degradation": {
+                    "assessment_code": "sustained_degradation",
+                    "assessment_label": "Sustained degradation",
+                    "summary": "Resolver degradation persisted across multiple samples.",
+                    "confidence": "high",
+                    "supporting_metrics": {"wan_samples": 12, "raw_bad_count": 5, "sustained_bad_count": 2, "max_p95_ms": 170.0},
+                },
+                "recovery": {
+                    "assessment_code": "awaiting_recovery_evidence",
+                    "assessment_label": "Insufficient evidence",
+                    "summary": "Recovery has not yet been confirmed.",
+                    "confidence": "low",
+                    "supporting_metrics": {"wan_samples": 0, "raw_bad_count": 0, "sustained_bad_count": 0},
+                },
+            },
+            "timeline": [
+                {"phase": "Degradation", "assessment_code": "sustained_degradation", "assessment_label": "Sustained degradation"}
+            ],
+        })
+        self.write_investigation(payload)
+
+        output = self.module.build_from_path(self.module.INVESTIGATION)
+
+        self.assertEqual(output["investigation"]["mode"], "automatic")
+        self.assertEqual(output["artifact_state"]["label"], "Active investigation")
+        self.assertEqual(output["selected_event"]["target_class"], "resolver_probe")
+        self.assertEqual(output["freshness"]["telemetry_latest_at"], "2026-07-17T23:04:07+00:00")
+        self.assertEqual(output["evidence"]["resolver"]["assessment_code"], "sustained_degradation")
+        self.assertTrue(output["timeline"])
+
+    def test_schema_2_volatile_generated_at_does_not_change_input_hash(self):
+        investigation = self.investigation_payload()
+        investigation.update({
+            "schema_version": 2,
+            "mode": "automatic",
+            "artifact_state": {"label": "Completed investigation", "is_current": True, "is_stale": False},
+            "freshness": {"telemetry_latest_at": "2026-07-17T23:04:07+00:00", "evidence_latest_at": "2026-07-17T22:56:53+00:00", "generated_at": "2026-07-17T23:04:46+00:00"},
+            "selected_event": {"id": "event-1", "target_class": "resolver_probe", "lifecycle_state": "complete"},
+            "windows": {},
+            "timeline": [],
+        })
+        older = self.module.build_package(investigation, "viz/investigation.json")
+        investigation["generated_at"] = "2026-07-17T23:30:00+00:00"
+        investigation["freshness"]["generated_at"] = "2026-07-17T23:30:00+00:00"
+        newer = self.module.build_package(investigation, "viz/investigation.json")
+
+        self.assertEqual(older["input_hash"], newer["input_hash"])
+
 
 if __name__ == "__main__":
     unittest.main()
