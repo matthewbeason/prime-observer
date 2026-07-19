@@ -23,6 +23,10 @@ and explicit.
   providers directly or owning the primary semantic model.
 - Artifacts are local-first because the repository operates through local files,
   local scripts, and static views rather than a database or cloud backend.
+- Generated JSON and CSV artifacts are canonical. A future PostgreSQL or
+  Supabase database, if justified by query, collaboration, or multi-user needs,
+  should consume artifacts as an optional index/projection rather than replace
+  them.
 - Additive artifacts are preferred because Prime Observer preserves existing
   contracts such as `viz/latest.csv` and `viz/network_attribution.json` while
   introducing newer projections such as `viz/observations.json` and optional
@@ -212,6 +216,44 @@ no-incident package. `freshness` reports generated, latest telemetry, and latest
 evidence timestamps. A completed event can be current when it was generated from
 the latest transform telemetry.
 
+### `viz/investigations/<event-id>.json`
+
+- Producer: `bin/transform_latest.py` via `bin/investigation_model.py`
+- Consumers: `viz/investigate.html`, selected through the investigation catalog
+- Purpose: immutable schema 2 evidence snapshot for one completed automatic event
+- Required fields: top-level `artifact_type:
+  "completed_investigation_snapshot"`, `schema_version`, `snapshot_written_at`,
+  `generator`, `immutable: true`, the schema 2 investigation fields, a
+  `selected_event` whose `lifecycle_state` is `complete`, and an
+  `artifact_state` whose `is_historical` is `true`
+- Optional fields: the same additive fields as `viz/investigation.json`
+- Unavailable behavior: active and recovering events intentionally have no
+  snapshot; an existing valid snapshot is preserved byte-for-byte without
+  rewriting. Snapshot publication is atomic and write-once. Malformed or
+  structurally invalid existing snapshot files are preserved on disk, excluded
+  from valid history, and reported in `viz/investigation_catalog.json`.
+- Authoritative: yes, for the completed event evidence recorded at first write
+- Generated: yes
+- Should be committed: no
+
+### `viz/investigation_catalog.json`
+
+- Producer: `bin/transform_latest.py` via `bin/investigation_model.py`
+- Consumers: `viz/investigate.html`
+- Purpose: newest-first catalog of immutable completed-event snapshots
+- Required fields: top-level `artifact_type: "investigation_catalog"`,
+  `schema_version`, `generated_at`, `generator`, `events`, and
+  `invalid_snapshots`; each valid event includes `event_id`, `lifecycle`,
+  `first_anomalous_at`, `recovered_at`, `severity`, `confidence`,
+  `target_class`, `affected_targets`, `duration`, and `snapshot_path`
+- Optional fields: additive fields inside future event or invalid-snapshot rows
+- Unavailable behavior: the renderer shows a calm History panel when the catalog
+  is missing, malformed, or contains no completed events. Invalid snapshot rows
+  do not prevent valid snapshots from appearing.
+- Authoritative: yes, for locally available automatic investigation snapshots
+- Generated: yes
+- Should be committed: no
+
 ### `viz/investigation_index.json`
 
 - Producer: `bin/build_investigation.py`
@@ -300,6 +342,8 @@ historical artifacts should pass a unique `--out` path.
 - `viz/investigation.json` consumes telemetry plus additive Observation and
   provider context snapshots, but it does not rewrite those upstream artifacts
   into new semantics.
+- `viz/investigation.json` is mutable current evidence in automatic mode;
+  `viz/investigations/<event-id>.json` is immutable completed-event evidence.
 - `viz/investigation_index.json` is catalog metadata, not investigation
   evidence.
 - `viz/operator_assistant_input.json` is a compact downstream evidence package,

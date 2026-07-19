@@ -22,18 +22,51 @@ Automatic mode writes:
 
 ```text
 viz/investigation.json
+viz/investigation_catalog.json
+viz/investigations/<event-id>.json, once for each completed event
 viz/operator_assistant_input.json, only when deterministic investigation evidence changes
 ```
 
+`viz/investigation.json` remains the mutable current investigation only. When an
+event first reaches `complete`, the Python producer writes a separate historical
+payload to `viz/investigations/<event-id>.json`. Existing snapshot paths are
+never rewritten, and active or recovering events never create snapshots. The
+catalog is rebuilt from the immutable files already present on disk, so a
+completed event remains available after its telemetry leaves the current
+transform window.
+
+Completed snapshots are atomically published write-once artifacts. The producer
+serializes the complete deterministic JSON payload first, writes and fsyncs a
+same-directory temporary file where practical, then publishes it only if the
+final event snapshot path does not already exist. Existing valid snapshots are
+preserved byte-for-byte. Malformed or structurally invalid existing files are not
+deleted or overwritten automatically; they are preserved on disk, excluded from
+valid history, and reported in the generated catalog's `invalid_snapshots`
+collection.
+
+`viz/investigation_catalog.json` lists completed events newest first by recovery
+time. Each row contains `event_id`, `lifecycle`, `first_anomalous_at`,
+`recovered_at`, `severity`, `confidence`, `target_class`, `affected_targets`,
+duration in minutes, and the browser-relative `snapshot_path`. The catalog is a
+generated projection over local snapshot files, not canonical evidence itself.
+
 The automatic schema is `schema_version: 2` and uses:
 
+- `artifact_type: "current_investigation"` for the mutable current artifact
 - `mode: "automatic"`
+- `immutable: false` for the mutable current artifact
 - `artifact_state` for current/stale/historical display state
 - `freshness` for telemetry/evidence timestamp alignment
 - `selected_event` for the selected confirmed event
 - `windows.baseline`, `windows.degradation`, and `windows.recovery`
 - `timeline` rows with Python-generated assessment labels, summaries, tones,
   confidence, and supporting metrics
+
+Completed historical snapshots use `artifact_type:
+"completed_investigation_snapshot"`, `immutable: true`, `snapshot_written_at`,
+and minimal generator metadata for future schema evolution. These metadata fields
+are not part of the event semantic hash and must not trigger Operator Assistant
+semantic churn.
 
 Event selection is deterministic:
 
@@ -149,8 +182,12 @@ Do not open `viz/investigate.html` directly from disk. The investigation view
 loads `investigation.json` through browser `fetch`, and direct `file://` access
 can prevent the JSON file from loading.
 
-The page loads `investigation.json` with `cache: "no-store"` and renders:
+The page loads `investigation.json` with `cache: "no-store"`, optionally loads
+`investigation_catalog.json`, and renders:
 
+- a completed-event History panel sourced directly from the catalog
+- immutable snapshots selected by their catalog-provided `snapshot_path`
+- a Current Investigation button that reloads `investigation.json`
 - artifact-state label, generation time, latest evidence time, and latest telemetry time
 - automatic baseline, degradation, and recovery timeline rows when schema 2 is available
 - legacy before, during, and after WAN/LAN summaries for schema 1 compatibility
@@ -167,9 +204,14 @@ The page loads `investigation.json` with `cache: "no-store"` and renders:
 - telemetry source files used
 
 The browser is renderer-only. Operational classifications, affected target
-selection, timeline summaries, confidence, freshness, and lifecycle state are
-Python-generated. Schema 1 artifacts are rendered with a compatibility fallback
-and are not upgraded in the browser.
+selection, timeline summaries, confidence, freshness, lifecycle state, history
+ordering, and duration are Python-generated. Schema 1 artifacts are rendered
+with a compatibility fallback and are not upgraded in the browser.
+
+If a catalog is missing or malformed, the current investigation remains usable
+and the History panel reports that history is unavailable. If the catalog
+contains `invalid_snapshots`, those files remain preserved on disk but are not
+loaded as valid history entries.
 
 The Operator Assistant review is local-only, additive, and clearly
 non-authoritative. Prime Observer evidence and deterministic observations remain
@@ -206,6 +248,17 @@ For the first implementation, the URL parameters are displayed as the requested
 window while the evidence still comes from `viz/investigation.json`. A future
 Olivaw integration can generate the JSON first, then link to the page with the
 same start/end parameters.
+
+The next planned history capability after hardening is direct links/bookmarks for
+historical investigations. Event comparison and recurrence or similarity
+detection remain future work.
+
+## Storage Direction
+
+Prime Observer does not need a database at the current local scale. JSON and CSV
+artifacts remain canonical. A future PostgreSQL or Supabase projection may be
+useful if search, collaboration, multi-user access, or larger history queries
+justify it, but it should consume canonical artifacts rather than replace them.
 
 ## Output Shape
 

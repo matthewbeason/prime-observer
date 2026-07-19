@@ -12,6 +12,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_investigation_view_uses_narrative_section_order(self):
         section_ids = [
+            'id="historySection"',
             'id="assistantReviewSection"',
             'id="summarySection"',
             'id="timelineSection"',
@@ -92,6 +93,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_investigation_view_stays_artifact_driven_without_direct_model_calls(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)
+        self.assertIn('const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";', self.html)
         self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";', self.html)
         self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";', self.html)
         self.assertIn('fetch(INVESTIGATION_URL, {cache: "no-store"})', self.html)
@@ -105,6 +107,25 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertNotIn("./observations.json", self.html)
         self.assertNotIn("./network_attribution.json", self.html)
         self.assertNotIn("openrouter.ai/api/v1/chat/completions", self.html)
+
+    def test_history_panel_loads_catalog_snapshots_and_returns_to_current(self):
+        self.assertIn('id="historyList"', self.html)
+        self.assertIn('id="currentInvestigationButton"', self.html)
+        self.assertIn("item.snapshot_path", self.html)
+        self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
+        self.assertIn('loadInvestigation(INVESTIGATION_URL, "investigation.json", true)', self.html)
+        self.assertIn("item.severity", self.html)
+        self.assertIn("item.duration", self.html)
+        self.assertIn("item.target_class", self.html)
+        self.assertIn("item.lifecycle", self.html)
+        self.assertIn("item.first_anomalous_at", self.html)
+        self.assertIn("item.recovered_at", self.html)
+
+    def test_history_renderer_does_not_infer_event_state(self):
+        self.assertNotIn("inferLifecycle", self.html)
+        self.assertNotIn("inferSeverity", self.html)
+        self.assertNotIn("calculateDuration", self.html)
+        self.assertNotIn("detectEvent", self.html)
 
 
 if __name__ == "__main__":

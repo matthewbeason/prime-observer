@@ -33,6 +33,12 @@ Current repository state is the `v0.9.0` release.
 The repository explicitly says to live with `v0.9.0` for several days before
 expanding functionality.
 
+Uncommitted post-release work adds event-aligned automatic investigation
+lifecycle and completed-event history. The current implementation milestone is
+to harden that history before committing: atomic write-once snapshots, explicit
+invalid snapshot reporting, catalog metadata, renderer recovery behavior, and
+aligned tests/docs.
+
 Current watch period:
 
 - observe whether noticeability misses stable-but-noticeable problems
@@ -43,10 +49,8 @@ Current watch period:
 
 ## Next Logical Milestone
 
-The repository does not define the next named milestone after the `v0.9.0`
-observation period.
-
-`Needs Matthew Review`
+After Investigation History hardening, the next planned capability is direct
+links/bookmarks for historical investigations.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate
@@ -77,3 +81,10 @@ The repository explicitly says not to expand into these areas yet:
 - power outage correlation
 - ISP status correlation
 - major `viz/index.html` refactor
+- database-backed storage replacing canonical artifacts
+- event comparison before history is hardened
+- recurrence or similarity detection before history is hardened
+
+If a future database becomes useful, it should be an optional search/index
+projection that consumes canonical JSON/CSV artifacts. It should not replace the
+artifact evidence model.

@@ -29,7 +29,8 @@
     h3{font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-strong);}
     a{color:inherit;}
     a:focus-visible,
-    summary:focus-visible{
+    summary:focus-visible,
+    button:focus-visible{
       outline:2px solid rgba(45,111,145,.70);
       outline-offset:3px;
     }
@@ -106,6 +107,19 @@
     .chip.tone-muted{background:var(--muted-bg);border-color:rgba(109,102,93,.12);}
     .chip.tone-accent{background:var(--accent-bg);border-color:rgba(45,111,145,.18);}
     .panel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+    .history-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;}
+    .history-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:16px;}
+    .history-button,.current-investigation-button{
+      appearance:none;font:inherit;color:inherit;cursor:pointer;text-align:left;border:1px solid rgba(112,97,78,.12);
+      background:var(--surface-strong);border-radius:18px;padding:14px 16px;box-shadow:var(--shadow-card);
+    }
+    .current-investigation-button{padding:9px 14px;color:var(--accent);font-weight:750;white-space:nowrap;}
+    .history-button:hover,.current-investigation-button:hover{border-color:rgba(45,111,145,.34);}
+    .history-button[aria-current="true"],.current-investigation-button[aria-current="true"]{
+      border-color:rgba(45,111,145,.42);background:linear-gradient(180deg, rgba(255,252,247,.94), rgba(235,244,249,.9));
+    }
+    .history-title{font-size:14px;font-weight:780;line-height:1.35;}
+    .history-meta{font-size:12px;color:var(--muted);line-height:1.5;margin-top:5px;}
     .table-block + .table-block{margin-top:18px;}
     .table-block h3{margin-bottom:8px;color:var(--muted-strong);}
     .wide{overflow:auto;}
@@ -188,6 +202,18 @@
 
     <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
     <div id="deepLink" class="status" aria-live="polite" aria-atomic="true" style="display:none;"></div>
+
+    <section id="historySection" class="section">
+      <div class="history-toolbar">
+        <div>
+          <div class="section-kicker">Investigation History</div>
+          <h2>Completed events</h2>
+          <p class="section-note">Immutable event snapshots, newest first. Select an event to review its recorded evidence.</p>
+        </div>
+        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Current Investigation</button>
+      </div>
+      <div id="historyList" class="history-list"><div class="empty-note">Loading investigation history...</div></div>
+    </section>
 
     <section id="assistantReviewSection" class="section section-hero assistant-review-section">
       <div class="section-header">
@@ -336,10 +362,13 @@
 
   <script>
     const INVESTIGATION_URL = "./investigation.json";
+    const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";
     const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
     const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
     const LOCAL_SERVER_COMMAND = "python3 -m http.server 8000 --directory viz";
     const LOCAL_INVESTIGATION_URL = "http://localhost:8000/investigate.html";
+    let assistantInputArtifact = null;
+    let assistantReviewArtifact = null;
 
     function fmt(value, suffix = ""){
       if (value === null || value === undefined || value === "") return "—";
@@ -420,6 +449,51 @@
         gateway_probe: "Gateway",
       };
       return labels[value] || statusLabel(value);
+    }
+
+    function renderHistory(catalog){
+      const validCatalog = catalog && typeof catalog === "object" && !Array.isArray(catalog) && Array.isArray(catalog.events);
+      const events = validCatalog ? catalog.events : [];
+      const invalidSnapshots = validCatalog && Array.isArray(catalog.invalid_snapshots) ? catalog.invalid_snapshots : [];
+      const historyList = document.getElementById("historyList");
+      if (!validCatalog){
+        historyList.innerHTML = '<div class="empty-note">Investigation history catalog is not available. Current investigation remains available.</div>';
+        return;
+      }
+      const validEventsHtml = events.length
+        ? events.map(item => `<button class="history-button" type="button" data-snapshot-path="${fmt(item.snapshot_path)}">
+            <div class="history-title">${humanizeProbeGroup(item.target_class)} · ${statusLabel(item.severity)} severity</div>
+            <div class="history-meta">${shortTime(item.first_anomalous_at)} to ${shortTime(item.recovered_at)}</div>
+            <div class="history-meta">${fmt(item.duration, " min")} · ${fmt(item.lifecycle)} · ${fmt((item.affected_targets || []).join(", "))}</div>
+          </button>`).join("")
+        : '<div class="empty-note">No completed event snapshots are available yet.</div>';
+      const invalidHtml = invalidSnapshots.length
+        ? `<div class="empty-note">${invalidSnapshots.length} invalid snapshot${invalidSnapshots.length === 1 ? "" : "s"} preserved on disk but excluded from history.</div>`
+        : "";
+      historyList.innerHTML = validEventsHtml + invalidHtml;
+      const historyButtons = typeof document.querySelectorAll === "function"
+        ? document.querySelectorAll(".history-button")
+        : [];
+      for (const button of historyButtons){
+        button.addEventListener("click", () => {
+          loadInvestigation(`./${button.dataset.snapshotPath}`, button.dataset.snapshotPath, false).catch(showInvestigationLoadError);
+        });
+      }
+    }
+
+    function markHistorySelection(snapshotPath){
+      const currentButton = document.getElementById("currentInvestigationButton");
+      if (typeof currentButton.setAttribute === "function"){
+        currentButton.setAttribute("aria-current", snapshotPath ? "false" : "true");
+      }
+      const historyButtons = typeof document.querySelectorAll === "function"
+        ? document.querySelectorAll(".history-button")
+        : [];
+      for (const button of historyButtons){
+        if (typeof button.setAttribute === "function"){
+          button.setAttribute("aria-current", button.dataset.snapshotPath === snapshotPath ? "true" : "false");
+        }
+      }
     }
 
     function observationReferencesByType(data, type){
@@ -889,12 +963,11 @@
       ].join(" ");
     }
 
-    async function main(){
-      renderDeepLink();
-      const response = await fetch(INVESTIGATION_URL, {cache: "no-store"});
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      document.getElementById("status").textContent = "Loaded investigation.json";
+    function renderInvestigation(data, sourceLabel, isCurrent){
+      const status = document.getElementById("status");
+      status.classList.remove("error");
+      status.textContent = `Loaded ${sourceLabel}`;
+      document.getElementById("environmentalContextSection").style.display = "none";
       renderSummary(data);
       renderPeriodTable(data);
       renderBucketTable(data);
@@ -910,19 +983,45 @@
         document.getElementById("environmentalContextSection").style.display = "none";
       }
       renderSources(data);
+      renderAssistantReview(isCurrent ? assistantReviewArtifact : null, isCurrent ? assistantInputArtifact : null);
+    }
 
-      const [assistantInput, assistantReview] = await Promise.all([
+    async function loadInvestigation(url, sourceLabel, isCurrent){
+      const response = isCurrent
+        ? await fetch(INVESTIGATION_URL, {cache: "no-store"})
+        : await fetch(url, {cache: "no-store"});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      markHistorySelection(isCurrent ? null : sourceLabel);
+      renderInvestigation(data, sourceLabel, isCurrent);
+    }
+
+    async function main(){
+      renderDeepLink();
+      const [catalog, assistantInput, assistantReview] = await Promise.all([
+        fetchOptionalJson(INVESTIGATION_CATALOG_URL),
         fetchOptionalJson(OPERATOR_ASSISTANT_INPUT_URL),
         fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL),
       ]);
-      renderAssistantReview(assistantReview, assistantInput);
+      assistantInputArtifact = assistantInput;
+      assistantReviewArtifact = assistantReview;
+      renderHistory(catalog);
+      const currentButton = document.getElementById("currentInvestigationButton");
+      if (typeof currentButton.addEventListener === "function"){
+        currentButton.addEventListener("click", () => {
+          loadInvestigation(INVESTIGATION_URL, "investigation.json", true).catch(showInvestigationLoadError);
+        });
+      }
+      await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
     }
 
-    main().catch(err => {
+    function showInvestigationLoadError(err){
       const status = document.getElementById("status");
       status.classList.add("error");
       status.textContent = investigationLoadErrorMessage(err);
-    });
+    }
+
+    main().catch(showInvestigationLoadError);
   </script>
 </body>
 </html>

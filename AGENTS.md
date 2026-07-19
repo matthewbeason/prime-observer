@@ -55,8 +55,12 @@ If something cannot be supported from the repository, mark it:
 ## Primary Files
 
 - `bin/transform_latest.py` generates `viz/latest.csv`,
-  `viz/network_attribution.json`, `viz/observations.json`, and
-  `viz/dashboard_health.json`.
+  `viz/network_attribution.json`, `viz/observations.json`,
+  `viz/dashboard_health.json`, the current `viz/investigation.json`, immutable
+  completed-event snapshots under `viz/investigations/`, and
+  `viz/investigation_catalog.json`. Completed snapshots are atomically
+  published, write-once runtime artifacts; malformed existing snapshots are
+  preserved and reported through the generated catalog instead of overwritten.
 - `bin/build_investigation.py` generates `viz/investigation.json` and
   `viz/investigation_index.json`.
 - `bin/build_operator_assistant_input.py` generates
@@ -86,6 +90,8 @@ Do not:
 - commit local secrets or generated runtime artifacts
 - expand Prime Observer into DNS analytics, alerting, or interpretive AI
   behavior unless the repository direction changes explicitly
+- add a database unless a concrete scaling, query, collaboration, or multi-user
+  requirement justifies an optional projection over canonical artifacts
 
 ## Generated And Local Files
 
@@ -97,6 +103,8 @@ These are local/generated artifacts and must not be committed:
 - `viz/dashboard_health.json`
 - `viz/investigation.json`
 - `viz/investigation_index.json`
+- `viz/investigation_catalog.json`
+- `viz/investigations/`
 - `viz/operator_assistant_input.json`
 - `viz/operator_assistant_output.json`
 - `viz/nextdns_summary.json`

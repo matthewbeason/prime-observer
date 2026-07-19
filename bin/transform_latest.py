@@ -29,7 +29,11 @@ from observation_domain import (
     build_episode_observations,
     build_projection,
 )
-from investigation_model import build_automatic_investigation, write_if_changed as write_investigation_if_changed
+from investigation_model import (
+    build_automatic_investigation,
+    write_completed_investigation_history,
+    write_if_changed as write_investigation_if_changed,
+)
 from build_operator_assistant_input import build_from_path as build_assistant_input_from_path
 from build_operator_assistant_input import write_json as write_assistant_input_json
 
@@ -1017,6 +1021,17 @@ def main():
     investigation_write = write_investigation_if_changed(INVESTIGATION_OUT, investigation)
     investigation_changed = investigation_write["artifact_written"]
     assistant_semantic_changed = investigation_write["assistant_semantic_changed"]
+    history_write = write_completed_investigation_history(
+        rows_out=rows_out,
+        generated_at=now,
+        wan_series_marked=wan_series_marked,
+        attribution=attribution,
+        dashboard_health=dashboard_health,
+        observations_projection=observations_projection,
+        investigations_dir=VIZ_DIR / "investigations",
+        catalog_path=VIZ_DIR / "investigation_catalog.json",
+        current_investigation=investigation,
+    )
     if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
         assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
         write_assistant_input_json(OPERATOR_ASSISTANT_INPUT_OUT, assistant_input)
@@ -1026,6 +1041,10 @@ def main():
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
+    print(
+        f"Investigation history contains {history_write['snapshot_count']} immutable snapshots; "
+        f"wrote {len(history_write['snapshots_written'])} new snapshots"
+    )
     print(f"Operator Assistant input {'updated' if assistant_semantic_changed else 'unchanged'} at {OPERATOR_ASSISTANT_INPUT_OUT}")
     print(f"WAN baseline files used: {', '.join(baseline_sources) if baseline_sources else 'none'}")
     print(f"WAN baseline hours available: {sorted(baseline_by_hour.keys())}")

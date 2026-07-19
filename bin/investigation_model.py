@@ -5,6 +5,8 @@ from pathlib import Path
 import datetime as dt
 import hashlib
 import json
+import os
+import tempfile
 
 from health_model import (
     HEAT_BIN_MINUTES,
@@ -21,9 +23,20 @@ from health_model import (
 BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
+INVESTIGATIONS_DIR = VIZ_DIR / "investigations"
+INVESTIGATION_CATALOG_OUT = VIZ_DIR / "investigation_catalog.json"
+INVESTIGATION_GENERATOR = {
+    "name": "bin/investigation_model.py",
+    "format_version": "investigation-history.v1",
+}
 
 
 def parse_ts(value):
+    if isinstance(value, dt.datetime):
+        parsed = value
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.astimezone(dt.timezone.utc)
     raw = (value or "").strip()
     if not raw:
         return None
@@ -676,11 +689,31 @@ def duration_minutes(start, end):
     return rounded((end_ts - start_ts).total_seconds() / 60.0, 2)
 
 
-def build_automatic_investigation(*, rows_out, generated_at, wan_series_marked=None, attribution=None, dashboard_health=None, observations_projection=None):
+def build_automatic_investigation(
+    *,
+    rows_out,
+    generated_at,
+    wan_series_marked=None,
+    attribution=None,
+    dashboard_health=None,
+    observations_projection=None,
+    selected_event_id=None,
+    historical=False,
+    snapshot_written_at=None,
+):
     samples = merge_marked_wan(rows_out, wan_series_marked)
     telemetry_latest_at = max((sample["t"] for sample in samples), default=generated_at)
     events, secondary_context = detect_events(samples, telemetry_latest_at)
     selected_raw = select_event(events)
+    if selected_event_id is not None:
+        selected_raw = next(
+            (
+                event
+                for event in events
+                if event_id(event["target_class"], event["first_anomalous_at"]) == selected_event_id
+            ),
+            None,
+        )
     selected = public_event(selected_raw, telemetry_latest_at) if selected_raw else None
     windows = build_windows(samples, selected)
     evidence_latest_at = parse_ts(selected["evidence_latest_at"]) if selected else telemetry_latest_at
@@ -690,13 +723,32 @@ def build_automatic_investigation(*, rows_out, generated_at, wan_series_marked=N
     event_start = periods["during"].get("start")
     event_end = periods["during"].get("end")
     payload = {
+        "artifact_type": "completed_investigation_snapshot" if historical and selected else "current_investigation",
         "schema_version": 2,
         "mode": "automatic",
         "generated_at": iso(generated_at),
+        "generator": dict(INVESTIGATION_GENERATOR),
+        "immutable": bool(historical and selected),
         "id": selected["id"].replace("event-", "investigation-") if selected else "investigation-no-sustained-incident",
-        "title": "Automatic current-event investigation" if selected else "No sustained network incident",
+        "title": (
+            "Completed event investigation"
+            if historical and selected
+            else "Automatic current-event investigation"
+            if selected
+            else "No sustained network incident"
+        ),
         "status": "available" if samples else "no_samples",
-        "artifact_state": artifact_state(selected),
+        "artifact_state": (
+            {
+                "is_current": False,
+                "is_stale": False,
+                "is_historical": True,
+                "label": "Historical investigation",
+                "stale_reason": None,
+            }
+            if historical and selected
+            else artifact_state(selected)
+        ),
         "freshness": freshness(generated_at, telemetry_latest_at, evidence_latest_at),
         "selected_event": selected,
         "recovery_progress": recovery,
@@ -745,11 +797,233 @@ def build_automatic_investigation(*, rows_out, generated_at, wan_series_marked=N
             "Automatic mode uses baseline, degradation, and recovery windows derived from event lifecycle boundaries.",
         ],
     }
+    if historical and selected:
+        payload["snapshot_written_at"] = iso(snapshot_written_at or generated_at)
     if not selected:
         payload["message"] = "No sustained network incident is present in the available evidence."
     payload["provenance"]["event_semantic_hash"] = event_semantic_hash(payload)
     payload["provenance"]["semantic_hash"] = payload["provenance"]["event_semantic_hash"]
     return payload
+
+
+def catalog_entry(snapshot, snapshot_path):
+    selected = snapshot.get("selected_event") if isinstance(snapshot.get("selected_event"), dict) else {}
+    if selected.get("lifecycle_state") != "complete" or not selected.get("id"):
+        return None
+    return {
+        "event_id": selected["id"],
+        "lifecycle": selected["lifecycle_state"],
+        "first_anomalous_at": selected.get("first_anomalous_at"),
+        "recovered_at": selected.get("recovered_at"),
+        "severity": selected.get("severity"),
+        "confidence": selected.get("confidence"),
+        "target_class": selected.get("target_class"),
+        "affected_targets": selected.get("affected_targets") or [],
+        "duration": duration_minutes(selected.get("first_anomalous_at"), selected.get("recovered_at")),
+        "snapshot_path": snapshot_path,
+    }
+
+
+def invalid_snapshot_entry(path, *, error_type, error_message, detected_at=None):
+    return {
+        "snapshot_path": f"investigations/{path.name}",
+        "event_id": path.stem or None,
+        "error_type": error_type,
+        "error_message": error_message,
+        "detected_at": iso(detected_at) if detected_at is not None else None,
+    }
+
+
+def load_snapshot_for_catalog(path):
+    try:
+        raw = path.read_text()
+    except OSError as exc:
+        return None, "unreadable", str(exc)
+    try:
+        snapshot = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, "malformed_json", str(exc)
+    if not isinstance(snapshot, dict):
+        return None, "structurally_invalid", "Snapshot JSON root is not an object."
+    selected = snapshot.get("selected_event") if isinstance(snapshot.get("selected_event"), dict) else None
+    if not selected or selected.get("lifecycle_state") != "complete" or not selected.get("id"):
+        return None, "structurally_invalid", "Snapshot does not contain a completed selected_event with an id."
+    artifact_type = snapshot.get("artifact_type")
+    if artifact_type not in {None, "completed_investigation_snapshot"}:
+        return None, "structurally_invalid", f"Unsupported artifact_type: {artifact_type}."
+    return snapshot, None, None
+
+
+def build_investigation_catalog(investigations_dir=INVESTIGATIONS_DIR, generated_at=None):
+    events = []
+    invalid_snapshots = []
+    if investigations_dir.exists():
+        for path in investigations_dir.glob("*.json"):
+            snapshot, error_type, error_message = load_snapshot_for_catalog(path)
+            if error_type:
+                invalid_snapshots.append(invalid_snapshot_entry(
+                    path,
+                    error_type=error_type,
+                    error_message=error_message,
+                    detected_at=generated_at,
+                ))
+                continue
+            entry = catalog_entry(snapshot, f"investigations/{path.name}")
+            if entry:
+                events.append(entry)
+    events.sort(
+        key=lambda item: (
+            parse_ts(item.get("recovered_at")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+            parse_ts(item.get("first_anomalous_at")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+            item.get("event_id") or "",
+        ),
+        reverse=True,
+    )
+    invalid_snapshots.sort(key=lambda item: item.get("snapshot_path") or "")
+    return {
+        "artifact_type": "investigation_catalog",
+        "schema_version": 1,
+        "generated_at": iso(generated_at) if generated_at is not None else None,
+        "generator": dict(INVESTIGATION_GENERATOR),
+        "events": events,
+        "invalid_snapshots": invalid_snapshots,
+    }
+
+
+def serialize_json(payload):
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def existing_snapshot_state(path):
+    if not path.exists():
+        return {"state": "missing"}
+    snapshot, error_type, error_message = load_snapshot_for_catalog(path)
+    if error_type:
+        return {"state": "invalid", "error_type": error_type, "error_message": error_message}
+    return {"state": "valid", "snapshot": snapshot}
+
+
+def write_json_once(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = existing_snapshot_state(path)
+    if existing["state"] == "valid":
+        return {"written": False, "state": "unchanged"}
+    if existing["state"] == "invalid":
+        return {
+            "written": False,
+            "state": "invalid_existing",
+            "error_type": existing["error_type"],
+            "error_message": existing["error_message"],
+        }
+
+    body = serialize_json(payload).encode("utf-8")
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            delete=False,
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+        ) as f:
+            tmp_path = Path(f.name)
+            f.write(body)
+            f.flush()
+            os.fsync(f.fileno())
+        os.link(tmp_path, path)
+    except FileExistsError:
+        return {"written": False, "state": "race_lost"}
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+    return {"written": True, "state": "written"}
+
+
+def write_completed_investigation_history(
+    *,
+    rows_out,
+    generated_at,
+    wan_series_marked=None,
+    attribution=None,
+    dashboard_health=None,
+    observations_projection=None,
+    investigations_dir=INVESTIGATIONS_DIR,
+    catalog_path=INVESTIGATION_CATALOG_OUT,
+    current_investigation=None,
+):
+    current = current_investigation or build_automatic_investigation(
+        rows_out=rows_out,
+        generated_at=generated_at,
+        wan_series_marked=wan_series_marked,
+        attribution=attribution,
+        dashboard_health=dashboard_health,
+        observations_projection=observations_projection,
+    )
+    completed_events = [
+        event
+        for event in current.get("events") or []
+        if event.get("lifecycle_state") == "complete" and event.get("id")
+    ]
+    written = []
+    invalid = []
+    for completed_event in completed_events:
+        completed_event_id = completed_event["id"]
+        snapshot_path = investigations_dir / f"{completed_event_id}.json"
+        existing = existing_snapshot_state(snapshot_path)
+        if existing["state"] == "valid":
+            continue
+        if existing["state"] == "invalid":
+            invalid.append(invalid_snapshot_entry(
+                snapshot_path,
+                error_type=existing["error_type"],
+                error_message=existing["error_message"],
+                detected_at=generated_at,
+            ))
+            continue
+        recovered_at = parse_ts((completed_event.get("details") or {}).get("recovered_at"))
+        snapshot_rows = [
+            row for row in rows_out
+            if recovered_at is None or (parse_ts(row.get("ts")) or recovered_at) <= recovered_at
+        ]
+        snapshot_marked = [
+            item for item in (wan_series_marked or [])
+            if recovered_at is None or (parse_ts(item.get("t")) or recovered_at) <= recovered_at
+        ]
+        snapshot = build_automatic_investigation(
+            rows_out=snapshot_rows,
+            generated_at=generated_at,
+            wan_series_marked=snapshot_marked,
+            attribution=attribution,
+            dashboard_health=dashboard_health,
+            observations_projection=observations_projection,
+            selected_event_id=completed_event_id,
+            historical=True,
+            snapshot_written_at=generated_at,
+        )
+        write_result = write_json_once(snapshot_path, snapshot)
+        if write_result["written"]:
+            written.append(completed_event_id)
+        elif write_result.get("state") == "invalid_existing":
+            invalid.append(invalid_snapshot_entry(
+                snapshot_path,
+                error_type=write_result.get("error_type"),
+                error_message=write_result.get("error_message"),
+                detected_at=generated_at,
+            ))
+
+    catalog = build_investigation_catalog(investigations_dir, generated_at)
+    write_json_atomic(catalog_path, catalog)
+    return {
+        "snapshots_written": written,
+        "invalid_snapshots": invalid or catalog.get("invalid_snapshots", []),
+        "snapshot_count": len(catalog["events"]),
+        "catalog": catalog,
+    }
 
 
 def event_semantic_payload(payload):
@@ -866,6 +1140,9 @@ def artifact_rewrite_needed(existing_payload, new_payload):
         return True
     if existing_payload.get("artifact_state") != new_payload.get("artifact_state"):
         return True
+    for key in ("artifact_type", "generator", "immutable"):
+        if existing_payload.get(key) != new_payload.get(key):
+            return True
     return False
 
 
@@ -894,8 +1171,7 @@ def write_json_atomic(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w") as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
-        f.write("\n")
+        f.write(serialize_json(payload))
     tmp.replace(path)
 
 

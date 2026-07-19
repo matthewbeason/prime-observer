@@ -53,5 +53,7 @@ viz/observations.json
 viz/dashboard_health.json
 viz/investigation.json
 viz/investigation_index.json
+viz/investigation_catalog.json
+viz/investigations/
 viz/operator_assistant_input.json
 viz/operator_assistant_output.json

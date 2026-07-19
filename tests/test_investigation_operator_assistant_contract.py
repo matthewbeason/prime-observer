@@ -13,7 +13,7 @@ def page_script():
     start = html.index("<script>") + len("<script>")
     end = html.index("</script>", start)
     script = html[start:end]
-    return script.replace(
+    script = script.replace(
         textwrap.dedent(
             """
             main().catch(err => {
@@ -25,6 +25,7 @@ def page_script():
         ).strip(),
         "",
     )
+    return script.replace("main().catch(showInvestigationLoadError);", "")
 
 
 class InvestigationOperatorAssistantContractTest(unittest.TestCase):
@@ -211,6 +212,36 @@ console.log(JSON.stringify({{
 }}));
 """
 
+    def full_dom_harness(self, body):
+        return f"""
+const elements = new Map();
+function makeElement() {{
+  return {{
+    innerHTML: "",
+    textContent: "",
+    dataset: {{}},
+    style: {{}},
+    attributes: {{}},
+    setAttribute(name, value) {{ this.attributes[name] = value; }},
+    classList: {{
+      values: new Set(),
+      add(value) {{ this.values.add(value); }},
+      remove(value) {{ this.values.delete(value); }},
+      contains(value) {{ return this.values.has(value); }},
+    }},
+    addEventListener() {{}},
+  }};
+}}
+globalThis.document = {{
+  getElementById(id) {{
+    if (!elements.has(id)) elements.set(id, makeElement());
+    return elements.get(id);
+  }},
+  querySelectorAll() {{ return []; }},
+}};
+{body}
+"""
+
     def test_no_browser_crypto_dependency_remains(self):
         self.assertNotIn("crypto.subtle", self.script)
         self.assertNotIn("subtle.digest", self.script)
@@ -327,6 +358,154 @@ globalThis.fetch = async (url) => {{
         self.assertIn("Selected interval", rendered["summary"])
         self.assertFalse(rendered["assistantVisible"])
 
+    def test_historical_snapshot_loads_and_current_investigation_returns(self):
+        current = self.investigation_payload()
+        historical = json.loads(json.dumps(current))
+        historical["artifact_state"] = {
+            "is_current": False,
+            "is_stale": False,
+            "is_historical": True,
+            "label": "Historical investigation",
+        }
+        historical["selected_event"] = {
+            "id": "event-resolver-probe-history",
+            "target_class": "resolver_probe",
+            "lifecycle_state": "complete",
+            "severity": "medium",
+            "confidence": "high",
+            "first_anomalous_at": "2026-07-06T22:59:19+00:00",
+            "last_anomalous_at": "2026-07-06T23:02:19+00:00",
+            "affected_targets": ["45.90.30.134"],
+        }
+        body = f"""
+globalThis.fetch = async (url) => {{
+  if (url === "./investigations/event-history.json") return {{ok: true, json: async () => ({json.dumps(historical)})}};
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await loadInvestigation("./investigations/event-history.json", "investigations/event-history.json", false);
+  const historicalStatus = document.getElementById("status").textContent;
+  const historicalSummary = document.getElementById("summaryCards").innerHTML;
+  const historicalAssistantVisible = document.getElementById("assistantReviewSection").classList.contains("visible");
+  await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
+  console.log(JSON.stringify({{
+    historicalStatus,
+    historicalSummary,
+    historicalAssistantVisible,
+    currentStatus: document.getElementById("status").textContent,
+  }}));
+}})().catch(err => {{
+  console.error(err);
+  process.exit(1);
+}});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["historicalStatus"], "Loaded investigations/event-history.json")
+        self.assertIn("Historical investigation", rendered["historicalSummary"])
+        self.assertIn("complete", rendered["historicalSummary"])
+        self.assertFalse(rendered["historicalAssistantVisible"])
+        self.assertEqual(rendered["currentStatus"], "Loaded investigation.json")
+
+    def test_failed_historical_fetch_preserves_current_view_and_retry_clears_error(self):
+        current = self.investigation_payload()
+        body = f"""
+globalThis.fetch = async (url) => {{
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  if (url === "./investigations/missing.json") return {{ok: false, status: 404, json: async () => ({{}})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
+  const beforeSummary = document.getElementById("summaryCards").innerHTML;
+  try {{
+    await loadInvestigation("./investigations/missing.json", "investigations/missing.json", false);
+  }} catch (err) {{
+    showInvestigationLoadError(err);
+  }}
+  const failedStatus = document.getElementById("status").textContent;
+  const failedSummary = document.getElementById("summaryCards").innerHTML;
+  const failedHasError = document.getElementById("status").classList.contains("error");
+  await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
+  console.log(JSON.stringify({{
+    failedStatus,
+    failedHasError,
+    summaryPreserved: beforeSummary === failedSummary,
+    retryStatus: document.getElementById("status").textContent,
+    retryHasError: document.getElementById("status").classList.contains("error"),
+  }}));
+}})().catch(err => {{
+  console.error(err);
+  process.exit(1);
+}});
+"""
+        rendered = json.loads(self.run_node(self.full_dom_harness(body)))
+
+        self.assertIn("HTTP 404", rendered["failedStatus"])
+        self.assertTrue(rendered["failedHasError"])
+        self.assertTrue(rendered["summaryPreserved"])
+        self.assertEqual(rendered["retryStatus"], "Loaded investigation.json")
+        self.assertFalse(rendered["retryHasError"])
+
+    def test_missing_or_malformed_catalog_keeps_current_investigation_usable(self):
+        current = self.investigation_payload()
+        for catalog_response in (
+            "{ok: false, status: 404, json: async () => ({})}",
+            "{ok: true, json: async () => { throw new Error('bad json'); }}",
+        ):
+            body = f"""
+globalThis.fetch = async (url) => {{
+  if (url === INVESTIGATION_CATALOG_URL) return {catalog_response};
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{
+    status: document.getElementById("status").textContent,
+    history: document.getElementById("historyList").innerHTML,
+    assistantVisible: document.getElementById("assistantReviewSection").classList.contains("visible"),
+  }}));
+}})().catch(err => {{
+  console.error(err);
+  process.exit(1);
+}});
+"""
+            rendered = json.loads(self.run_node(self.full_dom_harness(body)))
+            self.assertEqual(rendered["status"], "Loaded investigation.json")
+            self.assertIn("catalog is not available", rendered["history"])
+            self.assertFalse(rendered["assistantVisible"])
+
+    def test_empty_catalog_and_invalid_snapshot_metadata_render_calm_history_status(self):
+        empty = json.loads(self.run_node(self.full_dom_harness("""
+renderHistory({artifact_type: "investigation_catalog", schema_version: 1, events: [], invalid_snapshots: []});
+console.log(JSON.stringify({history: document.getElementById("historyList").innerHTML}));
+""")))
+        mixed = json.loads(self.run_node(self.full_dom_harness("""
+renderHistory({
+  artifact_type: "investigation_catalog",
+  schema_version: 1,
+  events: [{
+    event_id: "event-ok",
+    snapshot_path: "investigations/event-ok.json",
+    target_class: "resolver_probe",
+    severity: "low",
+    first_anomalous_at: "2026-07-06T22:59:19+00:00",
+    recovered_at: "2026-07-06T23:14:19+00:00",
+    duration: 15,
+    lifecycle: "complete",
+    affected_targets: ["45.90.30.134"],
+  }],
+  invalid_snapshots: [{snapshot_path: "investigations/event-bad.json", error_type: "malformed_json"}],
+});
+console.log(JSON.stringify({history: document.getElementById("historyList").innerHTML}));
+""")))
+
+        self.assertIn("No completed event snapshots", empty["history"])
+        self.assertIn("Resolver probes", mixed["history"])
+        self.assertIn("invalid snapshot", mixed["history"])
+
     def test_material_limitations_are_prominent_and_generic_notes_are_collapsed(self):
         review = {
             "status": "ok",
@@ -349,6 +528,7 @@ globalThis.fetch = async (url) => {{
     def test_browser_fetches_local_artifacts_only(self):
         self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json"', self.script)
         self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json"', self.script)
+        self.assertIn('const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json"', self.script)
         self.assertNotIn("openrouter.ai", self.script)
 
 

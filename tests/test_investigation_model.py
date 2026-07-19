@@ -1,5 +1,7 @@
 import datetime as dt
+import hashlib
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -55,6 +57,24 @@ class InvestigationModelTest(unittest.TestCase):
             ],
             observations_projection={"observations": []},
         )
+
+    def history_args(self, rows, generated_minute=60):
+        return {
+            "rows_out": rows,
+            "generated_at": self.base + dt.timedelta(minutes=generated_minute),
+            "wan_series_marked": [
+                {
+                    "t": self.module.parse_ts(row["ts"]),
+                    "host": row["host"],
+                    "target_class": row["target_class"],
+                    "raw_bad": row.get("raw_bad", False),
+                    "is_bad": row.get("is_bad", False),
+                }
+                for row in rows
+                if row["target_class"] != "gateway_probe"
+            ],
+            "observations_projection": {"observations": []},
+        }
 
     def test_isolated_excursion_does_not_create_confirmed_incident(self):
         payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2)])
@@ -256,6 +276,242 @@ class InvestigationModelTest(unittest.TestCase):
 
         self.assertTrue(stale["artifact_state"]["is_stale"])
         self.assertEqual(stale["artifact_state"]["label"], "Stale investigation")
+
+    def test_completed_snapshot_is_written_once_and_never_mutated(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (2, 3, 17))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            investigations = root / "investigations"
+            catalog = root / "investigation_catalog.json"
+            first = self.module.write_completed_investigation_history(
+                **self.history_args(rows), investigations_dir=investigations, catalog_path=catalog
+            )
+            snapshot_path = investigations / f"{first['snapshots_written'][0]}.json"
+            original = snapshot_path.read_bytes()
+
+            changed_rows = list(rows) + [self.row(18, p95=400, raw=True, sustained=True)]
+            second = self.module.write_completed_investigation_history(
+                **self.history_args(changed_rows, generated_minute=90),
+                investigations_dir=investigations,
+                catalog_path=catalog,
+            )
+
+            self.assertEqual(snapshot_path.read_bytes(), original)
+            self.assertEqual(second["snapshots_written"], [])
+            snapshot = self.module.load_json(snapshot_path)
+            self.assertEqual(snapshot["artifact_type"], "completed_investigation_snapshot")
+            self.assertTrue(snapshot["immutable"])
+            self.assertIn("snapshot_written_at", snapshot)
+            self.assertEqual(snapshot["generator"], self.module.INVESTIGATION_GENERATOR)
+            self.assertTrue(snapshot["artifact_state"]["is_historical"])
+            self.assertEqual(snapshot["selected_event"]["lifecycle_state"], "complete")
+
+    def test_snapshot_publication_leaves_complete_json_and_no_temp_files(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (2, 3, 17))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = self.module.write_completed_investigation_history(
+                **self.history_args(rows),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            snapshot_path = root / "investigations" / f"{result['snapshots_written'][0]}.json"
+            snapshot = json.loads(snapshot_path.read_text())
+            leftovers = list((root / "investigations").glob("*.tmp"))
+
+        self.assertEqual(snapshot["artifact_type"], "completed_investigation_snapshot")
+        self.assertEqual(snapshot["schema_version"], 2)
+        self.assertEqual(leftovers, [])
+
+    def test_valid_existing_snapshot_is_never_replaced(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (2, 3, 17))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = self.module.write_completed_investigation_history(
+                **self.history_args(rows),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            snapshot_path = root / "investigations" / f"{first['snapshots_written'][0]}.json"
+            before_hash = hashlib.sha256(snapshot_path.read_bytes()).hexdigest()
+            second = self.module.write_completed_investigation_history(
+                **self.history_args(rows, generated_minute=120),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            after_hash = hashlib.sha256(snapshot_path.read_bytes()).hexdigest()
+
+        self.assertEqual(second["snapshots_written"], [])
+        self.assertEqual(after_hash, before_hash)
+
+    def test_malformed_existing_snapshot_is_reported_and_not_overwritten(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (2, 3, 17))
+        event_id = "event-resolver-probe-2026-07-17t22-00-00z"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            investigations = root / "investigations"
+            investigations.mkdir()
+            snapshot_path = investigations / f"{event_id}.json"
+            snapshot_path.write_text("{not valid json")
+            result = self.module.write_completed_investigation_history(
+                **self.history_args(rows),
+                investigations_dir=investigations,
+                catalog_path=root / "investigation_catalog.json",
+            )
+
+            self.assertEqual(snapshot_path.read_text(), "{not valid json")
+
+        self.assertEqual(result["snapshots_written"], [])
+        self.assertEqual(result["snapshot_count"], 0)
+        self.assertEqual(result["invalid_snapshots"][0]["event_id"], event_id)
+        self.assertEqual(result["invalid_snapshots"][0]["error_type"], "malformed_json")
+        self.assertEqual(result["catalog"]["events"], [])
+        self.assertEqual(result["catalog"]["invalid_snapshots"][0]["event_id"], event_id)
+
+    def test_valid_snapshots_still_catalog_when_malformed_snapshots_coexist(self):
+        first_rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        first_rows.extend(self.row(minute) for minute in (2, 3, 17))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            investigations = root / "investigations"
+            first = self.module.write_completed_investigation_history(
+                **self.history_args(first_rows),
+                investigations_dir=investigations,
+                catalog_path=root / "investigation_catalog.json",
+            )
+            (investigations / "event-bad.json").write_text("[]")
+            catalog = self.module.build_investigation_catalog(investigations, self.base)
+
+        self.assertEqual(len(catalog["events"]), 1)
+        self.assertEqual(catalog["events"][0]["event_id"], first["snapshots_written"][0])
+        self.assertEqual(catalog["invalid_snapshots"][0]["event_id"], "event-bad")
+        self.assertEqual(catalog["invalid_snapshots"][0]["error_type"], "structurally_invalid")
+
+    def test_catalog_orders_completed_events_newest_first(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (2, 3, 17))
+        rows.extend([self.row(30, p95=182, raw=True), self.row(31, p95=183, raw=True, sustained=True)])
+        rows.extend(self.row(minute) for minute in (32, 33, 47))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = self.module.write_completed_investigation_history(
+                **self.history_args(rows),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+
+        events = result["catalog"]["events"]
+        self.assertEqual(result["catalog"]["artifact_type"], "investigation_catalog")
+        self.assertEqual(result["catalog"]["generator"], self.module.INVESTIGATION_GENERATOR)
+        self.assertEqual(result["catalog"]["invalid_snapshots"], [])
+        self.assertEqual(len(events), 2)
+        self.assertGreater(events[0]["recovered_at"], events[1]["recovered_at"])
+        self.assertEqual(
+            set(events[0]),
+            {
+                "event_id", "lifecycle", "first_anomalous_at", "recovered_at", "severity",
+                "confidence", "target_class", "affected_targets", "duration", "snapshot_path",
+            },
+        )
+
+    def test_catalog_handles_missing_snapshot_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = self.module.build_investigation_catalog(Path(tmp) / "missing", self.base)
+
+        self.assertEqual(catalog["artifact_type"], "investigation_catalog")
+        self.assertEqual(catalog["schema_version"], 1)
+        self.assertEqual(catalog["events"], [])
+        self.assertEqual(catalog["invalid_snapshots"], [])
+
+    def test_snapshot_metadata_does_not_change_event_semantic_hash(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        payload = self.build(rows)
+        with_metadata = json.loads(json.dumps(payload))
+        with_metadata["artifact_type"] = "current_investigation"
+        with_metadata["immutable"] = False
+        with_metadata["generator"] = {"name": "changed", "format_version": "changed"}
+        with_metadata["snapshot_written_at"] = "2026-07-17T23:59:00+00:00"
+
+        self.assertEqual(
+            self.module.event_semantic_hash(payload),
+            self.module.event_semantic_hash(with_metadata),
+        )
+
+    def test_snapshot_metadata_update_rewrites_without_assistant_regeneration(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        payload = self.build(rows)
+        existing = json.loads(json.dumps(payload))
+        existing.pop("artifact_type", None)
+        existing.pop("immutable", None)
+        existing.pop("generator", None)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "investigation.json"
+            path.write_text(json.dumps(existing, sort_keys=True))
+            result = self.module.write_if_changed(path, payload)
+
+        self.assertTrue(result["artifact_written"])
+        self.assertFalse(result["assistant_semantic_changed"])
+
+    def test_active_event_does_not_replace_completed_snapshot_or_current_selection(self):
+        completed_rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        completed_rows.extend(self.row(minute) for minute in (2, 3, 17))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = self.module.write_completed_investigation_history(
+                **self.history_args(completed_rows),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            snapshot_path = root / "investigations" / f"{first['snapshots_written'][0]}.json"
+            original = snapshot_path.read_bytes()
+            active_rows = completed_rows + [
+                self.row(30, p95=190, raw=True),
+                self.row(31, p95=191, raw=True, sustained=True),
+            ]
+            current_before = self.build(active_rows)
+            result = self.module.write_completed_investigation_history(
+                **self.history_args(active_rows, generated_minute=90),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            current_after = self.build(active_rows)
+
+            self.assertEqual(snapshot_path.read_bytes(), original)
+            self.assertEqual(len(result["catalog"]["events"]), 1)
+            self.assertEqual(current_before, current_after)
+            self.assertEqual(current_after["selected_event"]["lifecycle_state"], "active")
+
+    def test_catalog_preserves_snapshots_when_completed_event_ages_out(self):
+        completed_rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        completed_rows.extend(self.row(minute) for minute in (2, 3, 17))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = self.module.write_completed_investigation_history(
+                **self.history_args(completed_rows),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            active_only = [self.row(60, p95=190, raw=True), self.row(61, p95=191, raw=True, sustained=True)]
+            second = self.module.write_completed_investigation_history(
+                **self.history_args(active_only, generated_minute=90),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+
+        self.assertEqual(second["catalog"]["events"], first["catalog"]["events"])
 
 
 if __name__ == "__main__":

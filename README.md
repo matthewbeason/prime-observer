@@ -207,6 +207,14 @@ bin/transform_latest.py
         |
         +--> viz/observations.json
         |
+        +--> viz/dashboard_health.json
+        |
+        +--> viz/investigation.json
+        |
+        +--> viz/investigations/<event-id>.json
+        |
+        +--> viz/investigation_catalog.json
+        |
         v
 viz/index.html
 ```
@@ -347,7 +355,13 @@ Projection roles:
   Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. The output remains evidence-first and does not move Core Signal interpretation into Prime Observer. It also updates a generated investigation catalog by default.
 
 - `viz/investigation.json`
-  Generated local investigation evidence for a selected window. Metadata is additive and includes target labels/classes, deterministic event navigation, factual nearby-event discovery, overlapping Observation references from the current projection when available, and optional copied provider-specific context such as local DNS summary or Internet Conditions evidence snapshots.
+  Generated local investigation evidence for the current automatic event or a manually requested window. The automatic current artifact is mutable and uses `artifact_type: "current_investigation"`. Metadata is additive and includes target labels/classes, deterministic event navigation, factual nearby-event discovery, overlapping Observation references from the current projection when available, and optional copied provider-specific context such as local DNS summary or Internet Conditions evidence snapshots.
+
+- `viz/investigations/<event-id>.json`
+  Immutable local schema 2 snapshot written once when an automatic event completes. Snapshots use `artifact_type: "completed_investigation_snapshot"`, `immutable: true`, and minimal generator metadata. Active and recovering events do not write these files, and later transform cycles do not mutate an existing snapshot. Snapshot publication is atomic and write-once; malformed existing files are preserved as evidence but excluded from valid history.
+
+- `viz/investigation_catalog.json`
+  Generated newest-first projection of valid immutable completed-event snapshots, with invalid snapshot metadata when malformed or structurally invalid files are present. The investigation viewer uses producer-supplied lifecycle, severity, duration, target, timestamps, and snapshot paths without inferring event state in the browser.
 
 - `viz/investigation_index.json`
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
@@ -368,7 +382,7 @@ Projection roles:
   Generated local operator-assistant review artifact. It includes provenance such as `status`, `input_hash`, requested model, returned provider model when available, and any provider usage metadata. It stays secondary to Prime Observer evidence and is rendered only as a clearly non-authoritative review panel in `viz/investigate.html`.
 
 - `viz/investigate.html`
-  Static historical evidence view for `viz/investigation.json` with an additive local-only Operator Assistant review panel when `viz/operator_assistant_output.json` is present.
+  Static evidence view for the current `viz/investigation.json` and immutable completed-event history, with an additive local-only Operator Assistant review panel for the current investigation when `viz/operator_assistant_output.json` is present.
 
 - `viz/index.html`
   Static D3 dashboard. Loads local CSV and JSON files with `cache: "no-store"` and renders the observability UI.
@@ -430,6 +444,11 @@ This refreshes:
 - `viz/latest.csv`
 - `viz/network_attribution.json`
 - `viz/observations.json`
+- `viz/dashboard_health.json`
+- mutable current `viz/investigation.json`
+- write-once completed snapshots under `viz/investigations/`
+- generated `viz/investigation_catalog.json`
+- `viz/operator_assistant_input.json` when deterministic investigation semantics change
 
 If using NextDNS, generate the optional DNS summary:
 
@@ -487,6 +506,15 @@ Direct `file://` access can prevent the browser from loading
 When present, the investigation page loads `viz/operator_assistant_input.json` and `viz/operator_assistant_output.json` and renders a clearly labeled local review panel only when their producer-generated `input_hash` values match. Prime Observer evidence remains authoritative. The browser does not hash or reconstruct evidence, and the page remains usable when either assistant artifact is missing, unavailable, malformed, or stale.
 
 See `docs/investigation-workflow.md` for details.
+
+At the current local scale, generated JSON and CSV artifacts remain canonical and
+no database is required. If search, collaboration, or multi-user requirements
+eventually justify PostgreSQL or Supabase, it should consume canonical artifacts
+as an optional index/projection rather than replace them.
+
+The next planned history capability after hardening is direct links/bookmarks for
+historical investigations. Event comparison and recurrence/similarity detection
+remain future work.
 
 The investigation workflow also maintains an optional generated Investigation
 Index at `viz/investigation_index.json`. The index is a local catalog of
