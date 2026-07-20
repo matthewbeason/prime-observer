@@ -6,9 +6,9 @@ This file is the working contract for coding agents operating in this
 repository.
 
 Prime Observer is a local-first network experience observability system. It
-uses flat CSV/JSON artifacts, deterministic heuristics, and a static dashboard
-to answer whether network behavior is healthy, unusual, attributable, sustained,
-and likely noticeable to users.
+uses flat CSV/JSON artifacts, deterministic heuristics, an LLM interpretation
+layer, and a static dashboard to answer whether network behavior is healthy,
+unusual, attributable, sustained, and likely noticeable to users.
 
 Current release: `v0.9.0`
 
@@ -47,10 +47,17 @@ If something cannot be supported from the repository, mark it:
 - Keep logic deterministic and transparent.
 - Keep optional integrations fail-safe.
 - Keep Prime Observer factual and bounded.
-- Preserve the separation between Evidence, Observation, Investigation, and
-  Projection described in `README.md`.
-- Do not move Core Signal interpretation, recommendations, correlations, event
-  confidence scoring, or higher-level meaning into Prime Observer.
+- Preserve the separation between Evidence, Observation, Investigation,
+  Interpretation, and Projection described in `README.md`.
+- Deterministic Python remains authoritative for facts, evidence, thresholds,
+  event boundaries, lifecycle, affected scope, classifications, freshness,
+  semantic hashing, safety constraints, and fallback guidance.
+- OpenRouter-backed Operator Assistant output is the primary operator-facing
+  interpretation when it is valid for the current evidence package. It may
+  synthesize likely meaning, uncertainty, and safe next actions, but it must not
+  invent facts or contradict deterministic evidence.
+- Do not move network interpretation, OpenRouter calls, or next-action
+  generation into browser JavaScript.
 
 ## Primary Files
 
@@ -64,9 +71,14 @@ If something cannot be supported from the repository, mark it:
 - `bin/build_investigation.py` generates `viz/investigation.json` and
   `viz/investigation_index.json`.
 - `bin/build_operator_assistant_input.py` generates
-  `viz/operator_assistant_input.json`.
-- `bin/build_operator_assistant_output.py` generates
-  `viz/operator_assistant_output.json`.
+  `viz/operator_assistant_input.json` and marks changed semantic input pending.
+- `bin/run_operator_assistant_worker.py` consumes pending or due retry state in a
+  separate process and delegates provider work to the output producer.
+- `bin/build_operator_assistant_output.py` owns OpenRouter requests, validation,
+  atomic `viz/operator_assistant_output.json` publication, and last-known-good
+  preservation.
+- `viz/operator_assistant_generation_state.json` records asynchronous worker
+  state separately from valid output.
 - `bin/fetch_nextdns_summary.py` generates `viz/nextdns_summary.json`.
 - `bin/fetch_cloudflare_radar.py` generates `viz/internet_conditions.json`.
 - `viz/index.html` renders the dashboard from generated local artifacts.
@@ -87,6 +99,9 @@ Do not:
 - invent roadmap items, history, or intent not supported by the repository
 - add browser-side secrets
 - fetch NextDNS or Cloudflare directly from browser code
+- call OpenRouter directly from browser code or page load
+- overwrite valid Operator Assistant output with a provider/configuration
+  failure
 - commit local secrets or generated runtime artifacts
 - expand Prime Observer into DNS analytics, alerting, or interpretive AI
   behavior unless the repository direction changes explicitly
@@ -107,6 +122,8 @@ These are local/generated artifacts and must not be committed:
 - `viz/investigations/`
 - `viz/operator_assistant_input.json`
 - `viz/operator_assistant_output.json`
+- `viz/operator_assistant_generation_state.json`
+- `viz/.operator_assistant_generation.lock`
 - `viz/nextdns_summary.json`
 - `viz/internet_conditions.json`
 - `.env.nextdns`

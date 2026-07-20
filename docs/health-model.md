@@ -2,9 +2,10 @@
 
 Prime Observer's canonical health model is factual telemetry evidence about
 network experience. It defines sample classification, WAN target groups, LAN
-evidence, bad moments, attribution inputs, noticeability inputs, and
-investigation windows. It does not define recommendations, causal correlation,
-operator actions, or Core Signal interpretation.
+evidence, bad moments, attribution inputs, noticeability inputs, investigation
+windows, scope facts, lifecycle facts, and deterministic fallback guidance. The
+LLM interpretation layer may explain likely meaning and operator actions from
+those facts, but it does not replace them.
 
 ## Model Scope
 
@@ -136,6 +137,18 @@ Automatic window semantics:
 - `recovery`: evidence beginning at `recovery_candidate_at`; unavailable until
   post-event evidence exists, provisional while recovering, complete only when
   `recovered_at` is set.
+
+Automatic phase summaries distinguish representative behavior from isolated
+maximum excursions:
+
+- `typical_p95_ms` is the selected target class representative p95 for the phase
+  and is used for first-pass operator comparison.
+- sustained-bad sample and bucket counts explain why a phase is classified as
+  degradation.
+- `max_p95_ms` remains visible separately as the maximum excursion.
+- A stable baseline can have a higher isolated maximum than the degradation
+  phase without being worse operationally, because persistence and affected
+  bucket counts drive degradation classification.
 
 Legacy `periods.before`, `periods.during`, and `periods.after` remain in the
 artifact for compatibility, but automatic mode derives them from baseline,

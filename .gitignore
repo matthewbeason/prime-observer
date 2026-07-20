@@ -57,3 +57,7 @@ viz/investigation_catalog.json
 viz/investigations/
 viz/operator_assistant_input.json
 viz/operator_assistant_output.json
+viz/operator_assistant_generation_state.json
+viz/.operator_assistant_generation.lock
+viz/*.json.tmp
+viz/*.csv.tmp

@@ -197,6 +197,22 @@ def summarize(samples, kind):
     return summary
 
 
+def representative_summary(samples):
+    p95_values = [sample["p95"] for sample in samples]
+    jitter_values = [sample["jitter"] for sample in samples]
+    loss_values = [sample["loss"] for sample in samples]
+    return {
+        "sample_count": len(samples),
+        "median_p95_ms": rounded(percentile(p95_values, 50)),
+        "typical_p95_ms": rounded(percentile(p95_values, 50)),
+        "p75_p95_ms": rounded(percentile(p95_values, 75)),
+        "p90_p95_ms": rounded(percentile(p95_values, 90)),
+        "max_p95_ms": rounded(max(p95_values), 1) if p95_values else None,
+        "jitter_95th_ms": rounded(percentile(jitter_values, 95)),
+        "max_loss_pct": rounded(max(loss_values), 2) if loss_values else None,
+    }
+
+
 def classify_buckets(wan_samples):
     buckets = {}
     bin_seconds = HEAT_BIN_MINUTES * 60
@@ -477,7 +493,26 @@ def supporting_metrics(samples):
     }
 
 
-def window_payload(name, samples, code, label, summary, tone, confidence):
+def window_supporting_metrics(samples, target_class=None):
+    metrics = supporting_metrics(samples)
+    target_samples = [sample for sample in samples if sample.get("target_class") == target_class] if target_class else []
+    buckets = classify_buckets([sample for sample in samples if sample.get("kind") == "wan"])
+    target_buckets = [bucket for bucket in buckets if not target_class or bucket.get("target_class") == target_class]
+    metrics.update({
+        "duration_minutes": duration_minutes(
+            iso(min((sample["t"] for sample in samples), default=None)),
+            iso(max((sample["t"] for sample in samples), default=None)),
+        ),
+        "affected_bucket_count": len([bucket for bucket in target_buckets if bucket.get("sustained_bad_count", 0) > 0]),
+        "stable_bucket_count": len([bucket for bucket in target_buckets if bucket.get("assessment_code") == "stable"]),
+        "isolated_excursion_bucket_count": len([bucket for bucket in target_buckets if bucket.get("assessment_code") == "isolated_excursion"]),
+        "turbulence_bucket_count": len([bucket for bucket in target_buckets if bucket.get("turbulence")]),
+        "selected_target": representative_summary(target_samples),
+    })
+    return metrics
+
+
+def window_payload(name, samples, code, label, summary, tone, confidence, target_class=None):
     return {
         "name": name,
         "available": bool(samples),
@@ -488,7 +523,7 @@ def window_payload(name, samples, code, label, summary, tone, confidence):
         "summary": summary,
         "tone": tone,
         "confidence": confidence,
-        "supporting_metrics": supporting_metrics(samples),
+        "supporting_metrics": window_supporting_metrics(samples, target_class=target_class),
     }
 
 
@@ -533,7 +568,7 @@ def build_windows(samples, selected_event):
     windows = {}
     for name, rows in (("baseline", baseline_samples), ("degradation", degradation_samples), ("recovery", recovery_samples)):
         code, label, summary, tone, confidence = assessment_for_window(name, rows, selected_event)
-        windows[name] = window_payload(name, rows, code, label, summary, tone, confidence)
+        windows[name] = window_payload(name, rows, code, label, summary, tone, confidence, selected_event.get("target_class"))
     return windows
 
 
@@ -542,6 +577,7 @@ def timeline_rows(windows, selected_event):
     for key, phase in (("baseline", "Baseline"), ("degradation", "Degradation"), ("recovery", "Recovery")):
         window = windows[key]
         metrics = window["supporting_metrics"]
+        representative = phase_summary_metrics(window)
         rows.append({
             "phase": phase,
             "start": window.get("start"),
@@ -554,6 +590,7 @@ def timeline_rows(windows, selected_event):
             "affected_probes": target_label(selected_event["target_class"]) if selected_event else "None",
             "evidence": f"{metrics['wan_samples']} WAN samples, {metrics['raw_bad_count']} raw bad, {metrics['sustained_bad_count']} sustained bad",
             "supporting_metrics": metrics,
+            "phase_summary": representative,
         })
     return rows
 
@@ -647,6 +684,250 @@ def recovery_progress(selected_event, samples, telemetry_latest_at):
     }
 
 
+def phase_summary_metrics(window):
+    metrics = window.get("supporting_metrics") if isinstance(window, dict) else {}
+    selected = metrics.get("selected_target") if isinstance(metrics.get("selected_target"), dict) else {}
+    return {
+        "sample_count": selected.get("sample_count") or metrics.get("wan_samples", 0),
+        "duration_minutes": metrics.get("duration_minutes"),
+        "typical_p95_ms": selected.get("typical_p95_ms"),
+        "p75_p95_ms": selected.get("p75_p95_ms"),
+        "p90_p95_ms": selected.get("p90_p95_ms"),
+        "max_p95_ms": selected.get("max_p95_ms") or metrics.get("max_p95_ms"),
+        "max_loss_pct": selected.get("max_loss_pct") if selected.get("max_loss_pct") is not None else metrics.get("max_loss_pct"),
+        "raw_bad_count": metrics.get("raw_bad_count", 0),
+        "sustained_bad_count": metrics.get("sustained_bad_count", 0),
+        "sustained_bad_bucket_count": metrics.get("affected_bucket_count", 0),
+        "stable_bucket_count": metrics.get("stable_bucket_count", 0),
+        "isolated_excursion_bucket_count": metrics.get("isolated_excursion_bucket_count", 0),
+        "turbulence_bucket_count": metrics.get("turbulence_bucket_count", 0),
+    }
+
+
+def operational_state(selected_event, recovery):
+    if not selected_event:
+        return {
+            "state": "no_sustained_incident",
+            "label": "No sustained incident is selected.",
+            "recommendation": "Continue normal observation unless a new sustained event appears.",
+        }
+    state = selected_event.get("lifecycle_state")
+    if state == "active":
+        return {
+            "state": "active",
+            "label": "Degradation is continuing.",
+            "recommendation": "Confirm affected scope and monitor for recovery before closing the investigation.",
+        }
+    if state == "recovering":
+        remaining = recovery.get("remaining_stable_seconds") if isinstance(recovery, dict) else None
+        return {
+            "state": "recovering",
+            "label": "Signals are healthy again, but recovery is not confirmed yet.",
+            "recommendation": f"Continue observation until the stable window completes{f' ({int(remaining // 60)} min remaining)' if isinstance(remaining, int) else ''}.",
+        }
+    return {
+        "state": "complete",
+        "label": "Recovery was confirmed after the required stable observation period.",
+        "recommendation": "Use the recorded evidence for review or escalation if the pattern recurs.",
+    }
+
+
+def scope_impact(selected_event, windows, periods):
+    during = periods.get("during") if isinstance(periods, dict) else {}
+    wan = during.get("wan") if isinstance(during, dict) else {}
+    lan = during.get("lan") if isinstance(during, dict) else {}
+    groups = wan.get("target_groups") if isinstance(wan, dict) else {}
+    selected_class = selected_event.get("target_class") if selected_event else None
+    affected_group = groups.get(selected_class, {}) if isinstance(groups, dict) and selected_class else {}
+    unaffected = []
+    for target_class in ("internet_probe", "resolver_probe"):
+        if target_class == selected_class:
+            continue
+        group = groups.get(target_class, {}) if isinstance(groups, dict) else {}
+        if group.get("sample_count") is not None:
+            unaffected.append({
+                "target_class": target_class,
+                "sample_count": group.get("sample_count", 0),
+                "raw_bad_count": group.get("raw_bad_count", 0),
+                "sustained_bad_count": group.get("sustained_bad_count", 0),
+            })
+    if isinstance(lan, dict) and lan.get("sample_count") is not None:
+        unaffected.append({
+            "target_class": "gateway_probe",
+            "sample_count": lan.get("sample_count", 0),
+            "elevated_count": lan.get("elevated_p95_count", 0),
+            "max_p95_ms": lan.get("max_p95_ms"),
+        })
+    if selected_event and unaffected:
+        conclusion = f"{target_label(selected_class)} degraded while comparison groups stayed below sustained-degradation thresholds or showed weaker evidence."
+    elif selected_event:
+        conclusion = f"{target_label(selected_class)} is the selected affected scope; comparison evidence is limited."
+    else:
+        conclusion = "No confirmed sustained affected scope is selected."
+    degradation = phase_summary_metrics((windows or {}).get("degradation", {}))
+    return {
+        "affected_probe_class": selected_class,
+        "affected_probe_label": target_label(selected_class) if selected_class else None,
+        "affected_endpoints": selected_event.get("affected_targets", []) if selected_event else [],
+        "first_anomaly": selected_event.get("first_anomalous_at") if selected_event else None,
+        "last_anomaly": selected_event.get("last_anomalous_at") if selected_event else None,
+        "anomalous_samples": selected_event.get("raw_bad_count", 0) if selected_event else 0,
+        "sustained_bad_samples": selected_event.get("sustained_bad_count", 0) if selected_event else 0,
+        "affected_evidence_buckets": degradation.get("sustained_bad_bucket_count", 0),
+        "representative_latency_ms": degradation.get("typical_p95_ms"),
+        "maximum_excursion_ms": selected_event.get("max_p95_ms") if selected_event else None,
+        "packet_loss_pct": selected_event.get("max_loss_pct") if selected_event else None,
+        "current_recovery_state": selected_event.get("lifecycle_state") if selected_event else "none",
+        "affected_group": affected_group,
+        "unaffected_comparison_groups": unaffected,
+        "scope_conclusion": conclusion,
+    }
+
+
+def bucket_rollup(periods):
+    buckets = []
+    for period_name in ("before", "during", "after"):
+        period = periods.get(period_name) if isinstance(periods, dict) else {}
+        for bucket in period.get("wan_buckets", []) if isinstance(period, dict) else []:
+            item = dict(bucket)
+            item["period"] = period_name
+            buckets.append(item)
+    sustained = [bucket for bucket in buckets if bucket.get("assessment_code") == "sustained_degradation" or bucket.get("sustained_bad_count", 0) > 0]
+    recovery = [bucket for bucket in buckets if bucket.get("period") == "after" and bucket.get("assessment_code") == "stable"]
+    excursions = [bucket for bucket in buckets if bucket.get("assessment_code") in {"isolated_excursion", "intermittent_degradation"}]
+    stable = [bucket for bucket in buckets if bucket.get("assessment_code") == "stable"]
+    visible = sustained + recovery[-2:] + excursions
+    visible.sort(key=lambda item: (item.get("start") or "", item.get("target_class") or ""))
+    worst = max(sustained, key=lambda item: (item.get("sustained_bad_count", 0), item.get("max_p95_ms") or 0), default=None)
+    return {
+        "total_buckets": len(buckets),
+        "stable_buckets": len(stable),
+        "isolated_excursion_buckets": len(excursions),
+        "sustained_degradation_buckets": len(sustained),
+        "recovery_buckets": len(recovery),
+        "affected_time_range": {
+            "start": min((bucket.get("start") for bucket in sustained if bucket.get("start")), default=None),
+            "end": max((bucket.get("end") for bucket in sustained if bucket.get("end")), default=None),
+        },
+        "worst_sustained_bucket": worst,
+        "current_recovery_bucket": recovery[-1] if recovery else None,
+        "default_buckets": visible[:40],
+        "all_buckets": buckets,
+    }
+
+
+def episode_summary(selected_event, secondary_context, observation_refs):
+    episodes = [ref for ref in observation_refs if isinstance(ref, dict) and ref.get("type") == "episode"]
+    return {
+        "total_observations_consolidated": len(episodes),
+        "sustained_episodes": len([ref for ref in episodes if (ref.get("state") or {}).get("status") == "sustained_degradation"]),
+        "isolated_excursions": len([item for item in secondary_context if item.get("assessment_code") == "isolated_excursion"]),
+        "event_start": selected_event.get("first_anomalous_at") if selected_event else None,
+        "last_anomaly": selected_event.get("last_anomalous_at") if selected_event else None,
+        "recovery_candidate": selected_event.get("recovery_candidate_at") if selected_event else None,
+        "recovery_confirmation": selected_event.get("recovered_at") if selected_event else None,
+        "summary": (
+            f"{len(episodes)} episode observation reference(s) are consolidated here; raw references remain in forensic detail."
+            if episodes else "No episode observation references are available for this artifact."
+        ),
+    }
+
+
+def evidence_argument(selected_event, windows, periods, scope, recovery):
+    degradation = phase_summary_metrics((windows or {}).get("degradation", {}))
+    baseline = phase_summary_metrics((windows or {}).get("baseline", {}))
+    supporting = []
+    limiting = []
+    against_broader = []
+    verification = []
+    if selected_event:
+        supporting.append(f"{target_label(selected_event.get('target_class'))} showed sustained degradation across {degradation.get('sustained_bad_bucket_count')} evidence bucket(s).")
+        supporting.append(f"{selected_event.get('sustained_bad_count', 0)} sample(s) met sustained-bad criteria after persistence was established.")
+        if selected_event.get("recovery_candidate_at"):
+            supporting.append("Healthy samples began after the last anomaly, indicating recovery may be underway.")
+        if baseline.get("max_p95_ms") and degradation.get("max_p95_ms") and baseline.get("max_p95_ms") > degradation.get("max_p95_ms"):
+            limiting.append("The baseline contained a higher isolated maximum than the degradation window, so representative metrics must be read separately from maximum excursions.")
+        if recovery and recovery.get("available") and recovery.get("remaining_stable_seconds"):
+            limiting.append("Recovery has not yet completed the required stable observation window.")
+        if not scope.get("unaffected_comparison_groups"):
+            limiting.append("Comparison group evidence is limited for this selected event.")
+        for group in scope.get("unaffected_comparison_groups", []):
+            if group.get("target_class") == "gateway_probe" and not group.get("elevated_count"):
+                against_broader.append("Gateway evidence did not show sustained local degradation during the selected window.")
+            elif group.get("sustained_bad_count") == 0:
+                against_broader.append(f"{target_label(group.get('target_class'))} remained below sustained-degradation thresholds.")
+        verification.extend([
+            "Compare affected probe latency from another local client if the issue recurs.",
+            "Check the affected endpoint class against the unaffected comparison group before escalating.",
+            "Continue observation until recovery is confirmed or a renewed anomaly appears.",
+        ])
+    else:
+        supporting.append("No sustained event met the deterministic selection criteria.")
+        limiting.append("Without a selected sustained event, fault-domain interpretation remains limited.")
+        verification.append("Continue collecting telemetry and revisit if sustained bad samples appear.")
+    return {
+        "supporting_evidence": supporting[:6],
+        "limiting_evidence": limiting[:6],
+        "evidence_against_broader_impact": list(dict.fromkeys(against_broader))[:6],
+        "verification_steps": verification[:6],
+    }
+
+
+def operator_brief(selected_event, windows, periods, recovery, attribution):
+    scope = scope_impact(selected_event, windows, periods)
+    ops = operational_state(selected_event, recovery)
+    attribution_label = (attribution or {}).get("attribution_label") if isinstance(attribution, dict) else None
+    likely_domain = attribution_label or "Unknown from available evidence"
+    confidence = selected_event.get("confidence") if selected_event else "high"
+    if selected_event:
+        headline = f"{target_label(selected_event.get('target_class'))} degradation is {ops['state']}."
+        summary = f"The selected event affected {target_label(selected_event.get('target_class')).lower()} with sustained bad evidence. {scope['scope_conclusion']}"
+    else:
+        headline = "No sustained network incident is selected."
+        summary = "Prime Observer did not find a confirmed sustained event in the current deterministic evidence package."
+    argument = evidence_argument(selected_event, windows, periods, scope, recovery)
+    return {
+        "headline": headline,
+        "summary": summary,
+        "affected_scope": scope.get("scope_conclusion"),
+        "unaffected_scope": "; ".join(
+            f"{target_label(item.get('target_class'))}: {item.get('sample_count', 0)} samples"
+            for item in scope.get("unaffected_comparison_groups", [])
+        ) or "No unaffected comparison group is available.",
+        "likely_fault_domain": likely_domain,
+        "confidence": confidence,
+        "operational_state": ops,
+        "recommended_actions": [
+            {
+                "action": "Verify the affected scope before changing configuration.",
+                "reason": "The deterministic evidence separates affected and comparison probe groups.",
+                "expected_observation": "Affected probes remain worse than comparison probes if the scope conclusion holds.",
+                "assessment_change": "If comparison probes degrade too, broaden the fault-domain assessment.",
+            },
+            {
+                "action": ops["recommendation"],
+                "reason": "Recovery state determines whether the operator should monitor, confirm, or close out.",
+                "expected_observation": "Stable healthy samples accumulate until the recovery window completes.",
+                "assessment_change": "A renewed anomaly returns the event to active degradation.",
+            },
+        ],
+        "why_these_actions": [
+            "They test the leading deterministic scope conclusion without destructive changes.",
+            "They preserve the distinction between observed facts and likely interpretation.",
+        ],
+        "supporting_evidence": argument["supporting_evidence"],
+        "limiting_evidence": argument["limiting_evidence"],
+        "conditions_that_change_assessment": [
+            "Affected endpoints change materially.",
+            "Comparison probe groups begin sustained degradation.",
+            "New gateway elevation appears during the same interval.",
+            "Recovery fails or a new anomaly appears before confirmation.",
+        ],
+        "monitoring_guidance": "Watch the selected target class and comparison groups through the recovery window.",
+        "freshness_guidance": "Use the latest telemetry and evidence timestamps to judge whether this assessment reflects the current event state.",
+    }
+
+
 def event_list(events):
     out = []
     for event in events:
@@ -720,6 +1001,12 @@ def build_automatic_investigation(
     periods = legacy_periods(samples, windows)
     timeline = timeline_rows(windows, selected)
     recovery = recovery_progress(selected, samples, telemetry_latest_at)
+    scope = scope_impact(selected, windows, periods)
+    buckets = bucket_rollup(periods)
+    observations = observation_references(observations_projection)
+    episodes = episode_summary(selected, secondary_context, observations)
+    evidence = evidence_argument(selected, windows, periods, scope, recovery)
+    brief = operator_brief(selected, windows, periods, recovery, attribution)
     event_start = periods["during"].get("start")
     event_end = periods["during"].get("end")
     payload = {
@@ -751,7 +1038,12 @@ def build_automatic_investigation(
         ),
         "freshness": freshness(generated_at, telemetry_latest_at, evidence_latest_at),
         "selected_event": selected,
+        "operator_brief": brief,
+        "scope_impact": scope,
         "recovery_progress": recovery,
+        "episode_summary": episodes,
+        "evidence_argument": evidence,
+        "evidence_buckets": buckets,
         "secondary_context": secondary_context,
         "windows": windows,
         "timeline": timeline,
@@ -780,7 +1072,7 @@ def build_automatic_investigation(
             "recovery_stable_window_minutes": RECOVERY_STABLE_WINDOW_MINUTES,
         },
         "target_groups": target_group_summaries(samples),
-        "observation_references": observation_references(observations_projection),
+        "observation_references": observations,
         "events": event_list(events),
         "navigation": {"first_event": None, "last_event": None, "events": {}},
         "event_neighborhoods": [],

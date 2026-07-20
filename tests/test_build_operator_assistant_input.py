@@ -27,6 +27,7 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         self.module.VIZ_DIR = self.viz_dir
         self.module.INVESTIGATION = self.viz_dir / "investigation.json"
         self.module.OUT = self.viz_dir / "operator_assistant_input.json"
+        self.module.STATE_OUT = self.viz_dir / "operator_assistant_generation_state.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -164,7 +165,8 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
 
         payload = self.module.build_from_path(self.module.INVESTIGATION)
 
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["semantic_schema_version"], "operator_assistant_input.v2")
         self.assertEqual(payload["investigation"]["id"], "investigation-1")
         self.assertEqual(payload["attribution"]["current"]["status"], "likely_upstream")
         self.assertEqual(payload["attribution"]["window"]["status"], "inconclusive")
@@ -173,6 +175,8 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         self.assertEqual(payload["environmental_context"]["dns"]["status"], "ok")
         self.assertRegex(payload["input_hash"], r"^[0-9a-f]{64}$")
         self.assertTrue(payload["observations"])
+        self.assertIn("claim_boundaries", payload)
+        self.assertIn("prohibited_claims", payload)
         self.assertEqual(payload["provenance"]["source_producer"], "bin/build_investigation.py")
 
     def test_missing_optional_context_degrades_safely(self):
@@ -348,6 +352,52 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         newer = self.module.build_package(investigation, "viz/investigation.json")
 
         self.assertEqual(older["input_hash"], newer["input_hash"])
+
+    def test_changed_semantic_input_writes_pending_generation_state(self):
+        payload = self.module.build_package(self.investigation_payload(), "viz/investigation.json")
+
+        changed = self.module.write_input_and_pending_state(
+            self.module.OUT,
+            self.module.STATE_OUT,
+            payload,
+            "bin/build_operator_assistant_input.py",
+        )
+
+        self.assertTrue(changed)
+        state = json.loads(self.module.STATE_OUT.read_text())
+        self.assertEqual(state["status"], "pending")
+        self.assertEqual(state["input_hash"], payload["input_hash"])
+        self.assertEqual(state["attempt_count"], 0)
+
+    def test_freshness_only_rebuild_does_not_replace_generation_state(self):
+        investigation = self.investigation_payload()
+        first = self.module.build_package(investigation, "viz/investigation.json")
+        self.module.write_input_and_pending_state(self.module.OUT, self.module.STATE_OUT, first, "test")
+        completed = {"schema_version": 2, "status": "complete", "input_hash": first["input_hash"], "attempt_count": 1}
+        self.module.STATE_OUT.write_text(json.dumps(completed))
+        investigation["generated_at"] = "2026-07-20T05:30:00Z"
+        investigation["dns_context"]["generated_at"] = "2026-07-20T05:29:00Z"
+        second = self.module.build_package(investigation, "viz/investigation.json")
+
+        changed = self.module.write_input_and_pending_state(self.module.OUT, self.module.STATE_OUT, second, "test")
+
+        self.assertFalse(changed)
+        self.assertEqual(json.loads(self.module.STATE_OUT.read_text()), completed)
+
+    def test_semantic_context_change_resets_pending_work(self):
+        investigation = self.investigation_payload()
+        first = self.module.build_package(investigation, "viz/investigation.json")
+        self.module.write_input_and_pending_state(self.module.OUT, self.module.STATE_OUT, first, "test")
+        investigation["internet_conditions_context"]["summary"] = "A material routing disruption is now reported."
+        second = self.module.build_package(investigation, "viz/investigation.json")
+
+        changed = self.module.write_input_and_pending_state(self.module.OUT, self.module.STATE_OUT, second, "test")
+
+        self.assertTrue(changed)
+        state = json.loads(self.module.STATE_OUT.read_text())
+        self.assertEqual(state["status"], "pending")
+        self.assertEqual(state["input_hash"], second["input_hash"])
+        self.assertNotEqual(first["input_hash"], second["input_hash"])
 
 
 if __name__ == "__main__":

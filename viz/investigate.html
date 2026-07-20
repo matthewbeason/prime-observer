@@ -194,112 +194,114 @@
   <div class="page-shell">
     <header class="page-header">
       <div>
-        <h1>Prime Observer Investigation</h1>
-        <div class="subtitle">Review what likely happened, then inspect the deterministic evidence for the selected interval.</div>
+        <h1 id="investigationHeading" tabindex="-1">Prime Observer Investigation</h1>
+        <div class="subtitle">Operator-first diagnosis, recommended actions, scope, timeline, and supporting evidence from local artifacts.</div>
       </div>
-      <span class="pill">Evidence only</span>
+      <span id="modePill" class="pill">Current Investigation</span>
     </header>
 
     <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
     <div id="deepLink" class="status" aria-live="polite" aria-atomic="true" style="display:none;"></div>
 
-    <section id="historySection" class="section">
-      <div class="history-toolbar">
-        <div>
-          <div class="section-kicker">Investigation History</div>
-          <h2>Completed events</h2>
-          <p class="section-note">Immutable event snapshots, newest first. Select an event to review its recorded evidence.</p>
-        </div>
-        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Current Investigation</button>
-      </div>
-      <div id="historyList" class="history-list"><div class="empty-note">Loading investigation history...</div></div>
-    </section>
-
-    <section id="assistantReviewSection" class="section section-hero assistant-review-section">
+    <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Operator Review</div>
-          <h2>What likely happened</h2>
-          <p class="section-note supporting">A derived review of the current evidence package. The deterministic investigation below remains authoritative.</p>
+          <div class="section-kicker">Operator Assessment · Operator Review</div>
+          <h2 id="assistantReviewHeadline">Assessing evidence...</h2>
+          <p id="assistantReviewAssessment" class="assistant-assessment"></p>
         </div>
         <div id="assistantReviewPills" class="pill-group"></div>
       </div>
-      <div class="assistant-callout">
-        <h3>Assessment</h3>
-        <p id="assistantReviewAssessment" class="assistant-assessment"></p>
-        <div id="assistantReviewMaterialLimitations" class="assistant-list"></div>
-      </div>
-      <div class="card assistant-next-steps">
-        <h3>Recommended next steps</h3>
-        <div id="assistantReviewNextSteps"></div>
-      </div>
-      <details class="disclosure" style="margin-top:14px;">
-        <summary>Assessment details <span class="small">Limitations and review provenance</span></summary>
-        <div class="disclosure-body">
-          <div id="assistantReviewProvenance" class="chip-row"></div>
-          <div id="assistantReviewLimitations" class="assistant-list"></div>
+      <div id="operatorQuickFacts" class="card-grid"></div>
+    </section>
+
+    <section id="recommendedActionsSection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Recommended Next Actions</div>
+          <h2>What to do next</h2>
+          <p class="section-note supporting">Prioritized, safe checks generated from the current operator assessment and deterministic boundaries.</p>
         </div>
-      </details>
+      </div>
+      <div id="assistantReviewNextSteps" class="stack"></div>
     </section>
 
     <section id="summarySection" class="section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Investigation Summary</div>
-          <h2>What happened</h2>
+          <div class="section-kicker">Scope And Impact</div>
+          <h2>What is affected</h2>
           <p id="attributionScopeSummary" class="section-note supporting"></p>
         </div>
         <div id="summaryPills" class="pill-group"></div>
       </div>
-      <div class="summary-layout">
-        <div class="stack">
-          <div id="summaryCards" class="card-grid"></div>
-          <div class="panel-grid">
-            <div class="card card-muted">
-              <h3>Episode status</h3>
-              <div id="summaryObservationList" class="summary-list"></div>
-            </div>
-            <div class="card card-muted">
-              <h3>Affected probe groups</h3>
-              <div id="summaryTargetGroups" class="summary-list"></div>
-            </div>
-          </div>
+      <div id="summaryCards" class="card-grid"></div>
+      <div class="panel-grid" style="margin-top:14px;">
+        <div class="card card-muted">
+          <h3>Episode Summary</h3>
+          <div id="summaryObservationList" class="summary-list"></div>
+        </div>
+        <div class="card card-muted">
+          <h3>Comparison Groups</h3>
+          <div id="summaryTargetGroups" class="summary-list"></div>
         </div>
       </div>
     </section>
 
     <section id="timelineSection" class="section">
-      <div class="section-kicker">Timeline</div>
-      <h2>When it happened</h2>
-      <p class="section-note">Automatic investigations use Python-generated baseline, degradation, and recovery rows. Legacy artifacts are shown as compatibility evidence only.</p>
-      <div class="table-block">
-        <h3>Primary Timeline</h3>
-        <div class="wide table-wide">
-          <table id="periodTable"></table>
-        </div>
-      </div>
-      <div class="table-block">
-        <h3>WAN Buckets</h3>
-        <div class="wide table-wide">
-          <table id="bucketTable"></table>
-        </div>
+      <div class="section-kicker">Primary Timeline</div>
+      <h2>Persistence versus excursions</h2>
+      <p class="section-note">Representative metrics show typical phase behavior. Maximum excursions remain visible separately so an isolated baseline spike is not confused with sustained degradation.</p>
+      <div class="wide table-wide">
+        <table id="periodTable"></table>
       </div>
     </section>
 
+    <section id="recoverySection" class="section">
+      <div class="section-kicker">Recovery Progress</div>
+      <h2>Operational state</h2>
+      <div id="recoveryProgressCards" class="card-grid"></div>
+    </section>
+
     <section id="coreEvidenceSection" class="section">
-      <div class="section-kicker">Core Evidence</div>
-      <h2>What supports the current interpretation</h2>
-      <p class="section-note">Deterministic evidence stays grouped by domain so attribution, observations, health signals, and DNS context do not compete as unrelated cards.</p>
+      <div class="section-kicker">Supporting And Limiting Evidence</div>
+      <h2>Why this assessment is reasonable</h2>
       <div class="panel-grid">
-        <div class="card">
-          <h3>Observation References</h3>
-          <div id="observationReferenceList" class="summary-list"></div>
-        </div>
-        <div class="card">
-          <h3>Health And Threshold Evidence</h3>
-          <div id="healthEvidenceList" class="summary-list"></div>
-        </div>
+        <div class="card"><h3>Supporting</h3><div id="supportingEvidenceList" class="summary-list"></div></div>
+        <div class="card"><h3>Limiting Confidence</h3><div id="limitingEvidenceList" class="summary-list"></div></div>
+        <div class="card"><h3>Against Broader Impact</h3><div id="againstBroaderImpactList" class="summary-list"></div></div>
+        <div class="card"><h3>Verification Steps</h3><div id="verificationStepsList" class="summary-list"></div></div>
       </div>
+    </section>
+
+    <section id="bucketSummarySection" class="section">
+      <div class="section-kicker">Condensed Evidence Buckets</div>
+      <h2>Only operationally relevant buckets first</h2>
+      <div id="bucketSummaryCards" class="card-grid"></div>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Show all evidence buckets <span class="small">Stable buckets are collapsed by default</span></summary>
+        <div class="disclosure-body wide table-wide"><table id="bucketTable"></table></div>
+      </details>
+    </section>
+
+    <section id="rawDetailSection" class="section">
+      <div class="section-kicker">Raw Forensic Evidence</div>
+      <h2>Details for deeper inspection</h2>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Assessment provenance <span class="small">Evidence package and model details</span></summary>
+        <div class="disclosure-body">
+          <div id="assistantReviewProvenance" class="chip-row"></div>
+          <div id="assistantReviewLimitations" class="assistant-list"></div>
+        </div>
+      </details>
+      <details class="disclosure">
+        <summary>Observation references <span class="small">Raw deterministic observations</span></summary>
+        <div class="disclosure-body"><div id="observationReferenceList" class="summary-list"></div></div>
+      </details>
+      <details class="disclosure">
+        <summary>Health and thresholds <span class="small">Raw deterministic counts</span></summary>
+        <div class="disclosure-body"><div id="healthEvidenceList" class="summary-list"></div></div>
+      </details>
       <div class="card context-block" style="margin-top:14px;">
         <h3>DNS Context</h3>
         <div id="dnsContext"></div>
@@ -322,10 +324,21 @@
       </div>
     </section>
 
-    <section id="rawDetailSection" class="section">
-      <div class="section-kicker">Raw Detail</div>
-      <h2>What deeper inspection is available</h2>
-      <p class="section-note">Lower-level tables and source metadata remain available, but they move to the end of the page and use disclosure to reduce visual noise during the first pass.</p>
+    <section id="historySection" class="section">
+      <div class="history-toolbar">
+        <div>
+          <div class="section-kicker">Investigation History</div>
+          <h2>Completed events</h2>
+          <p class="section-note">Review prior events to understand earlier symptoms, resolution, and recurring patterns.</p>
+        </div>
+        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Current Investigation</button>
+      </div>
+      <div id="historyList" class="history-list"><div class="empty-note">Loading investigation history...</div></div>
+    </section>
+
+    <section id="forensicTablesSection" class="section">
+      <div class="section-kicker">Forensic Tables</div>
+      <h2>Raw tables</h2>
       <details class="disclosure" open>
         <summary>Investigation Events <span class="small">Deterministic event metadata and navigation</span></summary>
         <div class="disclosure-body wide table-medium">
@@ -461,7 +474,7 @@
         return;
       }
       const validEventsHtml = events.length
-        ? events.map(item => `<button class="history-button" type="button" data-snapshot-path="${fmt(item.snapshot_path)}">
+        ? events.map(item => `<button class="history-button" type="button" data-snapshot-path="${fmt(item.snapshot_path)}" data-event-id="${fmt(item.event_id)}">
             <div class="history-title">${humanizeProbeGroup(item.target_class)} · ${statusLabel(item.severity)} severity</div>
             <div class="history-meta">${shortTime(item.first_anomalous_at)} to ${shortTime(item.recovered_at)}</div>
             <div class="history-meta">${fmt(item.duration, " min")} · ${fmt(item.lifecycle)} · ${fmt((item.affected_targets || []).join(", "))}</div>
@@ -476,6 +489,7 @@
         : [];
       for (const button of historyButtons){
         button.addEventListener("click", () => {
+          history.pushState({snapshotPath: button.dataset.snapshotPath}, "", `?event=${encodeURIComponent(button.dataset.eventId || button.dataset.snapshotPath)}`);
           loadInvestigation(`./${button.dataset.snapshotPath}`, button.dataset.snapshotPath, false).catch(showInvestigationLoadError);
         });
       }
@@ -505,47 +519,44 @@
     }
 
     function renderSummary(data){
-      const requested = data.requested_window || {};
-      const context = data.context_window || {};
-      const episodes = observationReferencesByType(data, "episode");
       const artifact = data.artifact_state || {};
       const freshness = data.freshness || {};
       const selected = data.selected_event || null;
+      const scope = data.scope_impact || {};
+      const episode = data.episode_summary || {};
       const legacy = data.schema_version !== 2;
-      const eventCount = (data.events || []).length;
       const pills = [
         `<span class="pill pill-strong ${legacy ? "tone-watch" : toneForStatus(data.status)}">${legacy ? "Compatibility fallback" : fmt(artifact.label || statusLabel(data.status))}</span>`,
-        `<span class="pill">Generated: ${shortTime(data.generated_at)}</span>`,
-        `<span class="pill">Latest evidence: ${shortTime(freshness.evidence_latest_at)}</span>`,
-        `<span class="pill">Latest telemetry: ${shortTime(freshness.telemetry_latest_at)}</span>`,
+        `<span class="pill">Telemetry: ${shortTime(freshness.telemetry_latest_at)}</span>`,
+        `<span class="pill">Evidence: ${shortTime(freshness.evidence_latest_at)}</span>`,
+        `<span class="pill">Updated: ${shortTime(data.generated_at)}</span>`,
       ];
 
       document.getElementById("summaryPills").innerHTML = pills.join("");
       document.getElementById("attributionScopeSummary").textContent = legacy
         ? "Legacy schema 1 artifact: requested-window evidence is shown without automatic incident semantics."
-        : (artifact.stale_reason || selected?.selection_reason || data.message || "Python generated the current investigation lifecycle and freshness fields.");
+        : (scope.scope_conclusion || data.operator_brief?.affected_scope || data.message || "Python generated the current investigation scope fields.");
       document.getElementById("summaryCards").innerHTML = [
-        renderMetricCard("Selected interval", fmt(requested.duration_minutes, " min"), `${shortTime(requested.start)} to ${shortTime(requested.end)}`, "tone-accent"),
-        renderMetricCard("Artifact state", artifact.label || (legacy ? "Historical investigation" : "—"), artifact.stale_reason || "Lifecycle and freshness are Python generated.", legacy ? "tone-watch" : toneForStatus(data.status)),
-        renderMetricCard("Selected event", selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident", selected ? `${shortTime(selected.first_anomalous_at)} to ${shortTime(selected.last_anomalous_at)}` : (data.message || "No selected event."), selected ? "tone-warn" : "tone-ok"),
-        renderMetricCard("Lifecycle", selected?.lifecycle_state || "none", selected ? `Severity ${fmt(selected.severity)} · confidence ${fmt(selected.confidence)}` : "No confirmed sustained event selected.", selected ? "tone-accent" : "tone-muted"),
-        renderMetricCard("Events", eventCount || "—", eventCount ? "Deterministic events in this investigation." : "No deterministic events recorded.", eventCount ? "tone-watch" : "tone-muted"),
+        renderMetricCard("Affected class", scope.affected_probe_label || (selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident"), (scope.affected_endpoints || []).join(", ") || "No affected endpoint list", selected ? "tone-warn" : "tone-ok"),
+        renderMetricCard("Anomalous samples", fmt(scope.anomalous_samples), `${fmt(scope.sustained_bad_samples)} sustained bad · ${fmt(scope.affected_evidence_buckets)} affected buckets`, "tone-warn"),
+        renderMetricCard("Representative p95", fmt(scope.representative_latency_ms, " ms"), `Maximum excursion ${fmt(scope.maximum_excursion_ms, " ms")} · loss ${fmt(scope.packet_loss_pct, "%")}`, "tone-accent"),
+        renderMetricCard("Recovery state", statusLabel(scope.current_recovery_state), data.operator_brief?.operational_state?.recommendation || "See recovery progress", selected ? "tone-watch" : "tone-muted"),
       ].join("");
 
       document.getElementById("summaryObservationList").innerHTML = [
-        renderSummaryItem(
-          "Episode status",
-          episodes.length ? episodes.map(item => item.state?.label || item.type).join(" · ") : "No overlapping episode references",
-          episodes.length ? `${episodes.length} overlapping episode reference${episodes.length === 1 ? "" : "s"} in the selected interval` : "Episode detail remains available below."
-        ),
+        renderSummaryItem("Consolidated observations", fmt(episode.total_observations_consolidated), `${fmt(episode.sustained_episodes)} sustained episodes · ${fmt(episode.isolated_excursions)} isolated excursions`),
+        renderSummaryItem("Event timing", `${shortTime(episode.event_start)} to ${shortTime(episode.last_anomaly)}`, `Recovery candidate ${shortTime(episode.recovery_candidate)} · confirmed ${shortTime(episode.recovery_confirmation)}`),
+        renderSummaryItem("Summary", episode.summary || "Raw episode references remain available in forensic detail.", ""),
       ].join("");
 
-      document.getElementById("summaryTargetGroups").innerHTML = selected
-        ? renderSummaryItem(
-            humanizeProbeGroup(selected.target_class),
-            (selected.affected_targets || []).join(", ") || "Affected hosts unavailable",
-            `${fmt(selected.raw_bad_count)} raw bad · ${fmt(selected.sustained_bad_count)} sustained bad`
-          )
+      document.getElementById("summaryTargetGroups").innerHTML = (scope.unaffected_comparison_groups || []).length
+        ? scope.unaffected_comparison_groups.map(group => renderSummaryItem(
+            humanizeProbeGroup(group.target_class),
+            `${fmt(group.sample_count)} samples`,
+            group.target_class === "gateway_probe"
+              ? `${fmt(group.elevated_count)} elevated · max ${fmt(group.max_p95_ms, " ms")}`
+              : `${fmt(group.raw_bad_count)} raw bad · ${fmt(group.sustained_bad_count)} sustained bad`
+          )).join("")
         : '<div class="empty-note">No target-group evidence available.</div>';
 
       document.getElementById("summaryNotes").innerHTML = (data.notes || []).length
@@ -560,18 +571,21 @@
     function renderPeriodTable(data){
       if (data.schema_version === 2 && Array.isArray(data.timeline)){
         const rows = data.timeline.map(row => {
-          const metrics = row.supporting_metrics || {};
+          const metrics = row.phase_summary || row.supporting_metrics || {};
           return `<tr class="${toneClass(row.tone)}">
           <td><b>${fmt(row.phase)}</b><div class="small">${shortTime(row.start)} to ${shortTime(row.end)}</div></td>
           <td>${fmt(row.assessment_label)}<div class="small">${fmt(row.assessment_code)}</div></td>
           <td>${fmt(row.affected_probes)}</td>
-          <td>${fmt(row.evidence)}<div class="small">${fmt(row.summary)} · max p95 ${fmt(metrics.max_p95_ms, " ms")}</div></td>
+          <td>${fmt(metrics.typical_p95_ms, " ms")}<div class="small">Representative p95 (median bucket/sample p95)</div></td>
+          <td>${fmt(metrics.sustained_bad_count)} samples / ${fmt(metrics.sustained_bad_bucket_count)} buckets<div class="small">${fmt(row.summary)}</div></td>
+          <td>${fmt(metrics.max_p95_ms, " ms")}<div class="small">Isolated excursions stay separate</div></td>
+          <td>${fmt(metrics.sample_count)}<div class="small">${fmt(metrics.duration_minutes, " min")}</div></td>
           <td>${fmt(row.confidence)}</td>
         </tr>`;
         }).join("");
         document.getElementById("periodTable").innerHTML = `
-          <thead><tr><th>Phase</th><th>Assessment</th><th>Affected probes</th><th>Evidence</th><th>Confidence</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5">No Python-generated timeline rows available.</td></tr>'}</tbody>`;
+          <thead><tr><th>Phase</th><th>Assessment</th><th>Affected probes</th><th>Representative p95</th><th>Persistence</th><th>Maximum</th><th>Samples / duration</th><th>Confidence</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="8">No Python-generated timeline rows available.</td></tr>'}</tbody>`;
         return;
       }
       const rows = ["before","during","after"].map(name => {
@@ -602,6 +616,41 @@
           <th>WAN jitter 95th</th><th>WAN max loss</th><th>WAN raw bad</th><th>WAN sustained bad</th>
           <th>Turbulence buckets</th><th>LAN samples</th><th>LAN median p95</th><th>LAN max p95</th><th>LAN elevated</th>
         </tr></thead><tbody>${rows}</tbody>`;
+    }
+
+    function renderRecoveryProgress(data){
+      const recovery = data.recovery_progress || {};
+      const state = data.operator_brief?.operational_state || {};
+      const section = document.getElementById("recoverySection");
+      section.style.display = recovery.available || state.state ? "block" : "none";
+      document.getElementById("recoveryProgressCards").innerHTML = [
+        renderMetricCard("State", state.label || statusLabel(state.state), state.recommendation || "No recovery guidance available.", toneForStatus(state.state)),
+        renderMetricCard("Healthy time", fmt(Math.floor((recovery.healthy_observation_seconds || 0) / 60), " min"), `Required ${fmt(Math.floor((recovery.required_stable_seconds || 0) / 60), " min")}`, "tone-ok"),
+        renderMetricCard("Remaining", recovery.remaining_stable_seconds === null || recovery.remaining_stable_seconds === undefined ? "—" : fmt(Math.ceil(recovery.remaining_stable_seconds / 60), " min"), `Healthy samples ${fmt(recovery.healthy_samples_since_last_anomaly)}`, "tone-watch"),
+      ].join("");
+    }
+
+    function renderEvidenceArgument(data){
+      const argument = data.evidence_argument || {};
+      const fill = (id, items) => {
+        document.getElementById(id).innerHTML = (items || []).length
+          ? items.map(item => renderSummaryItem("Evidence", item, "")).join("")
+          : '<div class="empty-note">No evidence items available.</div>';
+      };
+      fill("supportingEvidenceList", argument.supporting_evidence || data.operator_brief?.supporting_evidence);
+      fill("limitingEvidenceList", argument.limiting_evidence || data.operator_brief?.limiting_evidence);
+      fill("againstBroaderImpactList", argument.evidence_against_broader_impact);
+      fill("verificationStepsList", argument.verification_steps);
+    }
+
+    function renderBucketSummary(data){
+      const summary = data.evidence_buckets || {};
+      document.getElementById("bucketSummaryCards").innerHTML = [
+        renderMetricCard("Total buckets", fmt(summary.total_buckets), `${fmt(summary.stable_buckets)} stable collapsed by default`, "tone-muted"),
+        renderMetricCard("Sustained", fmt(summary.sustained_degradation_buckets), `${shortTime(summary.affected_time_range?.start)} to ${shortTime(summary.affected_time_range?.end)}`, "tone-warn"),
+        renderMetricCard("Excursions", fmt(summary.isolated_excursion_buckets), "Isolated or intermittent buckets remain separate from sustained degradation.", "tone-watch"),
+        renderMetricCard("Recovery", fmt(summary.recovery_buckets), summary.current_recovery_bucket ? `Current recovery bucket ${shortTime(summary.current_recovery_bucket.start)}` : "No recovery bucket available", "tone-ok"),
+      ].join("");
     }
 
     function renderBucketTable(data){
@@ -863,91 +912,80 @@
     }
 
     function operatorNextStep(step){
-      const actions = {
-        EXTEND_WINDOW: "Extend the investigation by 30 minutes to determine whether the degradation continued or recovered.",
-        CHECK_GATEWAY: "Review gateway latency and loss during the same interval to rule out a local network issue.",
-        COMPARE_RESOLVER_AND_INTERNET: "Compare resolver latency with general internet probes during the same interval to confirm whether the issue was DNS-path-specific.",
-        RECHECK_PROVIDER_CONTEXT: "Check the available provider context again if the degradation recurs.",
-      };
-      const action = actions[step?.id] || String(step?.label || "").trim();
+      const action = String(step?.action || step?.label || "").trim();
       const reason = String(step?.reason || "").trim();
-      if (!action || action.length < 18 || !reason) return null;
-      return {action, reason};
+      if (!action || !reason) return null;
+      return {
+        action,
+        reason,
+        expectedObservation: String(step?.expected_observation || "").trim(),
+        assessmentChange: String(step?.assessment_change || "").trim(),
+      };
     }
 
-    function renderAssistantReview(review, assistantInput){
-      const section = document.getElementById("assistantReviewSection");
-      const currentInputHash = assistantInput && typeof assistantInput === "object" && !Array.isArray(assistantInput)
-        ? assistantInput.input_hash
-        : null;
-      const reviewHash = review && typeof review === "object" && !Array.isArray(review)
-        ? review.input_hash
-        : null;
-      if (
-        !review ||
-        typeof review !== "object" ||
-        Array.isArray(review) ||
-        !review.status ||
-        !isAssistantInputHash(currentInputHash) ||
-        !isAssistantInputHash(reviewHash)
-      ){
-        section.classList.remove("visible");
-        return;
-      }
+    function matchingAssistantReview(review, assistantInput){
+      const currentInputHash = assistantInput && typeof assistantInput === "object" && !Array.isArray(assistantInput) ? assistantInput.input_hash : null;
+      const reviewHash = review && typeof review === "object" && !Array.isArray(review) ? review.input_hash : null;
+      const hasOperatorText = typeof review?.headline === "string" && review.headline.trim() && typeof review?.assessment === "string" && review.assessment.trim();
+      return review && review.status === "ok" && hasOperatorText && isAssistantInputHash(currentInputHash) && reviewHash === currentInputHash ? review : null;
+    }
 
-      const reviewStatus = reviewHash !== currentInputHash
-        ? "stale"
-        : review.status;
+    function deterministicAssessment(data){
+      const brief = data.operator_brief || {};
+      return {
+        source: "deterministic",
+        headline: brief.headline || data.title || "Investigation assessment",
+        assessment: brief.summary || data.message || "Prime Observer generated a deterministic assessment from the available evidence.",
+        likely_fault_domain: brief.likely_fault_domain,
+        affected_scope: brief.affected_scope,
+        healthy_scope: brief.unaffected_scope,
+        confidence: brief.confidence,
+        uncertainty: (brief.limiting_evidence || [])[0] || "Confidence is bounded by the deterministic evidence currently available.",
+        next_steps: brief.recommended_actions || [],
+        evidence: brief.supporting_evidence || [],
+        limitations: brief.limiting_evidence || [],
+        evidence_that_would_change_assessment: brief.conditions_that_change_assessment || [],
+        monitoring_guidance: brief.monitoring_guidance || brief.freshness_guidance,
+      };
+    }
+
+    function renderAssistantReview(review, assistantInput, data){
+      const section = document.getElementById("assistantReviewSection");
       section.classList.add("visible");
+      const matched = matchingAssistantReview(review, assistantInput);
+      const assessment = matched || deterministicAssessment(data || {});
+      document.getElementById("assistantReviewHeadline").textContent = assessment.headline || "Operator assessment";
+      document.getElementById("assistantReviewAssessment").textContent = assessment.assessment || "Prime Observer generated an assessment from deterministic evidence.";
       const pills = [];
-      if (reviewStatus === "ok"){
-        pills.push(renderChip("Confidence", fmt(review.confidence || "unavailable"), toneForStatus(review.status)));
-      } else {
-        pills.push(renderChip("Status", statusLabel(reviewStatus), toneForStatus(reviewStatus)));
-      }
+      pills.push(renderChip("Source", matched ? "LLM interpretation" : "Deterministic fallback", matched ? "tone-accent" : "tone-ok"));
+      pills.push(renderChip("Confidence", fmt(assessment.confidence || "available"), toneForStatus(matched ? "ok" : "available")));
       document.getElementById("assistantReviewPills").innerHTML = pills.join("");
-      const provenance = [renderChip("Requested model", fmt(review.requested_model), "tone-accent")];
-      if (review.provider_model){
-        provenance.push(renderChip("Provider model", fmt(review.provider_model), "tone-accent"));
+      document.getElementById("operatorQuickFacts").innerHTML = [
+        renderMetricCard("Likely fault domain", assessment.likely_fault_domain || "Bounded by evidence", "Inference from deterministic facts", "tone-accent"),
+        renderMetricCard("Affected", assessment.affected_scope || "See scope section", "Python-owned scope conclusion", "tone-warn"),
+        renderMetricCard("Healthy comparison", assessment.healthy_scope || "See comparison groups", "Evidence that narrows impact", "tone-ok"),
+        renderMetricCard("Uncertainty", assessment.uncertainty || "No material caveat supplied", "Shown so confidence is calibrated", "tone-watch"),
+      ].join("");
+      const provenance = [renderChip("Analysis source", matched ? "Generated from evidence package" : "Deterministic fallback", matched ? "tone-accent" : "tone-ok")];
+      if (matched?.requested_model){
+        provenance.push(renderChip("Model", fmt(matched.requested_model), "tone-accent"));
       }
       document.getElementById("assistantReviewProvenance").innerHTML = provenance.join("");
-
-      const assessment = reviewStatus === "stale"
-        ? "A previous Operator Assistant review exists, but it does not match the current evidence package and is hidden."
-        : review.status === "ok"
-          ? review.assessment
-          : (review.reason || "Operator Assistant review is unavailable.");
-      document.getElementById("assistantReviewAssessment").textContent = assessment || "Operator Assistant review is unavailable.";
-
-      const materialLimitations = reviewStatus === "ok"
-        ? (review.limitations || []).filter(isMaterialLimitation)
-        : [];
-      document.getElementById("assistantReviewMaterialLimitations").innerHTML = materialLimitations
-        .map(item => renderAssistantListItem(materialLimitationText(item))).join("");
-
       const limitationItems = [];
-      if (review.note){
-        limitationItems.push(renderAssistantListItem(review.note));
+      if (assessment.note){
+        limitationItems.push(renderAssistantListItem(assessment.note));
       }
-      for (const item of (reviewStatus === "ok" ? (review.limitations || []).filter(item => !isMaterialLimitation(item)) : [])){
+      for (const item of (assessment.limitations || [])){
         limitationItems.push(renderAssistantListItem(item));
-      }
-      if (reviewStatus === "stale"){
-        limitationItems.push(renderAssistantListItem("Assistant artifact hash does not match the current investigation evidence package."));
-      }
-      if (review.reason && review.status !== "ok"){
-        limitationItems.push(renderAssistantListItem(review.reason));
       }
       document.getElementById("assistantReviewLimitations").innerHTML = limitationItems.length
         ? limitationItems.join("")
         : '<div class="empty-note">No additional limitations reported.</div>';
 
-      const nextSteps = reviewStatus === "ok"
-        ? (review.next_steps || []).map(operatorNextStep).filter(Boolean)
-        : [];
+      const nextSteps = (assessment.next_steps || []).map(operatorNextStep).filter(Boolean);
       document.getElementById("assistantReviewNextSteps").innerHTML = nextSteps.length
-        ? nextSteps.map(step => `<div class="assistant-next-step"><div class="assistant-next-step-title">${step.action}</div><div class="summary-detail">Why: ${step.reason}</div></div>`).join("")
-        : '<div class="empty-note">No specific next step is available.</div>';
+        ? nextSteps.map((step, idx) => `<div class="card assistant-next-step"><div class="assistant-next-step-title">${idx + 1}. ${step.action}</div><div class="summary-detail">Why: ${step.reason}</div><div class="summary-detail">Expected: ${fmt(step.expectedObservation)}</div><div class="summary-detail">Changes assessment if: ${fmt(step.assessmentChange)}</div></div>`).join("")
+        : '<div class="empty-note">Continue observation and review deterministic evidence if conditions change.</div>';
     }
 
     function investigationLoadErrorMessage(err){
@@ -966,10 +1004,14 @@
     function renderInvestigation(data, sourceLabel, isCurrent){
       const status = document.getElementById("status");
       status.classList.remove("error");
-      status.textContent = `Loaded ${sourceLabel}`;
+      status.textContent = isCurrent ? "Telemetry current · current investigation loaded" : `Historical Investigation · Loaded ${sourceLabel}`;
+      document.getElementById("modePill").textContent = isCurrent ? "Current Investigation" : "Historical Investigation";
       document.getElementById("environmentalContextSection").style.display = "none";
       renderSummary(data);
       renderPeriodTable(data);
+      renderRecoveryProgress(data);
+      renderEvidenceArgument(data);
+      renderBucketSummary(data);
       renderBucketTable(data);
       renderObservationReferenceList(data);
       renderHealthEvidence(data);
@@ -983,7 +1025,9 @@
         document.getElementById("environmentalContextSection").style.display = "none";
       }
       renderSources(data);
-      renderAssistantReview(isCurrent ? assistantReviewArtifact : null, isCurrent ? assistantInputArtifact : null);
+      renderAssistantReview(isCurrent ? assistantReviewArtifact : null, isCurrent ? assistantInputArtifact : null, data);
+      const heading = document.getElementById("investigationHeading");
+      if (heading && typeof heading.focus === "function") heading.focus({preventScroll: true});
     }
 
     async function loadInvestigation(url, sourceLabel, isCurrent){
@@ -1009,10 +1053,31 @@
       const currentButton = document.getElementById("currentInvestigationButton");
       if (typeof currentButton.addEventListener === "function"){
         currentButton.addEventListener("click", () => {
+          history.pushState({}, "", window.location.pathname);
           loadInvestigation(INVESTIGATION_URL, "investigation.json", true).catch(showInvestigationLoadError);
         });
       }
-      await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get("event");
+      const event = eventId && catalog?.events?.find(item => item.event_id === eventId);
+      if (event?.snapshot_path){
+        await loadInvestigation(`./${event.snapshot_path}`, event.snapshot_path, false);
+      } else {
+        await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
+      }
+    }
+
+    if (typeof window.addEventListener === "function"){
+      window.addEventListener("popstate", () => {
+        const params = new URLSearchParams(window.location.search);
+        const eventId = params.get("event");
+        const button = eventId ? Array.from(document.querySelectorAll(".history-button")).find(item => item.dataset.eventId === eventId) : null;
+        if (button){
+          loadInvestigation(`./${button.dataset.snapshotPath}`, button.dataset.snapshotPath, false).catch(showInvestigationLoadError);
+        } else {
+          loadInvestigation(INVESTIGATION_URL, "investigation.json", true).catch(showInvestigationLoadError);
+        }
+      });
     }
 
     function showInvestigationLoadError(err){

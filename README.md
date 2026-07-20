@@ -54,16 +54,19 @@ Prime Observer is more opinionated:
 - Optional integrations fail safely.
 - Evidence remains the source of truth for measured facts.
 - Observation projection is the source of truth for deterministic interpretation that Prime Observer owns.
+- OpenRouter-backed Operator Assistant output is the primary operator-facing interpretation when it is valid for the current evidence package.
+- A deterministic Operator Assessment remains available when a safe current LLM result is unavailable.
 
 No cloud backend, database, or heavy observability stack is required.
 
 ## Evidence Model
 
-Prime Observer now separates four concerns:
+Prime Observer now separates five concerns:
 
 - Evidence: measured telemetry rows, generated factual summaries, and source-file references.
 - Observation: deterministic Prime Observer conclusions derived from Evidence, such as current attribution and episode state.
 - Investigation: historical evidence packages that organize Evidence and overlapping Observations for a requested window.
+- Interpretation: an OpenRouter-backed operator narrative that explains likely meaning, uncertainty, and safe next actions from deterministic evidence.
 - Projection: local JSON artifacts consumed by the dashboard and investigation viewer.
 
 This keeps Prime Observer evidence-first while reducing browser-side reasoning drift. The dashboard is increasingly a projection consumer rather than the sole reasoning engine.
@@ -116,8 +119,9 @@ longer automatically overrides WAN evidence.
 
 Prime Observer also records factual target classes so summaries can distinguish
 general internet probes, resolver probes, and the local gateway. These classes
-are evidence labels only. Core Signal remains responsible for interpretation,
-recommendations, and higher-level meaning.
+are evidence labels only. The Operator Assistant may interpret their likely
+meaning when its output is generated from a matching evidence package, but it
+must not contradict deterministic attribution, scope, or lifecycle fields.
 
 ### Sustained Bad Moments
 
@@ -280,7 +284,7 @@ viz/investigation.json
 viz/investigate.html
 ```
 
-Operator Assistant evidence package prototype:
+Operator Assistant evidence package:
 
 ```text
 viz/investigation.json
@@ -292,16 +296,22 @@ bin/build_operator_assistant_input.py
 viz/operator_assistant_input.json
 ```
 
-Operator Assistant review prototype:
+Operator Assistant interpretation:
 
 ```text
 viz/operator_assistant_input.json
+        |
+        +--> viz/operator_assistant_generation_state.json: pending
+        |
+        v
+bin/run_operator_assistant_worker.py
         |
         v
 bin/build_operator_assistant_output.py
         |
         v
 viz/operator_assistant_output.json
+        +--> viz/operator_assistant_generation_state.json: complete/retry_wait/failed
         |
         v
 viz/investigate.html
@@ -312,9 +322,10 @@ Projection roles:
 - `viz/latest.csv` remains the dashboard telemetry window and factual chart input.
 - `viz/network_attribution.json` remains the backward-compatible legacy export.
 - `viz/observations.json` is the authoritative Observation projection for deterministic attribution and episode semantics owned by Prime Observer.
-- `viz/investigation.json` organizes factual evidence and additive Observation references for a requested historical window.
-- `viz/operator_assistant_input.json` is a compact deterministic evidence package derived from `viz/investigation.json` for future assistant interpretation experiments.
-- `viz/operator_assistant_output.json` is an additive local review artifact derived from `viz/operator_assistant_input.json` for operator review in the investigation page.
+- `viz/investigation.json` organizes factual evidence, Python-owned operator fallback fields, scope, timeline metrics, evidence arguments, and additive Observation references.
+- `viz/operator_assistant_input.json` is a compact deterministic evidence package derived from `viz/investigation.json` for assistant interpretation.
+- `viz/operator_assistant_output.json` is the last valid OpenRouter-backed operator interpretation for a matching evidence package.
+- `viz/operator_assistant_generation_state.json` tracks pending, current, failed, and retry provenance without replacing valid interpretation output.
 
 ### Key Files
 
@@ -352,10 +363,10 @@ Projection roles:
   Generated local APS Power Infrastructure summary for dashboard context. If APS data is unavailable or malformed, the script writes an `unavailable` artifact instead of failing the dashboard.
 
 - `bin/build_investigation.py`
-  Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. The output remains evidence-first and does not move Core Signal interpretation into Prime Observer. It also updates a generated investigation catalog by default.
+  Builds a local read-only investigation JSON for a historical time window using existing telemetry files and additive Observation references. It also updates a generated investigation catalog by default.
 
 - `viz/investigation.json`
-  Generated local investigation evidence for the current automatic event or a manually requested window. The automatic current artifact is mutable and uses `artifact_type: "current_investigation"`. Metadata is additive and includes target labels/classes, deterministic event navigation, factual nearby-event discovery, overlapping Observation references from the current projection when available, and optional copied provider-specific context such as local DNS summary or Internet Conditions evidence snapshots.
+  Generated local investigation evidence for the current automatic event or a manually requested window. The automatic current artifact is mutable and uses `artifact_type: "current_investigation"`. Schema 2 includes Python-owned `operator_brief`, `scope_impact`, `episode_summary`, `evidence_argument`, `evidence_buckets`, `recovery_progress`, and corrected phase summaries that distinguish representative latency from maximum excursions.
 
 - `viz/investigations/<event-id>.json`
   Immutable local schema 2 snapshot written once when an automatic event completes. Snapshots use `artifact_type: "completed_investigation_snapshot"`, `immutable: true`, and minimal generator metadata. Active and recovering events do not write these files, and later transform cycles do not mutate an existing snapshot. Snapshot publication is atomic and write-once; malformed existing files are preserved as evidence but excluded from valid history.
@@ -367,22 +378,34 @@ Projection roles:
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
 
 - `bin/build_operator_assistant_input.py`
-  Builds a compact deterministic evidence package from `viz/investigation.json` for future operator-assistant interpretation experiments. The output includes its producer-generated `input_hash`, stays bounded, evidence-only, and additive, and does not call any model or change Prime Observer's existing investigation contract.
+  Builds a compact deterministic evidence package from `viz/investigation.json` for operator-assistant interpretation. The output includes event identity, lifecycle, scope, unaffected comparison groups, thresholds, counts, representative and maximum phase metrics, attribution, confidence, external context, contradictory and missing evidence, claim boundaries, safe diagnostic categories, and prohibited claims.
 
 - `viz/operator_assistant_input.json`
-  Generated local operator-assistant evidence package. It preserves requested-window metadata, current and window attribution scope, overlapping episode observations, bounded during-window evidence summaries, and optional environmental-context summaries without copying the full investigation artifact.
+  Generated local operator-assistant evidence package. Its `input_hash` is computed over normalized semantic evidence so freshness-only rebuilds do not churn provider requests.
+
+- `bin/run_operator_assistant_worker.py`
+  Consumes pending semantic input asynchronously. It exits calmly when no work is due, respects cross-run retry timing and terminal failure, suppresses duplicate provider requests with the generation lock, and delegates OpenRouter requests, validation, and output publication to the existing output producer.
 
 - `bin/build_operator_assistant_output.py`
-  Explicitly builds a fresh local OpenRouter-backed review artifact from `viz/operator_assistant_input.json`. It composes the current Operator Charter, evidence package, and response schema into the model prompt. Successful-output reuse is temporarily disabled during prompt and charter refinement. The producer writes a bounded unavailable artifact when the charter or input is missing, OpenRouter is not configured, or the provider response is invalid.
+  Builds a local OpenRouter-backed interpretation artifact from `viz/operator_assistant_input.json`. It composes the Operator Charter, evidence package, and response schema into the model prompt. A matching valid output is reused by default; `--force` requests an explicit refresh. Provider/configuration/validation failures update `viz/operator_assistant_generation_state.json` and never overwrite a valid prior output.
+
+- `launchd/com.mbeason.prime-observer.operator-assistant.plist`
+  Runs the worker at load and every 60 seconds without `KeepAlive`. It uses explicit local paths, writes to the ignored `logs/` directory, and contains no secrets.
+
+- `docs/operator-assistant-worker.md`
+  Documents worker state transitions, retries, duplicate suppression, configuration, troubleshooting, and proposed LaunchAgent installation commands.
 
 - `docs/operator-charter.md`
   Defines the model-independent communication contract for Operator Assistant interpretation. Prime Observer determines evidence; the charter keeps evidence-first language, uncertainty, and engineering tone consistent when models change.
 
 - `viz/operator_assistant_output.json`
-  Generated local operator-assistant review artifact. It includes provenance such as `status`, `input_hash`, requested model, returned provider model when available, and any provider usage metadata. It stays secondary to Prime Observer evidence and is rendered only as a clearly non-authoritative review panel in `viz/investigate.html`.
+  Generated local operator-assistant interpretation artifact. It includes `headline`, assessment narrative, affected and healthy scope, likely fault domain, confidence, uncertainty, supporting and limiting evidence, prioritized next steps, monitoring guidance, and provenance. It is published only after structure validation and input-hash match.
+
+- `viz/operator_assistant_generation_state.json`
+  Generated local provenance for pending/current/failed generation, including input hash, requested model, attempts, last error category, next retry time, and output validation result. Provider failure details live here, not as the main operator experience.
 
 - `viz/investigate.html`
-  Static evidence view for the current `viz/investigation.json` and immutable completed-event history, with an additive local-only Operator Assistant review panel for the current investigation when `viz/operator_assistant_output.json` is present.
+  Static operator investigation tool for current and immutable historical events. It renders a primary Operator Assessment from matching LLM output when available, otherwise from deterministic `operator_brief`, followed by recommended actions, scope, timeline, recovery, structured evidence, condensed buckets, forensic details, URL-addressable history, and secondary provenance. It never calls OpenRouter.
 
 - `viz/index.html`
   Static D3 dashboard. Loads local CSV and JSON files with `cache: "no-store"` and renders the observability UI.
@@ -449,6 +472,7 @@ This refreshes:
 - write-once completed snapshots under `viz/investigations/`
 - generated `viz/investigation_catalog.json`
 - `viz/operator_assistant_input.json` when deterministic investigation semantics change
+- `viz/operator_assistant_generation_state.json` when assistant generation is pending
 
 If using NextDNS, generate the optional DNS summary:
 
@@ -470,21 +494,21 @@ python3 bin/fetch_aps_power_context.py
 
 For automated macOS refresh of the scheduled optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context, Cloudflare Radar Internet Conditions, and APS Power Infrastructure context without storing tokens in the plist.
 
-To refresh the local Operator Assistant artifacts for the current `viz/investigation.json`:
+To refresh the local Operator Assistant artifacts manually for the current `viz/investigation.json`:
 
 ```bash
 python3 bin/build_operator_assistant_input.py
-python3 bin/build_operator_assistant_output.py
+python3 bin/run_operator_assistant_worker.py
 ```
 
-`bin/build_operator_assistant_output.py` can read `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from the process environment or a repo-local `.env.openrouter` file. If no model is configured, it defaults to `google/gemini-3.5-flash`. For this phase, reviews are generated only by explicitly running this command; each valid execution makes a fresh OpenRouter request. The scheduled optional-context wrapper still rebuilds `operator_assistant_input.json`, but it does not run the output producer or call OpenRouter. Successful-output reuse is temporarily disabled during prompt and charter refinement. The input hash remains an artifact-freshness guard for the browser, not a provider-call reuse key.
+The tracked LaunchAgent can run the worker automatically at load and every 60 seconds; installation is documented in `docs/operator-assistant-worker.md` and is not performed by repository setup. The worker only acts on pending or due retry state. A matching completed input hash is not regenerated, and freshness-only input rebuilds do not create work.
 
-Safe reuse may later be restored with a request fingerprint that includes the evidence input hash, requested model, Operator Charter content or version, prompt template or version, and response schema version. That fingerprint is not implemented in this phase.
+`bin/build_operator_assistant_output.py` remains available for direct troubleshooting. It can read `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from the process environment or a repo-local `.env.openrouter` file. If no model is configured, it defaults to `google/gemini-3.5-flash`. A matching valid output is reused by default to avoid duplicate provider calls; pass `--force` to request a fresh interpretation for the same evidence hash. Provider/configuration/validation failures are recorded in `viz/operator_assistant_generation_state.json` and do not replace a valid prior output.
 
 Every new request composes `docs/operator-charter.md` + the deterministic
 evidence package + the response schema. Prime Observer owns the facts and
 deterministic observations; the charter governs how a selected model
-communicates its non-authoritative interpretation. Models may change without
+communicates its primary operator-facing interpretation. Models may change without
 changing that operator communication standard.
 
 Generate a historical investigation:
@@ -503,7 +527,7 @@ Open the investigation view through the local server, not directly from disk.
 Direct `file://` access can prevent the browser from loading
 `investigation.json`.
 
-When present, the investigation page loads `viz/operator_assistant_input.json` and `viz/operator_assistant_output.json` and renders a clearly labeled local review panel only when their producer-generated `input_hash` values match. Prime Observer evidence remains authoritative. The browser does not hash or reconstruct evidence, and the page remains usable when either assistant artifact is missing, unavailable, malformed, or stale.
+When present, the investigation page loads `viz/operator_assistant_input.json` and `viz/operator_assistant_output.json` and renders matching valid OpenRouter interpretation as the primary Operator Assessment. If no safe current LLM output exists, it renders the deterministic `operator_brief` fallback instead. Prime Observer evidence remains authoritative. The browser does not hash or reconstruct evidence, does not call OpenRouter, and does not expose provider failure as the main product experience.
 
 See `docs/investigation-workflow.md` for details.
 

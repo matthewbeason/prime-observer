@@ -73,6 +73,9 @@ Stage ownership:
   replacing stable contracts casually.
 - Graceful degradation: optional providers write usable unavailable states
   instead of breaking the dashboard.
+- Failure hiding for operator interpretation: provider/configuration failures are
+  recorded in generation state, while the Investigation page renders either a
+  matching valid LLM interpretation or deterministic fallback assessment.
 - Optional providers: NextDNS and Cloudflare Radar are summary-only and
   fail-safe.
 - Bounded schemas: artifacts stay small, explicit, and tied to Prime Observer's
@@ -190,9 +193,11 @@ Stage ownership:
   evidence. Schema 1 manual mode preserves requested-window historical evidence.
 - Required schema 2 fields: `schema_version`, `mode`, `generated_at`, `id`,
   `title`, `status`, `artifact_state`, `freshness`, `selected_event`,
-  `secondary_context`, `windows`, `timeline`, `periods`, `thresholds`,
-  `target_groups`, `observation_references`, `events`, `timeline_samples`,
-  `sources`, `provenance`, `notes`
+  `operator_brief`, `scope_impact`, `recovery_progress`, `episode_summary`,
+  `evidence_argument`, `evidence_buckets`, `secondary_context`, `windows`,
+  `timeline`, `periods`, `thresholds`, `target_groups`,
+  `observation_references`, `events`, `timeline_samples`, `sources`,
+  `provenance`, `notes`
 - Required schema 1/manual fields: `schema_version`, `mode`, `generated_at`,
   `id`, `title`, `status`, `artifact_state`, `input`, `requested_window`,
   `context_window`, `event_window`, `thresholds`, `sources`, `target_groups`,
@@ -215,6 +220,12 @@ the artifact is current, stale, historical, active, recovering, completed, or a
 no-incident package. `freshness` reports generated, latest telemetry, and latest
 evidence timestamps. A completed event can be current when it was generated from
 the latest transform telemetry.
+
+Automatic timeline rows include `phase_summary` so the renderer can show
+representative p95, sustained-bad samples and buckets, phase duration, sample
+count, and maximum excursions separately. A stable baseline with one high
+isolated maximum must not be presented as worse than a sustained degradation
+phase.
 
 ### `viz/investigations/<event-id>.json`
 
@@ -278,16 +289,21 @@ historical artifacts should pass a unique `--out` path.
 ### `viz/operator_assistant_input.json`
 
 - Producer: `bin/build_operator_assistant_input.py`
-- Consumers: `bin/build_operator_assistant_output.py` and
-  `viz/investigate.html` for renderer-only current-hash comparison
+- Consumers: `bin/run_operator_assistant_worker.py`,
+  `bin/build_operator_assistant_output.py`, and `viz/investigate.html` for
+  renderer-only current-hash comparison
 - Purpose: compact deterministic evidence package derived from
-  `viz/investigation.json` for bounded operator-assistant interpretation tests.
+  `viz/investigation.json` for bounded operator-assistant interpretation.
   Schema 2 inputs prefer `selected_event`, `windows`, `timeline`, `freshness`,
   and `artifact_state`; schema 1 inputs fall back to `requested_window`,
   `periods.during`, and existing observation references.
-- Required fields: top-level `schema_version`, `generated_at`, `input_hash`,
-  `investigation`, `observations`, `attribution`, `episode`, `evidence`,
-  `environmental_context`, `limitations`, and `provenance`
+- Required fields: top-level `schema_version`, `semantic_schema_version`,
+  `generated_at`, `input_hash`, `investigation`, `selected_event`,
+  `operator_brief`, `scope_impact`, `recovery_progress`, `episode_summary`,
+  `evidence_argument`, `phase_summaries`, `evidence_buckets`, `observations`,
+  `attribution`, `episode`, `evidence`, `environmental_context`,
+  `claim_boundaries`, `prohibited_claims`,
+  `recommended_safe_diagnostic_categories`, `limitations`, and `provenance`
 - Optional fields: additive provider details inside `environmental_context`
 - Unavailable behavior: if `viz/investigation.json` is missing or unreadable,
   the producer still writes a valid minimal package with empty evidence and
@@ -301,31 +317,58 @@ historical artifacts should pass a unique `--out` path.
 
 - Producer: `bin/build_operator_assistant_output.py`
 - Consumers: `viz/investigate.html`
-- Purpose: local operator-assistant review artifact derived from
+- Purpose: local operator-assistant interpretation artifact derived from
   `viz/operator_assistant_input.json`
 - Required fields: top-level `schema_version`, `generated_at`, `status`,
-  `provider`, `input_hash`, `requested_model`, `source_file`, `assessment`,
-  `confidence`, `evidence`, `limitations`, `next_steps`, and `note`
+  `provider`, `input_hash`, `requested_model`, `source_file`, `headline`,
+  `assessment`, `what_is_happening`, `affected_scope`, `healthy_scope`,
+  `likely_fault_domain`, `confidence`, `uncertainty`, `evidence`,
+  `limitations`, `next_steps`, `evidence_that_would_change_assessment`,
+  `monitoring_guidance`, and `note`
 - Optional fields: `provider_model`, `reason`, `usage`, and
   `provider_response_id`
-- Unavailable behavior: the producer writes an explicit `unavailable` artifact
-  when the Operator Charter or input artifact is missing, OpenRouter is not
-  configured, the request fails, or the provider response is invalid
+- Unavailable behavior: the producer does not publish an unavailable artifact
+  over a valid prior output. It records failure in
+  `viz/operator_assistant_generation_state.json`; when no valid output exists,
+  the browser renders deterministic fallback from `viz/investigation.json`.
 - Prompt contract: the producer composes `docs/operator-charter.md`, the
   deterministic evidence package, and the unchanged response schema; model
   selection does not redefine operator communication behavior
-- Execution behavior: reviews are currently generated only by explicitly
-  running `python3 bin/build_operator_assistant_output.py`; every valid run
-  requests a fresh review and replaces the prior output artifact
-- Reuse behavior: successful-output reuse is temporarily disabled during prompt
-  and Operator Charter refinement; `input_hash` remains for browser artifact
-  freshness and mismatch protection, not provider-call reuse
-- Future reuse: safe reuse may later use a request fingerprint containing the
-  evidence input hash, requested model, Operator Charter content or version,
-  prompt template or version, and response schema version; it is not implemented
-  in this phase
+- Execution behavior: a matching valid output is reused by default; `--force`
+  requests a new provider call for the same input hash.
+- Reuse behavior: safe reuse requires matching input hash, valid output shape,
+  and matching requested model. Unsafe stale output is not presented as current.
 - Authoritative: no; Prime Observer evidence and deterministic observations
   remain authoritative
+- Generated: yes
+- Should be committed: no
+
+### `viz/operator_assistant_generation_state.json`
+
+- Producers: `bin/transform_latest.py` and
+  `bin/build_operator_assistant_input.py` for pending state;
+  `bin/run_operator_assistant_worker.py` for generating, retry-wait, complete,
+  duplicate-in-progress, and terminal failed state; the explicit output producer
+  may also write direct-run provenance
+- Consumers: `bin/run_operator_assistant_worker.py` and operator/provenance
+  tooling; not primary UI content
+- Purpose: atomic generated provenance and scheduling state for asynchronous
+  assistant generation without overwriting valid interpretation output
+- Required fields: top-level `schema_version`, `status`, `provider`,
+  `input_hash`, `requested_at`, `updated_at`, and `attempt_count`
+- Optional fields: `requested_model`, `provider_model`, `started_at`,
+  `completed_at`, `next_retry_at`, `last_error_category`, `last_error`,
+  `output_input_hash`, `output_validation_result`, `worker_id`, `requested_by`,
+  and `reason`
+- State behavior: semantic hash change resets to `pending`; due work or active
+  lock ownership uses `generating`; transient failure moves to `retry_wait`;
+  valid output moves to `complete`; exhausted or persistent failure moves to
+  `failed`
+- Concurrency behavior: an exclusive generated lock suppresses duplicate provider
+  requests and may be replaced after the existing 900-second stale timeout
+- Unavailable behavior: if missing, the Investigation page still renders from
+  `viz/investigation.json` and any valid matching assistant output
+- Authoritative: yes, for assistant generation provenance only
 - Generated: yes
 - Should be committed: no
 
@@ -349,11 +392,12 @@ historical artifacts should pass a unique `--out` path.
 - `viz/operator_assistant_input.json` is a compact downstream evidence package,
   not a replacement for `viz/investigation.json`, `viz/observations.json`, or
   any authoritative Prime Observer artifact.
-- `viz/operator_assistant_output.json` is a derived review artifact, not a
-  source of telemetry truth, attribution truth, or deterministic Prime Observer
-  semantics. The browser should only present an assistant assessment as current
-  when its `input_hash` matches the producer-generated `input_hash` in
-  `viz/operator_assistant_input.json`.
+- `viz/operator_assistant_output.json` is derived interpretation, not a source of
+  telemetry truth, attribution truth, or deterministic Prime Observer semantics.
+  The browser presents it as primary operator interpretation only when its
+  `input_hash` matches the producer-generated `input_hash` in
+  `viz/operator_assistant_input.json`; otherwise it renders deterministic
+  fallback without showing provider failure as the product experience.
 - The browser consumes artifacts and renders views, but it does not create the
   primary semantic meaning Prime Observer owns.
 

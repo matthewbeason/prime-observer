@@ -35,6 +35,7 @@ from investigation_model import (
     write_if_changed as write_investigation_if_changed,
 )
 from build_operator_assistant_input import build_from_path as build_assistant_input_from_path
+from build_operator_assistant_input import pending_generation_state
 from build_operator_assistant_input import write_json as write_assistant_input_json
 
 BASE = Path(__file__).resolve().parents[1]
@@ -46,6 +47,7 @@ OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
 DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
+OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -1035,6 +1037,15 @@ def main():
     if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
         assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
         write_assistant_input_json(OPERATOR_ASSISTANT_INPUT_OUT, assistant_input)
+        write_json_atomic(
+            OPERATOR_ASSISTANT_GENERATION_STATE_OUT,
+            pending_generation_state(
+                assistant_input.get("input_hash"),
+                "bin/transform_latest.py",
+                "semantic evidence changed" if assistant_semantic_changed else "assistant input missing",
+                requested_at=now.isoformat(),
+            ),
+        )
 
     print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")

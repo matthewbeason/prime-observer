@@ -10,122 +10,115 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def setUpClass(cls):
         cls.html = (ROOT / "viz" / "investigate.html").read_text()
 
-    def test_investigation_view_uses_narrative_section_order(self):
+    def test_operator_first_section_order(self):
         section_ids = [
-            'id="historySection"',
             'id="assistantReviewSection"',
+            'id="recommendedActionsSection"',
             'id="summarySection"',
             'id="timelineSection"',
+            'id="recoverySection"',
             'id="coreEvidenceSection"',
-            'id="environmentalContextSection"',
+            'id="bucketSummarySection"',
             'id="rawDetailSection"',
+            'id="historySection"',
+            'id="forensicTablesSection"',
         ]
         indexes = [self.html.index(section_id) for section_id in section_ids]
         self.assertEqual(indexes, sorted(indexes))
-        self.assertIn("Investigation Summary", self.html)
-        self.assertIn("Operator Review", self.html)
-        self.assertIn("Timeline", self.html)
-        self.assertIn("Core Evidence", self.html)
-        self.assertIn("Environmental Context", self.html)
-        self.assertIn("Raw Detail", self.html)
 
-    def test_investigation_view_exposes_presentation_only_status_and_chip_helpers(self):
-        self.assertIn('id="attributionScopeSummary"', self.html)
-        self.assertIn("function statusLabel(value)", self.html)
-        self.assertIn("function toneForStatus(value)", self.html)
-        self.assertIn("function toneClass(value)", self.html)
-        self.assertIn("function renderChip(label, value, tone = \"tone-muted\")", self.html)
-        self.assertNotIn("function attributionScopeSentence", self.html)
-        self.assertNotIn("function affectedTargetGroups", self.html)
-        self.assertNotIn("function toneForObservationState", self.html)
+    def test_primary_page_uses_operator_language(self):
+        for text in (
+            "Operator Assessment",
+            "Recommended Next Actions",
+            "Scope And Impact",
+            "Primary Timeline",
+            "Recovery Progress",
+            "Supporting And Limiting Evidence",
+            "Condensed Evidence Buckets",
+            "Raw Forensic Evidence",
+            "Investigation History",
+        ):
+            self.assertIn(text, self.html)
+        self.assertNotIn("Artifact state", self.html)
+        self.assertNotIn("Episode status", self.html)
 
-    def test_operator_first_wording_replaces_ambiguous_attribution_labels(self):
-        self.assertIn("Artifact state", self.html)
-        self.assertIn("Selected event", self.html)
-        self.assertIn("Lifecycle", self.html)
-        self.assertNotIn('renderMetricCard("Investigation window"', self.html)
-        self.assertNotIn('renderMetricCard("Current attribution"', self.html)
-        self.assertNotIn('renderMetricCard("Window attribution"', self.html)
+    def test_failure_language_is_not_primary_assessment_content(self):
+        self.assertNotIn("Operator Assistant review is unavailable", self.html)
+        self.assertNotIn("does not match the current evidence package and is hidden", self.html)
+        self.assertNotIn("Provider error", self.html)
+        self.assertIn("Deterministic fallback", self.html)
 
-    def test_renderer_uses_python_generated_timeline_assessments(self):
-        self.assertIn("data.timeline", self.html)
-        self.assertIn("row.assessment_code", self.html)
-        self.assertIn("row.assessment_label", self.html)
-        self.assertIn("row.summary", self.html)
-        self.assertIn("row.supporting_metrics", self.html)
-        self.assertNotIn("bucket.sustained_bad_count > 0", self.html)
-        self.assertNotIn("? '<span class=\"risk\">bad</span>'", self.html)
-
-    def test_notes_and_limitations_are_secondary_disclosures(self):
-        summary_start = self.html.index('id="summarySection"')
-        summary_end = self.html.index('</section>', summary_start)
-        self.assertNotIn("Investigation Notes", self.html[summary_start:summary_end])
-        self.assertIn("About this investigation", self.html)
-        self.assertIn("Assessment details", self.html)
-        self.assertNotIn("<h3>Limitations</h3>", self.html)
-
-    def test_assistant_evidence_is_not_rendered_and_actions_hide_ids(self):
-        self.assertNotIn('id="assistantReviewEvidence"', self.html)
-        self.assertNotIn("review.evidence.map", self.html)
-        self.assertIn("function operatorNextStep(step)", self.html)
-        self.assertNotIn("fmt(step.id)", self.html)
+    def test_renderer_uses_python_generated_operator_fields(self):
+        for field in (
+            "data.operator_brief",
+            "data.scope_impact",
+            "data.recovery_progress",
+            "data.episode_summary",
+            "data.evidence_argument",
+            "data.evidence_buckets",
+            "row.phase_summary",
+        ):
+            self.assertIn(field, self.html)
+        self.assertNotIn("inferLifecycle", self.html)
+        self.assertNotIn("inferSeverity", self.html)
+        self.assertNotIn("calculateDuration", self.html)
 
     def test_probe_groups_are_humanized(self):
         self.assertIn('resolver_probe: "Resolver probes"', self.html)
         self.assertIn('internet_probe: "Internet probes"', self.html)
         self.assertIn('gateway_probe: "Gateway"', self.html)
 
-    def test_investigation_view_keeps_raw_detail_in_disclosures(self):
-        self.assertIn("<details class=\"disclosure\" open>", self.html)
+    def test_raw_detail_stays_secondary_in_disclosures(self):
+        self.assertIn("Assessment provenance", self.html)
+        self.assertIn("Observation references", self.html)
+        self.assertIn("Health and thresholds", self.html)
         self.assertIn("Investigation Events", self.html)
-        self.assertIn("Nearby Events", self.html)
         self.assertIn("Timeline Samples", self.html)
         self.assertIn("Telemetry Sources", self.html)
 
-    def test_environmental_context_is_artifact_driven_and_hidden_when_absent(self):
-        self.assertIn('id="environmentalContextSection" class="section" style="display:none;"', self.html)
-        self.assertIn('id="internetConditionsSection" class="card context-block" style="display:none;"', self.html)
-        self.assertIn('id="powerInfrastructureSection" class="card context-block" style="display:none;"', self.html)
-        self.assertIn('const context = data.internet_conditions_context || {};', self.html)
-        self.assertIn('const context = data.power_infrastructure_context || {};', self.html)
+    def test_environmental_context_is_artifact_driven_without_direct_fetches(self):
+        self.assertIn("DNS Context", self.html)
+        self.assertIn("data.dns_context", self.html)
+        self.assertIn("data.internet_conditions_context", self.html)
+        self.assertIn("data.power_infrastructure_context", self.html)
         self.assertNotIn("./internet_conditions.json", self.html)
         self.assertNotIn("./aps_power_context.json", self.html)
 
-    def test_investigation_view_stays_artifact_driven_without_direct_model_calls(self):
+    def test_assistant_internal_state_is_secondary_not_primary_copy(self):
+        primary_start = self.html.index('id="assistantReviewSection"')
+        primary_end = self.html.index('id="recommendedActionsSection"')
+        primary = self.html[primary_start:primary_end]
+
+        self.assertNotIn("requested_model", primary)
+        self.assertNotIn("provider_model", primary)
+        self.assertIn("assistantReviewProvenance", self.html)
+
+    def test_timeline_separates_representative_and_maximum_metrics(self):
+        self.assertIn("Representative p95", self.html)
+        self.assertIn("Maximum", self.html)
+        self.assertIn("Isolated excursions stay separate", self.html)
+        self.assertIn("Persistence", self.html)
+
+    def test_buckets_are_condensed_by_default(self):
+        self.assertIn("Stable buckets are collapsed by default", self.html)
+        self.assertIn("Show all evidence buckets", self.html)
+        self.assertIn("summary.stable_buckets", self.html)
+        self.assertIn("summary.sustained_degradation_buckets", self.html)
+
+    def test_history_is_url_addressable_and_local(self):
+        self.assertIn("data-event-id", self.html)
+        self.assertIn("history.pushState", self.html)
+        self.assertIn("popstate", self.html)
+        self.assertIn("?event=", self.html)
+        self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
+
+    def test_browser_remains_local_renderer_only(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)
-        self.assertIn('const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";', self.html)
         self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";', self.html)
         self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";', self.html)
-        self.assertIn('fetch(INVESTIGATION_URL, {cache: "no-store"})', self.html)
-        self.assertIn("fetchOptionalJson(OPERATOR_ASSISTANT_INPUT_URL)", self.html)
-        self.assertIn("fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL)", self.html)
-        self.assertIn('renderChip("Requested model"', self.html)
-        self.assertIn("reviewHash !== currentInputHash", self.html)
-        self.assertIn("does not match the current evidence package and is hidden", self.html)
-        self.assertNotIn("crypto.subtle", self.html)
-        self.assertNotIn("operatorAssistantInputHashForInvestigation", self.html)
-        self.assertNotIn("./observations.json", self.html)
-        self.assertNotIn("./network_attribution.json", self.html)
         self.assertNotIn("openrouter.ai/api/v1/chat/completions", self.html)
-
-    def test_history_panel_loads_catalog_snapshots_and_returns_to_current(self):
-        self.assertIn('id="historyList"', self.html)
-        self.assertIn('id="currentInvestigationButton"', self.html)
-        self.assertIn("item.snapshot_path", self.html)
-        self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
-        self.assertIn('loadInvestigation(INVESTIGATION_URL, "investigation.json", true)', self.html)
-        self.assertIn("item.severity", self.html)
-        self.assertIn("item.duration", self.html)
-        self.assertIn("item.target_class", self.html)
-        self.assertIn("item.lifecycle", self.html)
-        self.assertIn("item.first_anomalous_at", self.html)
-        self.assertIn("item.recovered_at", self.html)
-
-    def test_history_renderer_does_not_infer_event_state(self):
-        self.assertNotIn("inferLifecycle", self.html)
-        self.assertNotIn("inferSeverity", self.html)
-        self.assertNotIn("calculateDuration", self.html)
-        self.assertNotIn("detectEvent", self.html)
+        self.assertNotIn("crypto.subtle", self.html)
+        self.assertNotIn("is_wan_bad", self.html)
 
 
 if __name__ == "__main__":

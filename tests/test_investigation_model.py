@@ -197,6 +197,28 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertEqual(payload["periods"]["before"]["wan"]["sustained_bad_count"], 0)
         self.assertGreaterEqual(payload["periods"]["during"]["wan"]["sustained_bad_count"], 4)
 
+    def test_representative_timeline_metric_does_not_use_isolated_baseline_maximum(self):
+        rows = [
+            self.row(0, p95=35),
+            self.row(1, p95=348, raw=True),
+            self.row(2, p95=36),
+            self.row(10, p95=176, raw=True),
+            self.row(11, p95=177, raw=True, sustained=True),
+            self.row(12, p95=175, raw=True, sustained=True),
+        ]
+
+        payload = self.build(rows)
+        baseline = payload["timeline"][0]["phase_summary"]
+        degradation = payload["timeline"][1]["phase_summary"]
+
+        self.assertEqual(payload["windows"]["baseline"]["assessment_code"], "stable_baseline")
+        self.assertEqual(baseline["sustained_bad_count"], 0)
+        self.assertGreater(baseline["max_p95_ms"], degradation["max_p95_ms"])
+        self.assertLess(baseline["typical_p95_ms"], degradation["typical_p95_ms"])
+        self.assertGreater(degradation["sustained_bad_count"], 0)
+        self.assertIn("operator_brief", payload)
+        self.assertIn("evidence_buckets", payload)
+
     def test_new_telemetry_same_active_event_rewrites_without_assistant_semantic_change(self):
         rows = [
             self.row(0, p95=180, raw=True),

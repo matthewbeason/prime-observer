@@ -16,7 +16,18 @@ window exactly and labels the output `mode: "manual_requested_window"`.
 Every deterministic transform cycle builds the current investigation package
 after `latest.csv`, `network_attribution.json`, `dashboard_health.json`, and
 `observations.json` have been computed. It does not call OpenRouter and does not
-produce Operator Assistant output.
+produce Operator Assistant output. When semantic evidence changes, it refreshes
+`operator_assistant_input.json` and records pending generation state for the
+separate local assistant worker. The tracked LaunchAgent checks every 60 seconds;
+the worker delegates provider work to `bin/build_operator_assistant_output.py`
+and never blocks this transform cycle.
+
+The worker transitions pending work through `generating` to `complete`, or to
+`retry_wait` after a transient failure. It respects `next_retry_at`, stops after
+three worker attempts for one semantic hash, and marks persistent/configuration
+failure `failed` until semantic input changes. Duplicate launches share the
+exclusive generation lock, and a valid last-known-good output is never replaced
+by a failure. See `docs/operator-assistant-worker.md`.
 
 Automatic mode writes:
 
@@ -25,6 +36,7 @@ viz/investigation.json
 viz/investigation_catalog.json
 viz/investigations/<event-id>.json, once for each completed event
 viz/operator_assistant_input.json, only when deterministic investigation evidence changes
+viz/operator_assistant_generation_state.json, when interpretation generation is pending
 ```
 
 `viz/investigation.json` remains the mutable current investigation only. When an
@@ -60,7 +72,11 @@ The automatic schema is `schema_version: 2` and uses:
 - `selected_event` for the selected confirmed event
 - `windows.baseline`, `windows.degradation`, and `windows.recovery`
 - `timeline` rows with Python-generated assessment labels, summaries, tones,
-  confidence, and supporting metrics
+  confidence, supporting metrics, and phase summaries that separate
+  representative latency from maximum excursions
+- `operator_brief`, `scope_impact`, `episode_summary`, `evidence_argument`, and
+  `evidence_buckets` for renderer-only Operator Assessment fallback and
+  structured operator workflow
 
 Completed historical snapshots use `artifact_type:
 "completed_investigation_snapshot"`, `immutable: true`, `snapshot_written_at`,
@@ -185,11 +201,24 @@ can prevent the JSON file from loading.
 The page loads `investigation.json` with `cache: "no-store"`, optionally loads
 `investigation_catalog.json`, and renders:
 
+- a primary Operator Assessment from matching LLM output or deterministic
+  `operator_brief` fallback
+- Recommended Next Actions near the top of the page
+- Scope and Impact with affected and unaffected target groups
+- compact freshness and mode information
+- automatic baseline, degradation, and recovery timeline rows when schema 2 is available
+- representative phase metrics, persistence counts, sample counts, duration, and
+  maximum excursions as separate timeline columns
+- recovery progress in practical operator terms
+- structured supporting evidence, limiting evidence, evidence against broader
+  impact, and verification steps
+- condensed evidence-bucket summary with stable buckets collapsed by default
+- raw forensic evidence in secondary disclosures
 - a completed-event History panel sourced directly from the catalog
 - immutable snapshots selected by their catalog-provided `snapshot_path`
-- a Current Investigation button that reloads `investigation.json`
-- artifact-state label, generation time, latest evidence time, and latest telemetry time
-- automatic baseline, degradation, and recovery timeline rows when schema 2 is available
+- URL-addressable historical selection through `?event=<event-id>`
+- browser back/forward selection and a Current Investigation button that clears
+  historical state and reloads `investigation.json`
 - legacy before, during, and after WAN/LAN summaries for schema 1 compatibility
 - factual target classes and labels for internet, resolver, and gateway probes
 - WAN p95, jitter, loss, sample counts, bad counts, and turbulence buckets by target group where available
@@ -213,16 +242,17 @@ and the History panel reports that history is unavailable. If the catalog
 contains `invalid_snapshots`, those files remain preserved on disk but are not
 loaded as valid history entries.
 
-The Operator Assistant review is local-only, additive, and clearly
-non-authoritative. Prime Observer evidence and deterministic observations remain
-the source of truth. `viz/investigate.html` consumes `viz/investigation.json`
-as authoritative deterministic evidence, `viz/operator_assistant_input.json`
-only for its producer-generated current `input_hash`, and
-`viz/operator_assistant_output.json` as optional non-authoritative
-interpretation. The page remains usable when either assistant artifact is
-missing, unavailable, malformed, or stale. It only shows an assistant
-assessment as current when the input and output artifact hashes match; the
-browser does not reconstruct or hash evidence.
+The Operator Assistant review is local-only and is the primary operator-facing
+interpretation when it is valid for the current evidence package. Prime Observer
+evidence and deterministic observations remain the source of truth.
+`viz/investigate.html` consumes `viz/investigation.json` as authoritative
+deterministic evidence, `viz/operator_assistant_input.json` only for its
+producer-generated current `input_hash`, and `viz/operator_assistant_output.json`
+as derived interpretation. The page remains useful when either assistant artifact
+is missing, malformed, or stale by rendering deterministic `operator_brief`
+fallback. It only shows an assistant assessment as current when the input and
+output artifact hashes match; the browser does not reconstruct or hash evidence.
+Provider failures are not shown as the main product experience.
 
 Generate a current review explicitly after building the assistant input:
 
@@ -232,9 +262,10 @@ python3 bin/build_operator_assistant_output.py
 ```
 
 The optional-context schedule rebuilds the input package but does not call
-OpenRouter. During prompt and Operator Charter refinement, every valid explicit
-output-producer run requests a fresh review. The input hash remains solely for
-artifact freshness and stale-output protection in the browser.
+OpenRouter. A matching valid output is reused by default; use
+`python3 bin/build_operator_assistant_output.py --force` to request a new review
+for the same input hash. Failed requests update generation state and preserve any
+valid previous output.
 
 ## Deep-Link Shape
 
@@ -249,9 +280,9 @@ window while the evidence still comes from `viz/investigation.json`. A future
 Olivaw integration can generate the JSON first, then link to the page with the
 same start/end parameters.
 
-The next planned history capability after hardening is direct links/bookmarks for
-historical investigations. Event comparison and recurrence or similarity
-detection remain future work.
+Direct links/bookmarks for completed automatic historical investigations are now
+implemented through `?event=<event-id>`. Event comparison and recurrence or
+similarity detection remain future work.
 
 ## Storage Direction
 

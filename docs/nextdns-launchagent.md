@@ -11,8 +11,10 @@ The refresh wrapper is fail-safe:
 - either failure remains non-fatal so future scheduled refreshes continue running
 
 The scheduled wrapper does not invoke `bin/build_operator_assistant_output.py`
-or call OpenRouter. Operator Assistant reviews are currently generated only by
-explicitly running `python3 bin/build_operator_assistant_output.py`.
+or call OpenRouter. If optional context changes the normalized semantic input,
+`bin/build_operator_assistant_input.py` marks generation pending for the separate
+worker documented in `docs/operator-assistant-worker.md`. Freshness-only context
+changes do not create new work.
 
 ## Files
 
@@ -49,10 +51,11 @@ The provider scripts load local configuration from the repo root if present:
 Do not store API tokens in the plist. `bin/fetch_cloudflare_radar.py` reads `CLOUDFLARE_API_TOKEN` from the process environment or the repo-local `.env.cloudflare` file, which keeps launchd-compatible configuration out of shell profiles.
 
 The wrapper rebuilds `viz/operator_assistant_input.json` but does not build or
-replace `viz/operator_assistant_output.json`. Explicit review generation reads
-OpenRouter configuration separately. Successful-output reuse is temporarily
-disabled during prompt and Operator Charter refinement, and `input_hash` remains
-for browser artifact freshness rather than provider-call reuse.
+replace valid `viz/operator_assistant_output.json`. Changed semantic input is
+consumed on the next separate worker run. The worker reads OpenRouter
+configuration independently, reuses matching valid output by input hash and
+model, and records provider/configuration failure in generation state instead of
+replacing useful prior interpretation.
 
 ## Check Status
 

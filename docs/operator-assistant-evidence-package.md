@@ -1,188 +1,148 @@
 # Operator Assistant Evidence Package
 
-This document describes the Phase 1 prototype for a compact deterministic
-evidence package derived from `viz/investigation.json`.
+This document describes Prime Observer's deterministic evidence package and
+OpenRouter-backed Operator Assistant interpretation workflow.
 
-Use the repository as the source of truth. If a claim cannot be supported by
-repository evidence, mark it:
-
-`Needs Matthew Review`
+Prime Observer uses deterministic evidence generation and an LLM interpretation
+layer. The evidence remains authoritative; the LLM provides the primary
+operator-facing diagnosis and recommended actions. A deterministic
+interpretation remains available when a safe current LLM result is unavailable.
 
 ## Purpose
 
-The operator-assistant evidence package exists to prove that Prime Observer can
-curate the right evidence for later LLM interpretation without sending the full
-investigation artifact.
+The evidence package lets Prime Observer send a bounded, structured set of facts
+to OpenRouter without dumping the full investigation artifact.
 
 Prime Observer remains authoritative for:
 
 - telemetry evidence
 - deterministic Observation output
-- generated provider context
-- investigation generation
+- event boundaries and lifecycle
+- affected and unaffected scope
+- thresholds, classifications, and confidence inputs
+- semantic hashing and freshness
+- claim boundaries, prohibited claims, and deterministic fallback guidance
 
-The future LLM is a downstream consumer of curated evidence. It is not a source
-of telemetry, attribution truth, observations, or causal conclusions.
+The LLM may synthesize likely meaning, uncertainty, and safe next actions. It is
+not a source of telemetry, attribution truth, lifecycle state, scope, or causal
+proof.
 
-## Current Prototype
+## Artifacts
 
-Phase 1 adds:
+- `viz/operator_assistant_input.json`: compact deterministic evidence package
+- `viz/operator_assistant_output.json`: last valid OpenRouter interpretation for
+  a matching input hash
+- `viz/operator_assistant_generation_state.json`: pending/current/failed
+  generation provenance
 
-- producer: `bin/build_operator_assistant_input.py`
-- source artifact: `viz/investigation.json`
-- generated output: `viz/operator_assistant_input.json`
-
-The output is local-only and generated. It must not be committed.
-
-## Local Review Surface
-
-The current local review prototype also includes:
-
-- communication contract: `docs/operator-charter.md`
-- review producer: `bin/build_operator_assistant_output.py`
-- review artifact: `viz/operator_assistant_output.json`
-- review surface: `viz/investigate.html`
-
-The browser remains renderer-only. It reads the generated input and review
-artifacts and does not call OpenRouter directly. The deterministic input
-producer computes the normalized evidence-package hash and stores it as
-`input_hash` in `viz/operator_assistant_input.json`. The review producer copies
-that hash into `viz/operator_assistant_output.json`. The hash protects browser
-artifact freshness: the browser presents a review as current only when input and
-output hashes match. It is not currently used to reuse provider responses.
-
-For this phase, run `python3 bin/build_operator_assistant_output.py` explicitly
-to generate a review. Every valid execution requests a fresh OpenRouter review
-using the current Operator Charter and prompt, replacing any prior output.
-Successful-output reuse is temporarily disabled during prompt and charter
-refinement. The scheduled optional-context refresh rebuilds the input package
-but does not invoke OpenRouter.
-
-Safe reuse may later be restored with a request fingerprint that includes the
-evidence input hash, requested model, Operator Charter content or version,
-prompt template or version, and response schema version. That fingerprint is
-not implemented in this phase.
-
-The review prompt is composed from three reusable parts:
-
-```text
-Operator Charter + Evidence Package + Response Schema = Prompt
-```
-
-Prime Observer determines evidence. The Operator Charter defines how a model
-communicates its interpretation, including evidence-first wording, explicit
-uncertainty, and useful follow-up observations. The selected model may change;
-operator behavior should remain consistent with the charter.
-
-The review artifact includes:
-
-- `schema_version`
-- `generated_at`
-- `status`
-- `input_hash`
-- requested model (`google/gemini-3.5-flash` by default, configurable locally)
-- concrete provider model returned by OpenRouter, when available
-- structured assessment fields
-- unavailable or failure reason, when applicable
-- provider usage metadata, when available
-
-`viz/investigate.html` treats both assistant artifacts as optional and the
-review as non-authoritative. It only renders the assessment as current when the
-input and output artifact `input_hash` values match. It does not reconstruct or
-hash the evidence package in JavaScript.
+The browser remains renderer-only. It reads local artifacts and never calls
+OpenRouter.
 
 ## Included Evidence
 
-The prototype keeps only bounded fields already present in
-`viz/investigation.json`:
+The input package includes bounded fields derived from `viz/investigation.json`:
 
-- requested investigation window metadata
-- current attribution observation
-- window attribution observation
-- one overlapping episode observation when present
-- bounded during-window WAN and LAN evidence summaries
-- compact optional DNS, Internet Conditions, and Power context summaries
-- limitations and provenance for downstream grounding
+- event ID, lifecycle, start, end, last-seen, and recovery timestamps
+- selected target class and affected endpoints
+- unaffected comparison groups
+- thresholds and sample counts
+- raw-bad and sustained-bad counts
+- affected, stable, turbulence, and isolated-excursion bucket counts
+- representative latency and maximum excursions
+- packet loss, baseline, degradation, and recovery phase summaries
+- attribution result and confidence
+- optional DNS, Internet Conditions, and Power context summaries
+- supporting, limiting, contradictory, and missing evidence
+- claim boundaries and prohibited claims
+- safe diagnostic categories
+- provenance and source semantic hash
 
-## Intentionally Excluded
+It intentionally excludes full raw samples, full event-neighborhood rows, raw
+provider payloads, source-file dumps, secrets, and browser-only state.
 
-The prototype intentionally excludes:
+## Output Contract
 
-- full `timeline_samples`
-- full `events`
-- full `event_neighborhoods`
-- full bucket-row copies
-- raw source-file listings
-- threshold dictionaries
-- renderer-only investigation fields
-- secrets or local configuration
+The OpenRouter response is published only when it validates structurally and its
+`input_hash` matches the current evidence package.
 
-The package is a compact derivative, not a second full investigation export.
+Required interpretation fields include:
 
-## Grounding Requirements
+- `headline`
+- `assessment`
+- `what_is_happening`
+- `affected_scope`
+- `healthy_scope`
+- `likely_fault_domain`
+- `confidence`
+- `uncertainty`
+- `evidence`
+- `limitations`
+- `next_steps[]` with action label, reason, expected observation, and assessment change
+- `evidence_that_would_change_assessment`
+- `monitoring_guidance`
 
-Downstream model communication is governed by the canonical
-`docs/operator-charter.md`. This evidence-package document defines what is
-supplied; the charter defines how it is interpreted and communicated.
+## Reuse Policy
+
+Safe to reuse:
+
+- identical input hash and requested model
+- freshness-only telemetry advance that does not change semantic evidence
+- recovery elapsed-time advance while event identity, lifecycle consequence, and
+  conclusion remain unchanged
+- metadata-only updates
+
+Unsafe to reuse:
+
+- selected event changes
+- target class changes
+- affected endpoints change materially
+- lifecycle changes in a way that alters operator action
+- severity or confidence changes materially
+- new contradictory evidence appears
+- fault-domain attribution changes
+- current/stale interpretive state changes materially
+
+`bin/build_operator_assistant_output.py` reuses a matching valid output by
+default. Use `--force` to request a fresh interpretation for the same input hash.
+
+## Automatic Generation
+
+`bin/transform_latest.py` and the standalone input producer atomically mark a
+changed semantic input hash `pending`. The separate
+`bin/run_operator_assistant_worker.py` consumes pending or due retry state and
+reuses the output producer for OpenRouter, validation, and atomic publication.
+The tracked LaunchAgent checks every 60 seconds without `KeepAlive`; it does not
+embed secrets and does not affect collector or transform exit status.
+
+The worker performs at most three generation runs per semantic hash, waiting 5
+minutes after the first failed run and 15 minutes after the second. HTTP
+429/500/502/503/504, transport failure, and invalid or truncated provider output
+are retryable while attempts remain. Configuration, input, non-retryable HTTP,
+and output-contract failures become terminal for that hash. A new semantic hash
+resets pending work; a freshness-only rebuild does not.
+
+An exclusive generated lock suppresses duplicate provider requests. The lock may
+be replaced after 900 seconds when stale. See
+`docs/operator-assistant-worker.md` for state fields, installation, inspection,
+and disable commands.
 
 ## Failure Behavior
 
-If `viz/investigation.json` is missing, unreadable, or invalid, the producer
-still writes a minimal package with:
+Provider, configuration, and validation failures are recorded in
+`viz/operator_assistant_generation_state.json`. They do not overwrite a valid
+prior `viz/operator_assistant_output.json`.
 
-- empty evidence
-- unavailable status for the investigation source
-- explicit limitations describing the failure
+If no safe current LLM output exists, `viz/investigate.html` renders the
+deterministic `operator_brief` fallback from `viz/investigation.json`. The page
+does not present provider failure as the main operator experience.
 
-This keeps the downstream contract deterministic and bounded.
+## Claim Boundaries
 
-## Why The LLM Is Not Authoritative
+Observed facts must be directly supported by deterministic evidence. Inferences
+must be phrased as likely interpretations. Unknowns must remain explicit when
+evidence is insufficient.
 
-Prime Observer owns local deterministic evidence generation. The LLM will only
-consume the compact package for interpretation experiments.
-
-That boundary matters because:
-
-- attribution remains Prime Observer output
-- episode detection remains Prime Observer output
-- provider context remains supporting evidence only
-- the model must not invent new facts or replace the source investigation
-
-## Manual Prompt Composition
-
-For manual OpenCode or OpenRouter experiments, compose the complete contents of
-`docs/operator-charter.md`, the generated `viz/operator_assistant_input.json`,
-and the unchanged response shape below. Do not copy communication rules into a
-model-specific prompt.
-
-```text
-Return JSON only. Do not include markdown fences or extra narration.
-
-Required response shape:
-{
-  "assessment": "string",
-  "confidence": "low | medium | high",
-  "evidence": [
-    "string"
-  ],
-  "limitations": [
-    "string"
-  ],
-  "next_steps": [
-    {
-      "id": "string",
-      "label": "string",
-      "reason": "string"
-    }
-  ]
-}
-
-Suggested next-step IDs when appropriate:
-- EXTEND_WINDOW
-- CHECK_GATEWAY
-- COMPARE_RESOLVER_AND_INTERNET
-- RECHECK_PROVIDER_CONTEXT
-
-Evidence package:
-{{operator_assistant_input_json}}
-```
+The assistant must not claim definite ISP, DNS provider, local network, routing,
+or power fault unless the supplied evidence actually supports that certainty. It
+must not invent measurements, devices, services, users, unavailable tests, or
+external outages.

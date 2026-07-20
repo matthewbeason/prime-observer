@@ -34,10 +34,13 @@ The repository explicitly says to live with `v0.9.0` for several days before
 expanding functionality.
 
 Uncommitted post-release work adds event-aligned automatic investigation
-lifecycle and completed-event history. The current implementation milestone is
-to harden that history before committing: atomic write-once snapshots, explicit
-invalid snapshot reporting, catalog metadata, renderer recovery behavior, and
-aligned tests/docs.
+lifecycle, completed-event history, and an operator-first Investigation redesign.
+The current implementation milestone is to validate the redesign before
+committing: atomic write-once snapshots, URL-addressable historical selection,
+Python-owned operator fallback fields, OpenRouter last-known-good publication,
+corrected representative timeline metrics, condensed evidence buckets,
+asynchronous pending-work generation, bounded retries, duplicate suppression,
+aligned tests, and docs.
 
 Current watch period:
 
@@ -49,8 +52,9 @@ Current watch period:
 
 ## Next Logical Milestone
 
-After Investigation History hardening, the next planned capability is direct
-links/bookmarks for historical investigations.
+Direct links/bookmarks for historical investigations are now implemented for
+completed automatic snapshots. The next planned capability after this redesign is
+Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate
@@ -76,7 +80,7 @@ The repository explicitly says not to expand into these areas yet:
 - domain lists as a product expansion
 - device-level DNS analytics
 - alerts or notifications
-- LLM explanations
+- unbounded or browser-side LLM explanations
 - weather correlation
 - power outage correlation
 - ISP status correlation

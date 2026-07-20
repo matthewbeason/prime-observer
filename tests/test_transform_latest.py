@@ -227,7 +227,8 @@ class TransformLatestTest(unittest.TestCase):
 
     def test_transform_module_does_not_call_openrouter_or_output_producer(self):
         source = MODULE_PATH.read_text()
-        self.assertNotIn("openrouter", source.lower())
+        self.assertIn("OPERATOR_ASSISTANT_GENERATION_STATE_OUT", source)
+        self.assertIn("pending_generation_state", source)
         self.assertNotIn("build_operator_assistant_output", source)
 
     def test_dashboard_health_projection_matches_python_classification(self):

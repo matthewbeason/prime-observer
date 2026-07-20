@@ -13,6 +13,11 @@ Prime Observer currently ships:
 - observation-backed attribution and episode semantics
 - automatic current-event investigation generation
 - immutable completed-event investigation history
+- operator-first Investigation rendering with deterministic fallback assessment
+- OpenRouter-backed Operator Assistant interpretation as the primary
+  operator-facing narrative when output is valid for the evidence package
+- asynchronous pending-work consumption through a separate local worker and
+  tracked 60-second LaunchAgent
 - manual requested-window investigation generation and viewing
 - optional NextDNS summary context
 - optional Cloudflare Radar Internet Conditions context
@@ -26,7 +31,9 @@ Repository-backed recent milestones:
 - `v0.8.2`: Dashboard operator polish
 - `v0.9.0`: Internet Conditions external context
 - post-`v0.9.0` uncommitted work: event-aligned automatic investigation
-  lifecycle and hardened completed-event history
+  lifecycle, hardened completed-event history, and operator-first Investigation
+  redesign with asynchronous Operator Assistant generation and last-known-good
+  publication behavior
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -65,16 +72,25 @@ Current projection state:
   snapshots published atomically and never overwritten
 - `viz/investigation_catalog.json` is a generated projection over valid
   snapshots and any preserved invalid snapshot metadata
+- `viz/operator_assistant_input.json` is the deterministic evidence package for
+  OpenRouter interpretation
+- `viz/operator_assistant_output.json` is last valid matching Operator Assistant
+  interpretation and is never replaced by provider/configuration failure
+- `viz/operator_assistant_generation_state.json` tracks pending, generating,
+  retry-wait, complete, and terminal failed state separately from valid output
+- `bin/run_operator_assistant_worker.py` consumes pending/due work without
+  blocking collection or deterministic transform; the tracked LaunchAgent is
+  implemented but not installed automatically
 
 ## Active Watch Period
 
 The repository currently says to live with `v0.9.0` for several days before
 expanding functionality.
 
-The current uncommitted work should be completed by hardening Investigation
-History before committing. After that, the next planned capability is direct
-links/bookmarks for historical investigations. Event comparison and recurrence
-or similarity detection remain future work.
+The current uncommitted work should be completed by validating the operator-first
+Investigation redesign before committing. Direct links/bookmarks for historical
+investigations are now implemented through `?event=<event-id>`. Event comparison
+and recurrence or similarity detection remain future work.
 
 Generated JSON and CSV artifacts remain canonical. No database is needed at the
 current local scale; any future PostgreSQL or Supabase work should be an optional

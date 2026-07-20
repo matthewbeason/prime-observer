@@ -9,6 +9,7 @@ BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 INVESTIGATION = VIZ_DIR / "investigation.json"
 OUT = VIZ_DIR / "operator_assistant_input.json"
+STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
 
 
 def parse_ts(value):
@@ -43,6 +44,46 @@ def write_json(path, payload):
         json.dump(payload, f, indent=2, sort_keys=True)
         f.write("\n")
     tmp.replace(path)
+
+
+def load_json_object(path):
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def pending_generation_state(input_hash, requested_by, reason, requested_at=None):
+    requested_at = requested_at or iso_now()
+    return {
+        "schema_version": 2,
+        "status": "pending",
+        "provider": "openrouter",
+        "input_hash": input_hash,
+        "requested_at": requested_at,
+        "updated_at": requested_at,
+        "requested_by": requested_by,
+        "reason": reason,
+        "attempt_count": 0,
+    }
+
+
+def write_input_and_pending_state(out_path, state_path, payload, requested_by):
+    existing = load_json_object(out_path)
+    existing_hash = existing.get("input_hash") if existing else None
+    semantic_changed = existing_hash != payload.get("input_hash")
+    write_json(out_path, payload)
+    if semantic_changed:
+        write_json(
+            state_path,
+            pending_generation_state(
+                payload.get("input_hash"),
+                requested_by,
+                "semantic evidence changed" if existing else "assistant input missing",
+            ),
+        )
+    return semantic_changed
 
 
 def load_json(path):
@@ -91,6 +132,7 @@ def normalized_input_payload(input_payload):
 
     return {
         "schema_version": payload.get("schema_version"),
+        "semantic_schema_version": payload.get("semantic_schema_version"),
         "investigation": {
             "id": investigation.get("id"),
             "mode": investigation.get("mode"),
@@ -107,6 +149,13 @@ def normalized_input_payload(input_payload):
             "evidence_latest_at": safe_dict(payload.get("freshness")).get("evidence_latest_at"),
             "evidence_lag_seconds": safe_dict(payload.get("freshness")).get("evidence_lag_seconds"),
         },
+        "operator_brief": safe_dict(payload.get("operator_brief")),
+        "scope_impact": safe_dict(payload.get("scope_impact")),
+        "recovery_progress": safe_dict(payload.get("recovery_progress")),
+        "episode_summary": safe_dict(payload.get("episode_summary")),
+        "evidence_argument": safe_dict(payload.get("evidence_argument")),
+        "phase_summaries": safe_dict(payload.get("phase_summaries")),
+        "evidence_buckets": safe_dict(payload.get("evidence_buckets")),
         "attribution": {
             "current": {
                 "status": safe_dict(attribution.get("current")).get("status"),
@@ -410,7 +459,8 @@ def build_package(investigation, source_file):
     use_schema2 = investigation.get("schema_version") == 2 and bool(windows)
 
     package = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "semantic_schema_version": "operator_assistant_input.v2",
         "generated_at": iso_now(),
         "investigation": {
             "id": investigation.get("id"),
@@ -430,6 +480,20 @@ def build_package(investigation, source_file):
             "evidence_lag_seconds": freshness.get("evidence_lag_seconds"),
         },
         "timeline": bounded_items(investigation.get("timeline"), 8),
+        "phase_summaries": {
+            str((row or {}).get("phase", "")).lower(): safe_dict((row or {}).get("phase_summary"))
+            for row in bounded_items(investigation.get("timeline"), 8)
+        },
+        "operator_brief": safe_dict(investigation.get("operator_brief")),
+        "scope_impact": safe_dict(investigation.get("scope_impact")),
+        "recovery_progress": safe_dict(investigation.get("recovery_progress")),
+        "episode_summary": safe_dict(investigation.get("episode_summary")),
+        "evidence_argument": safe_dict(investigation.get("evidence_argument")),
+        "evidence_buckets": {
+            key: value
+            for key, value in safe_dict(investigation.get("evidence_buckets")).items()
+            if key != "all_buckets"
+        },
         "attribution": {
             "current": current_attribution,
             "window": window_attribution,
@@ -455,7 +519,25 @@ def build_package(investigation, source_file):
             "source_file": source_file,
             "source_producer": safe_dict(investigation.get("provenance")).get("producer"),
             "observation_reference_count": len(observation_refs),
+            "source_semantic_hash": safe_dict(investigation.get("provenance")).get("event_semantic_hash"),
         },
+        "claim_boundaries": {
+            "observed_fact": "Use only directly supplied deterministic evidence for facts.",
+            "inference": "Likely meaning may be inferred when phrased as an engineering assessment, not proof.",
+            "unknown": "State unknowns when evidence is insufficient or contradictory.",
+        },
+        "prohibited_claims": [
+            "Do not claim definite ISP, DNS provider, local network, routing, or power fault unless the evidence explicitly supports that certainty.",
+            "Do not claim unavailable tests were performed.",
+            "Do not invent measurements, services, devices, users, or external outages.",
+            "Do not recommend destructive or risky action without explicit justification.",
+        ],
+        "recommended_safe_diagnostic_categories": [
+            "compare affected and unaffected probe groups",
+            "verify from another local client",
+            "continue recovery observation",
+            "escalate with bounded evidence when sustained degradation persists",
+        ],
     }
     package["observations"] = build_observations(package)
     package["limitations"] = build_limitations(investigation, package, [])
@@ -465,7 +547,8 @@ def build_package(investigation, source_file):
 
 def unavailable_package(source_file, limitations):
     package = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "semantic_schema_version": "operator_assistant_input.v2",
         "generated_at": iso_now(),
         "investigation": {
             "id": None,
@@ -492,6 +575,16 @@ def unavailable_package(source_file, limitations):
             "power": {"available": False},
         },
         "limitations": limitations[:10],
+        "operator_brief": {},
+        "scope_impact": {},
+        "recovery_progress": {},
+        "episode_summary": {},
+        "evidence_argument": {},
+        "phase_summaries": {},
+        "evidence_buckets": {},
+        "claim_boundaries": {},
+        "prohibited_claims": [],
+        "recommended_safe_diagnostic_categories": [],
         "provenance": {
             "producer": "bin/build_operator_assistant_input.py",
             "source_file": source_file,
@@ -516,11 +609,17 @@ def main(argv=None):
     )
     parser.add_argument("--investigation", type=Path, default=INVESTIGATION, help="Source investigation JSON path")
     parser.add_argument("--out", type=Path, default=OUT, help="Output evidence package JSON path")
+    parser.add_argument("--state-out", type=Path, default=STATE_OUT, help="Output generation-state JSON path")
     args = parser.parse_args(argv)
 
     payload = build_from_path(args.investigation)
-    write_json(args.out, payload)
-    print(args.out)
+    semantic_changed = write_input_and_pending_state(
+        args.out,
+        args.state_out,
+        payload,
+        "bin/build_operator_assistant_input.py",
+    )
+    print(f"{args.out} ({'pending generation' if semantic_changed else 'semantic input unchanged'})")
 
 
 if __name__ == "__main__":
