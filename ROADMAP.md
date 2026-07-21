@@ -49,6 +49,9 @@ Current watch period:
 - observe whether DNS Security and Internet Conditions add useful context
 - observe whether the current dashboard scanning and investigation workflow
   improve operator understanding
+- Phase 1 health-dimensions design and calibration fixture work is documented in
+  `docs/health-dimensions-calibration.md`; production behavior is intentionally
+  unchanged pending implementation review.
 
 ## Next Logical Milestone
 

@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "model_version": "prime_observer.health_dimensions_calibration.v1.proposal",
+  "purpose": "Phase 1 fixture-only calibration cases for the proposed multidimensional health model. These fixtures are not production evaluator inputs.",
+  "allowed_expected_states": {
+    "technical_condition": ["healthy", "watch", "degraded", "severe", "unknown"],
+    "user_impact": ["not_observed", "low", "possible", "confirmed", "unknown"],
+    "operational_risk": ["normal", "elevated", "high", "unknown"],
+    "detection_confidence": ["low", "medium", "high"],
+    "attribution_domain": ["local_gateway", "local_lan_or_wifi", "broad_isp_path", "upstream_transit_route", "resolver_provider_path", "resolver_endpoint_or_pop", "broad_internet_condition", "power_environmental", "mixed", "unknown"],
+    "attribution_confidence": ["low", "medium", "high"],
+    "dependency_group_state": ["both_healthy", "primary_degraded_secondary_healthy", "secondary_degraded_primary_healthy", "both_degraded", "active_path_healthy_peer_degraded", "active_path_degraded_fallback_healthy", "active_path_unknown", "unknown", "not_applicable"],
+    "redundancy_state": ["normal", "reduced", "no_usable_fallback", "unknown", "not_applicable"]
+  },
+  "fixtures": [
+    {
+      "id": "nextdns_anycast_primary_sydney_active_secondary",
+      "title": "NextDNS primary anycast route to Sydney with healthy active secondary",
+      "evidence_summary": {
+        "telemetry": {
+          "gateway_p95_ms": [8, 9, 8],
+          "internet_probe_p95_ms": [23, 31, 59],
+          "resolver_primary_p95_ms": [280, 321, 360],
+          "resolver_secondary_p95_ms": [80, 95, 118],
+          "loss_pct": 0
+        },
+        "diagnostics": [
+          {"type": "resolver_route_diagnostic", "target": "45.90.28.134", "observed_pop": "vultr-syd", "rtt_ms": [299, 400], "freshness": "fresh", "provenance": "external_diagnostic_result", "confidence": "high"},
+          {"type": "resolver_route_diagnostic", "target": "45.90.30.134", "observed_pop": "zepto-iad", "rtt_ms": [80, 95], "freshness": "fresh", "provenance": "external_diagnostic_result", "confidence": "high"},
+          {"type": "active_dependency_path", "dependency_group_id": "resolver_pair_home", "active_member_id": "nextdns_secondary", "freshness": "fresh", "provenance": "operator_assertion", "confidence": "high"},
+          {"type": "direct_dns_query_measurement", "target": "45.90.28.134", "latency_ms": [299, 385], "freshness": "fresh", "provenance": "observed_fact", "confidence": "high"},
+          {"type": "user_report", "state": "no_symptoms_reported", "freshness": "fresh", "provenance": "operator_assertion", "confidence": "medium"}
+        ]
+      },
+      "expected": {
+        "technical_condition": "severe",
+        "user_impact": "low",
+        "operational_risk": "elevated",
+        "detection_confidence": "high",
+        "attribution_domain": "resolver_provider_path",
+        "attribution_confidence": "high",
+        "dependency_group_state": "active_path_healthy_peer_degraded",
+        "redundancy_state": "reduced",
+        "unresolved_evidence": [],
+        "operator_input_still_required": []
+      }
+    },
+    {
+      "id": "primary_degraded_secondary_healthy_active_unknown",
+      "title": "Primary degraded and secondary healthy with active path unknown",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [7, 8], "internet_probe_p95_ms": [24, 29], "resolver_primary_p95_ms": [260, 310], "resolver_secondary_p95_ms": [32, 34], "loss_pct": 0}, "diagnostics": []},
+      "expected": {"technical_condition": "severe", "user_impact": "unknown", "operational_risk": "elevated", "detection_confidence": "high", "attribution_domain": "resolver_provider_path", "attribution_confidence": "medium", "dependency_group_state": "active_path_unknown", "redundancy_state": "reduced", "unresolved_evidence": ["active_dependency_path"], "operator_input_still_required": ["which resolver member is active"]}
+    },
+    {
+      "id": "primary_degraded_secondary_healthy_active_primary",
+      "title": "Primary degraded and active while secondary is healthy fallback",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 8], "internet_probe_p95_ms": [25, 29], "resolver_primary_p95_ms": [280, 310], "resolver_secondary_p95_ms": [30, 35], "loss_pct": 0}, "diagnostics": [{"type": "active_dependency_path", "active_member_id": "primary", "freshness": "fresh", "provenance": "operator_assertion", "confidence": "high"}]},
+      "expected": {"technical_condition": "severe", "user_impact": "possible", "operational_risk": "high", "detection_confidence": "high", "attribution_domain": "resolver_provider_path", "attribution_confidence": "medium", "dependency_group_state": "active_path_degraded_fallback_healthy", "redundancy_state": "reduced", "unresolved_evidence": ["user_symptoms"], "operator_input_still_required": ["confirm symptoms on DNS-dependent applications"]}
+    },
+    {
+      "id": "secondary_degraded_primary_healthy",
+      "title": "Secondary degraded while primary remains healthy",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [24, 27], "resolver_primary_p95_ms": [31, 34], "resolver_secondary_p95_ms": [185, 210], "loss_pct": 0}, "diagnostics": []},
+      "expected": {"technical_condition": "degraded", "user_impact": "unknown", "operational_risk": "elevated", "detection_confidence": "high", "attribution_domain": "resolver_provider_path", "attribution_confidence": "medium", "dependency_group_state": "secondary_degraded_primary_healthy", "redundancy_state": "reduced", "unresolved_evidence": ["active_dependency_path"], "operator_input_still_required": ["which resolver member is active"]}
+    },
+    {
+      "id": "both_resolvers_degraded",
+      "title": "Both resolver members degraded",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [26, 31], "resolver_primary_p95_ms": [240, 260], "resolver_secondary_p95_ms": [190, 220], "loss_pct": 0}, "diagnostics": []},
+      "expected": {"technical_condition": "severe", "user_impact": "possible", "operational_risk": "high", "detection_confidence": "high", "attribution_domain": "resolver_provider_path", "attribution_confidence": "medium", "dependency_group_state": "both_degraded", "redundancy_state": "no_usable_fallback", "unresolved_evidence": ["route_or_pop_diagnostics", "user_symptoms"], "operator_input_still_required": ["confirm provider route or endpoint diagnostics", "confirm user symptoms"]}
+    },
+    {
+      "id": "resolver_icmp_high_dns_normal",
+      "title": "Resolver ICMP high but direct DNS query latency normal",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 8], "internet_probe_p95_ms": [24, 28], "resolver_primary_p95_ms": [180, 220], "resolver_secondary_p95_ms": [32, 35], "loss_pct": 0}, "diagnostics": [{"type": "direct_dns_query_measurement", "target": "primary", "latency_ms": [24, 29], "freshness": "fresh", "provenance": "observed_fact", "confidence": "high"}]},
+      "expected": {"technical_condition": "watch", "user_impact": "not_observed", "operational_risk": "normal", "detection_confidence": "medium", "attribution_domain": "unknown", "attribution_confidence": "low", "dependency_group_state": "primary_degraded_secondary_healthy", "redundancy_state": "normal", "unresolved_evidence": ["icmp_dns_protocol_mismatch"], "operator_input_still_required": ["keep DNS query timing separate from ICMP probe timing"]}
+    },
+    {
+      "id": "internet_and_resolver_groups_degraded",
+      "title": "General Internet and resolver groups degraded together",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [180, 210], "resolver_primary_p95_ms": [240, 260], "resolver_secondary_p95_ms": [190, 205], "loss_pct": 0}, "diagnostics": [{"type": "cloudflare_radar_context", "state": "normal", "freshness": "fresh", "provenance": "external_diagnostic_result", "confidence": "medium"}]},
+      "expected": {"technical_condition": "severe", "user_impact": "possible", "operational_risk": "high", "detection_confidence": "high", "attribution_domain": "broad_isp_path", "attribution_confidence": "medium", "dependency_group_state": "both_degraded", "redundancy_state": "no_usable_fallback", "unresolved_evidence": ["transit_or_isp_boundary"], "operator_input_still_required": ["traceroute summary to distinguish ISP path from upstream transit"]}
+    },
+    {
+      "id": "gateway_and_wan_degraded",
+      "title": "Gateway and WAN degraded together",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [160, 170, 180], "internet_probe_p95_ms": [210, 230], "resolver_primary_p95_ms": [240, 260], "resolver_secondary_p95_ms": [220, 250], "loss_pct": 0}, "diagnostics": []},
+      "expected": {"technical_condition": "severe", "user_impact": "possible", "operational_risk": "high", "detection_confidence": "high", "attribution_domain": "local_gateway", "attribution_confidence": "medium", "dependency_group_state": "both_degraded", "redundancy_state": "no_usable_fallback", "unresolved_evidence": ["local_lan_or_gateway_boundary"], "operator_input_still_required": ["wired versus wifi gateway comparison"]}
+    },
+    {
+      "id": "isolated_resolver_outlier_without_persistence",
+      "title": "Isolated resolver outlier without persistence",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [24, 28], "resolver_primary_p95_ms": [32, 260, 33], "resolver_secondary_p95_ms": [31, 34, 32], "loss_pct": 0}, "diagnostics": []},
+      "expected": {"technical_condition": "watch", "user_impact": "not_observed", "operational_risk": "normal", "detection_confidence": "medium", "attribution_domain": "unknown", "attribution_confidence": "low", "dependency_group_state": "both_healthy", "redundancy_state": "normal", "unresolved_evidence": ["persistence"], "operator_input_still_required": []}
+    },
+    {
+      "id": "symptoms_confirmed_despite_healthy_fallback",
+      "title": "User symptoms confirmed despite healthy fallback",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [25, 29], "resolver_primary_p95_ms": [260, 300], "resolver_secondary_p95_ms": [31, 35], "loss_pct": 0}, "diagnostics": [{"type": "active_dependency_path", "active_member_id": "secondary", "freshness": "fresh", "provenance": "operator_assertion", "confidence": "high"}, {"type": "user_report", "state": "symptoms_confirmed", "freshness": "fresh", "provenance": "operator_assertion", "confidence": "medium"}]},
+      "expected": {"technical_condition": "severe", "user_impact": "confirmed", "operational_risk": "elevated", "detection_confidence": "high", "attribution_domain": "mixed", "attribution_confidence": "medium", "dependency_group_state": "active_path_healthy_peer_degraded", "redundancy_state": "reduced", "unresolved_evidence": ["symptom_telemetry_mismatch"], "operator_input_still_required": ["identify affected application path"]}
+    },
+    {
+      "id": "diagnostic_evidence_unavailable",
+      "title": "Resolver telemetry degraded with diagnostics unavailable",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [24, 28], "resolver_primary_p95_ms": [250, 290], "resolver_secondary_p95_ms": [38, 41], "loss_pct": 0}, "diagnostics": [{"type": "provider_diagnostic_reference", "status": "unavailable", "freshness": "missing", "provenance": "external_diagnostic_result", "confidence": "low"}]},
+      "expected": {"technical_condition": "severe", "user_impact": "unknown", "operational_risk": "elevated", "detection_confidence": "high", "attribution_domain": "resolver_provider_path", "attribution_confidence": "medium", "dependency_group_state": "primary_degraded_secondary_healthy", "redundancy_state": "reduced", "unresolved_evidence": ["provider_diagnostics_unavailable", "active_dependency_path"], "operator_input_still_required": ["active path", "route or PoP diagnostic if available"]}
+    },
+    {
+      "id": "stale_diagnostic_evidence",
+      "title": "Fresh telemetry with stale diagnostic evidence",
+      "evidence_summary": {"telemetry": {"gateway_p95_ms": [8, 9], "internet_probe_p95_ms": [24, 28], "resolver_primary_p95_ms": [250, 290], "resolver_secondary_p95_ms": [38, 41], "loss_pct": 0}, "diagnostics": [{"type": "resolver_route_diagnostic", "target": "primary", "observed_pop": "distant-pop", "freshness": "stale", "provenance": "external_diagnostic_result", "confidence": "high"}]},
+      "expected": {"technical_condition": "severe", "user_impact": "unknown", "operational_risk": "elevated", "detection_confidence": "high", "attribution_domain": "resolver_provider_path", "attribution_confidence": "medium", "dependency_group_state": "primary_degraded_secondary_healthy", "redundancy_state": "reduced", "unresolved_evidence": ["stale_diagnostic_evidence", "active_dependency_path"], "operator_input_still_required": ["fresh diagnostic evidence", "active path"]}
+    },
+    {
+      "id": "legacy_artifact_without_new_fields",
+      "title": "Legacy artifact without multidimensional fields",
+      "evidence_summary": {"legacy_artifact": {"schema_version": 1, "attribution_label": "Likely upstream (ISP / path)", "attribution_confidence": "High"}},
+      "expected": {"technical_condition": "unknown", "user_impact": "unknown", "operational_risk": "unknown", "detection_confidence": "low", "attribution_domain": "unknown", "attribution_confidence": "low", "dependency_group_state": "unknown", "redundancy_state": "unknown", "unresolved_evidence": ["multidimensional_fields_absent"], "operator_input_still_required": []}
+    }
+  ]
+}
