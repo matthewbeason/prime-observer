@@ -215,6 +215,28 @@
       <div id="operatorQuickFacts" class="card-grid"></div>
     </section>
 
+    <section id="multidimensionalHealthSection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Multidimensional Health</div>
+          <h2>Deterministic health dimensions</h2>
+          <p class="section-note supporting">Python-owned Phase 3 presentation. These fields separate technical condition, observed user impact, operational risk, confidence, attribution, and dependency redundancy.</p>
+        </div>
+        <div id="multidimensionalHealthPills" class="pill-group"></div>
+      </div>
+      <div id="multidimensionalHealthCards" class="card-grid"></div>
+      <div class="panel-grid" style="margin-top:14px;">
+        <div class="card card-muted">
+          <h3>Dependency State</h3>
+          <div id="dependencyStateList" class="summary-list"></div>
+        </div>
+        <div class="card card-muted">
+          <h3>Evidence Boundaries</h3>
+          <div id="healthBoundaryList" class="summary-list"></div>
+        </div>
+      </div>
+    </section>
+
     <section id="recommendedActionsSection" class="section">
       <div class="section-header">
         <div>
@@ -439,6 +461,56 @@
       return "tone-muted";
     }
 
+    function healthLabel(value){
+      if (value === null || value === undefined || value === "") return "Unknown";
+      const labels = {
+        healthy: "Healthy",
+        elevated: "Elevated",
+        degraded: "Degraded",
+        severe: "Severe",
+        not_observed: "Not observed",
+        unlikely: "Unlikely",
+        possible: "Possible",
+        likely: "Likely",
+        confirmed: "Confirmed",
+        low: "Low",
+        guarded: "Guarded",
+        high: "High",
+        critical: "Critical",
+        resolver_provider_path: "Resolver provider/path",
+        resolver_endpoint_or_pop: "Resolver endpoint/PoP",
+        local_gateway: "Local gateway",
+        local_lan_or_wifi: "Local LAN/Wi-Fi",
+        broad_isp_path: "Broad ISP path",
+        upstream_transit_route: "Upstream transit route",
+        broad_internet_condition: "Broad internet condition",
+        power_environmental: "Power/environmental",
+        mixed: "Mixed",
+        active_healthy_peer_degraded: "Active healthy path, peer degraded",
+        active_degraded_fallback_healthy: "Active degraded path, fallback healthy",
+        active_path_unknown: "Active path unknown",
+        primary_degraded_secondary_healthy: "Primary degraded, secondary healthy",
+        primary_healthy_secondary_degraded: "Primary healthy, secondary degraded",
+        both_healthy: "Both healthy",
+        both_degraded: "Both degraded",
+        no_usable_fallback: "No usable fallback",
+        insufficient_evidence: "Insufficient evidence",
+        reduced: "Reduced",
+        unavailable: "Unavailable",
+        unknown: "Unknown",
+      };
+      const key = String(value);
+      return labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function healthTone(kind, value){
+      const state = String(value || "").toLowerCase();
+      if (["healthy", "not_observed", "unlikely", "low", "both_healthy"].includes(state)) return "tone-ok";
+      if (["elevated", "possible", "guarded", "medium", "reduced", "active_healthy_peer_degraded", "primary_healthy_secondary_degraded", "primary_degraded_secondary_healthy", "active_path_unknown"].includes(state)) return "tone-watch";
+      if (["degraded", "severe", "likely", "confirmed", "high", "critical", "unavailable", "both_degraded", "no_usable_fallback", "active_degraded_fallback_healthy"].includes(state)) return kind === "confidence" && state === "high" ? "tone-ok" : "tone-risk";
+      return "tone-muted";
+    }
+
     function renderMetricCard(title, value, detail, tone = "tone-muted"){
       return `<div class="card metric-card ${tone}"><div><div class="eyebrow">${title}</div><div class="value">${fmt(value)}</div></div><div class="metric-detail">${detail}</div></div>`;
     }
@@ -566,6 +638,47 @@
         renderSummaryItem("Schema", data.schema_version || "—", data.mode || "legacy"),
         renderSummaryItem("Artifact stale reason", artifact.stale_reason || "—", ""),
       ].join("");
+    }
+
+    function renderMultidimensionalHealth(data){
+      const dimensions = data.health_dimensions || {};
+      const interpretation = data.deterministic_operator_interpretation || dimensions.deterministic_operator_interpretation || {};
+      const impact = data.impact_assessment || dimensions.user_impact || {};
+      const dependencyGroups = Array.isArray(data.dependency_state) ? data.dependency_state : [];
+      const dependency = dependencyGroups[0] || {};
+      const attribution = dimensions.attribution || {};
+      const technical = dimensions.technical_condition || {};
+      const risk = dimensions.operational_risk || {};
+      const hasDimensions = Boolean(data.health_dimensions && typeof data.health_dimensions === "object");
+
+      document.getElementById("multidimensionalHealthPills").innerHTML = [
+        renderChip("Model", dimensions.model_version || "legacy fallback", hasDimensions ? "tone-accent" : "tone-watch"),
+        renderChip("Confidence", healthLabel(dimensions.detection_confidence), healthTone("confidence", dimensions.detection_confidence)),
+        renderChip("Attribution confidence", healthLabel(dimensions.attribution_confidence), healthTone("confidence", dimensions.attribution_confidence)),
+      ].join("");
+
+      document.getElementById("multidimensionalHealthCards").innerHTML = [
+        renderMetricCard("Technical condition", healthLabel(technical.state), interpretation.condition_statement || (technical.drivers || []).join("; ") || "No multidimensional condition emitted.", healthTone("technical", technical.state)),
+        renderMetricCard("User impact", healthLabel(impact.state), interpretation.impact_statement || (impact.missing_evidence || []).map(healthLabel).join(", ") || "No observed symptom state emitted.", healthTone("impact", impact.state)),
+        renderMetricCard("Operational risk", healthLabel(risk.state), interpretation.risk_statement || `Redundancy ${healthLabel(dependency.redundancy_status)}`, healthTone("risk", risk.state)),
+        renderMetricCard("Refined attribution", healthLabel(attribution.domain), interpretation.attribution_statement || `Confidence ${healthLabel(attribution.confidence)}`, healthTone("attribution", attribution.confidence)),
+      ].join("");
+
+      document.getElementById("dependencyStateList").innerHTML = dependencyGroups.length
+        ? dependencyGroups.map(group => renderSummaryItem(
+            healthLabel(group.state),
+            `Redundancy ${healthLabel(group.redundancy_status)}`,
+            `Active ${fmt(group.active_member)} · fallback ${healthLabel(group.fallback_status)} · active confidence ${healthLabel(group.active_member_confidence)}`
+          )).join("")
+        : '<div class="empty-note">No dependency group evidence emitted.</div>';
+
+      const boundaries = [];
+      for (const item of (dimensions.unresolved_evidence || [])) boundaries.push(renderSummaryItem("Unresolved evidence", healthLabel(item), ""));
+      for (const item of (interpretation.limiting_evidence || [])) boundaries.push(renderSummaryItem("Limiting evidence", healthLabel(item), ""));
+      for (const item of (interpretation.recommended_deterministic_checks || [])) boundaries.push(renderSummaryItem("Recommended check", item, ""));
+      document.getElementById("healthBoundaryList").innerHTML = boundaries.length
+        ? boundaries.join("")
+        : '<div class="empty-note">No unresolved evidence or deterministic follow-up checks emitted.</div>';
     }
 
     function renderPeriodTable(data){
@@ -932,18 +1045,33 @@
 
     function deterministicAssessment(data){
       const brief = data.operator_brief || {};
+      const interpretation = data.deterministic_operator_interpretation || data.health_dimensions?.deterministic_operator_interpretation || {};
+      const dimensions = data.health_dimensions || {};
+      const attribution = dimensions.attribution || {};
       return {
         source: "deterministic",
-        headline: brief.headline || data.title || "Investigation assessment",
-        assessment: brief.summary || data.message || "Prime Observer generated a deterministic assessment from the available evidence.",
-        likely_fault_domain: brief.likely_fault_domain,
-        affected_scope: brief.affected_scope,
+        headline: interpretation.headline || brief.headline || data.title || "Investigation assessment",
+        assessment: [
+          interpretation.condition_statement,
+          interpretation.impact_statement,
+          interpretation.risk_statement,
+          interpretation.attribution_statement,
+        ].filter(Boolean).join(" ") || brief.summary || data.message || "Prime Observer generated a deterministic assessment from the available evidence.",
+        likely_fault_domain: attribution.domain ? healthLabel(attribution.domain) : brief.likely_fault_domain,
+        affected_scope: interpretation.impact_statement || brief.affected_scope,
         healthy_scope: brief.unaffected_scope,
-        confidence: brief.confidence,
-        uncertainty: (brief.limiting_evidence || [])[0] || "Confidence is bounded by the deterministic evidence currently available.",
-        next_steps: brief.recommended_actions || [],
-        evidence: brief.supporting_evidence || [],
-        limitations: brief.limiting_evidence || [],
+        confidence: dimensions.detection_confidence || brief.confidence,
+        uncertainty: (interpretation.limiting_evidence || brief.limiting_evidence || [])[0] || "Confidence is bounded by the deterministic evidence currently available.",
+        next_steps: (brief.recommended_actions || []).length
+          ? brief.recommended_actions
+          : (interpretation.recommended_deterministic_checks || []).map(item => ({
+              action: item,
+              reason: "Deterministic Phase 3 health interpretation listed this as a safe follow-up check.",
+              expected_observation: "Additional operator evidence narrows the affected path, impact, or attribution boundary.",
+              assessment_change: "Updates the next generated health-dimensions artifact if the evidence changes."
+            })),
+        evidence: interpretation.evidence_drivers || brief.supporting_evidence || [],
+        limitations: interpretation.limiting_evidence || brief.limiting_evidence || [],
         evidence_that_would_change_assessment: brief.conditions_that_change_assessment || [],
         monitoring_guidance: brief.monitoring_guidance || brief.freshness_guidance,
       };
@@ -1008,6 +1136,7 @@
       document.getElementById("modePill").textContent = isCurrent ? "Current Investigation" : "Historical Investigation";
       document.getElementById("environmentalContextSection").style.display = "none";
       renderSummary(data);
+      renderMultidimensionalHealth(data);
       renderPeriodTable(data);
       renderRecoveryProgress(data);
       renderEvidenceArgument(data);

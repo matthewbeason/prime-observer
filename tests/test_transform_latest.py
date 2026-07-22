@@ -241,13 +241,22 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("pending_generation_state", source)
         self.assertNotIn("build_operator_assistant_output", source)
 
-    def test_browser_files_do_not_render_health_dimensions_yet(self):
+    def test_browser_files_render_health_dimensions_without_browser_interpretation(self):
         dashboard_html = INDEX_HTML_PATH.read_text()
         investigation_html = INVESTIGATE_HTML_PATH.read_text()
 
-        self.assertNotIn("health_dimensions", dashboard_html)
-        self.assertNotIn("dependency_groups", dashboard_html)
-        self.assertNotIn("health_dimensions", investigation_html)
+        self.assertIn("payload.health_dimensions", dashboard_html)
+        self.assertIn("payload.dependency_groups", dashboard_html)
+        self.assertIn("refined_attribution", dashboard_html)
+        self.assertIn("Deterministic Operator Summary", dashboard_html)
+        self.assertIn("Multidimensional Health", investigation_html)
+        self.assertIn("data.health_dimensions", investigation_html)
+        self.assertIn("data.dependency_state", investigation_html)
+        self.assertIn("data.deterministic_operator_interpretation", investigation_html)
+        self.assertNotIn("OpenRouter", dashboard_html)
+        self.assertNotIn("OPENROUTER", dashboard_html)
+        self.assertNotIn("OpenRouter", investigation_html)
+        self.assertNotIn("OPENROUTER", investigation_html)
 
     def test_dashboard_health_projection_matches_python_classification(self):
         base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)

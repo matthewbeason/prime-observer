@@ -241,6 +241,12 @@
     .health-card{min-width:420px;flex:1 1 520px;}
     .health-card h4{margin-bottom:6px;}
     .health-card .small{max-width:680px;}
+    .operator-card{flex:1 1 100%;}
+    .operator-summary{font-size:17px;line-height:1.5;color:var(--ink);font-weight:700;max-width:980px;}
+    .operator-detail{display:grid;gap:7px;margin-top:12px;color:var(--muted-strong);font-size:13px;line-height:1.5;}
+    .phase3-row .card{flex:1 1 220px;}
+    .phase3-row .card.wide-card{flex:2 1 420px;}
+    .legacy-disclosure{font-size:12px;line-height:1.5;color:var(--muted);margin-top:8px;}
     .health-table{font-size:11px;background:rgba(255,255,255,.26);border-radius:16px;overflow:hidden;}
     .health-table th{font-size:11px;color:var(--muted);font-weight:750;background:rgba(245,239,231,.88);}
     .health-table td{padding:8px 7px;}
@@ -525,6 +531,18 @@
     </div>
   </div>
 
+  <div class="row dashboard-overview phase3-row" style="margin-bottom:16px;">
+    <div class="card operator-card" id="operatorSummaryCard">
+      <h4><span>Deterministic Operator Summary</span><span class="pill info" id="operatorSummarySource">Python</span></h4>
+      <div class="operator-summary" id="operatorSummaryHeadline">Awaiting multidimensional health artifact.</div>
+      <div class="operator-detail">
+        <div id="operatorSummaryCondition">Technical condition: —</div>
+        <div id="operatorSummaryImpact">User impact: —</div>
+        <div id="operatorSummaryRisk">Operational risk: —</div>
+      </div>
+    </div>
+  </div>
+
   <div class="viz-panel primary mobile-only">
     <div class="panel-kicker">Current Network State</div>
       <div class="mobile-state-grid">
@@ -634,6 +652,53 @@
         </details>
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
+    </div>
+  </div>
+
+  <div class="row dashboard-overview phase3-row" style="margin-top:16px;">
+    <div class="card" id="technicalConditionCard">
+      <h4><span>Technical Condition</span><span class="pill" id="technicalConditionPill">v1</span></h4>
+      <div class="value" id="technicalConditionValue">—</div>
+      <div class="legacy-disclosure" id="technicalConditionDetail">Python-owned multidimensional state.</div>
+    </div>
+    <div class="card" id="userImpactCard">
+      <h4><span>User Impact</span><span class="pill" id="userImpactPill">v1</span></h4>
+      <div class="value" id="userImpactValue">—</div>
+      <div class="legacy-disclosure" id="userImpactDetail">Symptom and active-path evidence only.</div>
+    </div>
+    <div class="card" id="operationalRiskCard">
+      <h4><span>Operational Risk</span><span class="pill" id="operationalRiskPill">v1</span></h4>
+      <div class="value" id="operationalRiskValue">—</div>
+      <div class="legacy-disclosure" id="operationalRiskDetail">Redundancy-aware risk state.</div>
+    </div>
+    <div class="card" id="detectionConfidenceCard">
+      <h4><span>Detection Confidence</span><span class="pill" id="detectionConfidencePill">v1</span></h4>
+      <div class="value" id="detectionConfidenceValue">—</div>
+      <div class="legacy-disclosure" id="detectionConfidenceDetail">Confidence emitted by Python.</div>
+    </div>
+  </div>
+
+  <div class="row dashboard-overview phase3-row" style="margin-top:16px;">
+    <div class="card wide-card" id="dependencyStateCard">
+      <h4><span>Dependency And Redundancy State</span><span class="pill" id="dependencyStatePill">v1</span></h4>
+      <div class="value" style="font-size:20px;" id="dependencyStateValue">—</div>
+      <div class="metric-stack" style="margin-top:8px;">
+        <div class="metric-pair"><span class="label">Redundancy</span><span class="metric-value" id="dependencyRedundancyValue">—</span></div>
+        <div class="metric-pair"><span class="label">Active member</span><span class="metric-value" id="dependencyActiveMemberValue">—</span></div>
+        <div class="metric-pair"><span class="label">Fallback</span><span class="metric-value" id="dependencyFallbackValue">—</span></div>
+      </div>
+      <div class="chip-row" id="dependencyMembersChips"></div>
+    </div>
+    <div class="card wide-card" id="refinedAttributionCard">
+      <h4><span>Refined Attribution</span><span class="pill" id="refinedAttributionPill">v1</span></h4>
+      <div class="value" style="font-size:20px;" id="refinedAttributionValue">—</div>
+      <div class="metric-pair" style="margin-top:8px;"><span class="label">Confidence</span><span class="metric-value" id="refinedAttributionConfidence">—</span></div>
+      <div class="legacy-disclosure" id="refinedAttributionDetail">Uses Python multidimensional attribution when present.</div>
+    </div>
+    <div class="card wide-card accent-neutral" id="legacyModelDisclosureCard">
+      <h4><span>Legacy Model Disclosure</span><span class="pill neutral">Compatibility</span></h4>
+      <div class="value" style="font-size:20px;">Legacy cards retained</div>
+      <div class="legacy-disclosure">User Noticeability and Network Attribution cards remain visible for continuity. The multidimensional health cards above are the calibrated Phase 3 presentation when emitted fields are available.</div>
     </div>
   </div>
 
@@ -1665,6 +1730,8 @@
         sampleClassifications,
         compositeWanBuckets,
         attributionEvidenceCounts: payload.attribution_evidence_counts || null,
+        healthDimensions: payload.health_dimensions && typeof payload.health_dimensions === "object" ? payload.health_dimensions : null,
+        dependencyGroups: Array.isArray(payload.dependency_groups) ? payload.dependency_groups : [],
       };
     }
 
@@ -1690,6 +1757,126 @@
         .split(/\s+/)
         .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
         .join(" ");
+    }
+
+    function healthLabel(value){
+      if (typeof value !== "string" || !value.trim()) return "Unknown";
+      const labels = {
+        healthy: "Healthy",
+        elevated: "Elevated",
+        degraded: "Degraded",
+        severe: "Severe",
+        not_observed: "Not observed",
+        unlikely: "Unlikely",
+        possible: "Possible",
+        likely: "Likely",
+        confirmed: "Confirmed",
+        low: "Low",
+        guarded: "Guarded",
+        high: "High",
+        critical: "Critical",
+        active_healthy_peer_degraded: "Active healthy path, peer degraded",
+        active_degraded_fallback_healthy: "Active degraded path, fallback healthy",
+        active_path_unknown: "Active path unknown",
+        primary_degraded_secondary_healthy: "Primary degraded, secondary healthy",
+        primary_healthy_secondary_degraded: "Primary healthy, secondary degraded",
+        both_healthy: "Both healthy",
+        both_degraded: "Both degraded",
+        no_usable_fallback: "No usable fallback",
+        insufficient_evidence: "Insufficient evidence",
+        resolver_provider_path: "Resolver provider/path",
+        resolver_endpoint_or_pop: "Resolver endpoint/PoP",
+        local_gateway: "Local gateway",
+        local_lan_or_wifi: "Local LAN/Wi-Fi",
+        broad_isp_path: "Broad ISP path",
+        upstream_transit_route: "Upstream transit route",
+        broad_internet_condition: "Broad internet condition",
+        power_environmental: "Power/environmental",
+        mixed: "Mixed",
+        reduced: "Reduced",
+        unavailable: "Unavailable",
+        unknown: "Unknown",
+      };
+      return labels[value] || value.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function healthTone(kind, value){
+      const state = String(value || "").toLowerCase();
+      if (["healthy", "not_observed", "unlikely", "low", "both_healthy"].includes(state)) return "ok";
+      if (["elevated", "possible", "guarded", "medium", "reduced", "active_healthy_peer_degraded", "primary_healthy_secondary_degraded", "primary_degraded_secondary_healthy", "active_path_unknown"].includes(state)) return "watch";
+      if (["degraded", "severe", "likely", "confirmed", "high", "critical", "unavailable", "both_degraded", "no_usable_fallback", "active_degraded_fallback_healthy"].includes(state)) return kind === "confidence" && state === "high" ? "ok" : "risk";
+      return "neutral";
+    }
+
+    function setPillText(id, label, tone){
+      const pill = document.getElementById(id);
+      if (!pill) return;
+      applyPillState(pill, label, tone);
+    }
+
+    function renderDimensionCard(cardId, valueId, pillId, detailId, title, dimension, kind){
+      const state = typeof dimension === "string" ? dimension : dimension?.state;
+      const label = healthLabel(state);
+      const tone = healthTone(kind, state);
+      const card = document.getElementById(cardId);
+      const value = document.getElementById(valueId);
+      if (value) {
+        value.textContent = label;
+        setAccent(value, tone);
+      }
+      setAccent(card, `accent-${tone}`);
+      setPillText(pillId, title, tone);
+      const detail = document.getElementById(detailId);
+      if (detail){
+        const drivers = Array.isArray(dimension?.drivers) && dimension.drivers.length
+          ? dimension.drivers.slice(0, 3).join("; ")
+          : null;
+        const missing = Array.isArray(dimension?.missing_evidence) && dimension.missing_evidence.length
+          ? `Missing: ${dimension.missing_evidence.slice(0, 3).map(healthLabel).join(", ")}`
+          : null;
+        detail.textContent = drivers || missing || `${title} emitted by Python.`;
+      }
+    }
+
+    function renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload){
+      const dimensions = dashboardHealth?.healthDimensions || null;
+      const operator = dimensions?.deterministic_operator_interpretation || null;
+      const dependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
+      const refined = networkAttributionPayload?.refined_attribution || dimensions?.attribution || null;
+
+      document.getElementById("operatorSummaryHeadline").textContent = operator?.headline || "Multidimensional health artifact unavailable.";
+      document.getElementById("operatorSummaryCondition").textContent = operator?.condition_statement || "Technical condition: unavailable.";
+      document.getElementById("operatorSummaryImpact").textContent = operator?.impact_statement || "User impact: unavailable.";
+      document.getElementById("operatorSummaryRisk").textContent = operator?.risk_statement || "Operational risk: unavailable.";
+
+      renderDimensionCard("technicalConditionCard", "technicalConditionValue", "technicalConditionPill", "technicalConditionDetail", "Technical", dimensions?.technical_condition, "technical");
+      renderDimensionCard("userImpactCard", "userImpactValue", "userImpactPill", "userImpactDetail", "Impact", dimensions?.user_impact, "impact");
+      renderDimensionCard("operationalRiskCard", "operationalRiskValue", "operationalRiskPill", "operationalRiskDetail", "Risk", dimensions?.operational_risk, "risk");
+      renderDimensionCard("detectionConfidenceCard", "detectionConfidenceValue", "detectionConfidencePill", "detectionConfidenceDetail", "Confidence", dimensions?.detection_confidence, "confidence");
+
+      const dependencyTone = healthTone("dependency", dependency?.state);
+      document.getElementById("dependencyStateValue").textContent = healthLabel(dependency?.state);
+      document.getElementById("dependencyRedundancyValue").textContent = healthLabel(dependency?.redundancy_status);
+      document.getElementById("dependencyActiveMemberValue").textContent = dependency?.active_member || "—";
+      document.getElementById("dependencyFallbackValue").textContent = healthLabel(dependency?.fallback_status);
+      setAccent(document.getElementById("dependencyStateCard"), `accent-${dependencyTone}`);
+      setPillText("dependencyStatePill", "Dependency", dependencyTone);
+      const memberChips = Array.isArray(dependency?.members)
+        ? dependency.members.map(member => ({
+            label: `${member.role || member.member_id || "member"}: ${healthLabel(member.technical_condition?.state)}`,
+            tone: healthTone("technical", member.technical_condition?.state)
+          }))
+        : [];
+      renderChipRow("dependencyMembersChips", memberChips.length ? memberChips : [{ label: "No dependency member evidence", tone: "neutral" }]);
+
+      const refinedTone = healthTone("attribution", refined?.confidence);
+      document.getElementById("refinedAttributionValue").textContent = healthLabel(refined?.domain);
+      document.getElementById("refinedAttributionConfidence").textContent = healthLabel(refined?.confidence);
+      document.getElementById("refinedAttributionDetail").textContent = Array.isArray(refined?.evidence_for) && refined.evidence_for.length
+        ? refined.evidence_for.slice(0, 2).join("; ")
+        : "Refined attribution evidence unavailable or unresolved.";
+      setAccent(document.getElementById("refinedAttributionCard"), `accent-${refinedTone}`);
+      setPillText("refinedAttributionPill", "Refined", refinedTone);
     }
 
     function selectCurrentAttributionObservation(payload){
@@ -3026,6 +3213,7 @@
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary, patternSummary);
         updateAttributionCard(attribution, attributionEvidence);
+        renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload);
         renderWanHealthTable(internetSeriesMarked, resolverSeriesMarked);
         updateMobileCurrentState();
         scheduleResponsiveRender();

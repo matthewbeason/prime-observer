@@ -27,7 +27,9 @@ transform cycle. `bin/health_dimensions.py` evaluates technical condition, user
 impact, operational risk, detection confidence, refined attribution confidence,
 dependency-group state, optional diagnostic evidence, and deterministic operator
 interpretation inputs. These fields are additive in `viz/investigation.json`;
-the Investigation renderer does not consume them yet.
+the Investigation renderer presents them in the Multidimensional Health section
+and uses deterministic interpretation text when matching Operator Assistant
+output is unavailable.
 
 The worker transitions pending work through `generating` to `complete`, or to
 `retry_wait` after a transient failure. It respects `next_retry_at`, stops after

@@ -2,11 +2,12 @@
 
 Phase 1 produced the proposal and calibration fixtures. Phase 2 implements the
 first Python-owned evaluator in `bin/health_dimensions.py` and writes additive
-artifact fields only. This document remains the calibration reference; dashboard
-and investigation rendering changes are deferred to Phase 3.
+artifact fields. Phase 3 renders those emitted fields in the dashboard and
+Investigation UI without moving health interpretation into browser JavaScript.
 
-The Phase 2 implementation does not remove legacy noticeability, does not call
-OpenRouter, does not add a database, and does not rewrite historical snapshots.
+The Phase 2 and Phase 3 implementation does not remove legacy noticeability,
+does not call OpenRouter from browser code, does not add a database, and does not
+rewrite historical snapshots.
 
 ## Incident Summary
 

@@ -52,9 +52,10 @@ Current watch period:
 - Phase 1 health-dimensions design and calibration fixture work is documented in
   `docs/health-dimensions-calibration.md`; production behavior is intentionally
   unchanged pending implementation review.
-- Phase 2 now implements Python-owned multidimensional health evaluation and
-  additive artifact fields. Dashboard and Investigation rendering remain deferred
-  to Phase 3.
+- Phase 2 implements Python-owned multidimensional health evaluation and additive
+  artifact fields. Phase 3 renders those fields in the dashboard and
+  Investigation UI while retaining legacy noticeability and attribution cards as
+  compatibility disclosure.
 
 ## Next Logical Milestone
 

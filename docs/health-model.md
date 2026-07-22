@@ -22,11 +22,38 @@ The health model is implemented in three main places:
 
 - `bin/transform_latest.py` generates `viz/latest.csv` and
   `viz/network_attribution.json` for the current 24-hour dashboard window.
-- `viz/index.html` renders the dashboard from `viz/latest.csv`.
+- `viz/index.html` renders the dashboard from `viz/latest.csv`,
+  `viz/dashboard_health.json`, `viz/network_attribution.json`, and supporting
+  local artifacts. Browser-side fallback exists for legacy dashboard artifacts,
+  but Python-emitted health dimensions are the calibrated Phase 3 presentation
+  when present.
 - `bin/investigation_model.py` generates automatic current-event investigation
   evidence in `viz/investigation.json` during the transform cycle.
 - `bin/build_investigation.py` generates manual requested-window historical
   evidence in `viz/investigation.json` when explicitly run.
+
+## Multidimensional Health Presentation
+
+`bin/health_dimensions.py` is the authoritative implementation for the Phase 3
+multidimensional health model. `bin/transform_latest.py` projects the evaluator
+output into `viz/dashboard_health.json`, `viz/network_attribution.json`, and
+`viz/investigation.json` as additive fields.
+
+The dashboard and Investigation UI render these emitted fields only:
+
+- `technical_condition`
+- `user_impact`
+- `operational_risk`
+- `detection_confidence`
+- `attribution` / `refined_attribution`
+- `attribution_confidence`
+- `dependency_groups` / `dependency_state`
+- `deterministic_operator_interpretation`
+
+The browser maps enum values to labels and visual tones. It does not calculate
+new multidimensional health, dependency state, attribution domains, or next
+actions from telemetry. Legacy dashboard noticeability and broad attribution
+cards remain visible as compatibility disclosure and fallback behavior.
 
 ## Samples
 
@@ -352,8 +379,9 @@ transform. Stale evidence is retained as context but does not count as current
 corroboration. Operator assertions and external diagnostics may refine impact or
 confidence, but they must not silently override telemetry.
 
-Rendering changes are deferred. `viz/index.html` and `viz/investigate.html` do
-not render these fields yet.
+`viz/index.html` and `viz/investigate.html` render these fields directly from the
+generated artifacts. Browser code may label enum values and choose visual tone,
+but it must not derive new multidimensional health semantics from telemetry.
 
 ## User Noticeability
 
