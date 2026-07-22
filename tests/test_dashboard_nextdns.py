@@ -127,8 +127,14 @@ class DashboardNextDnsTest(unittest.TestCase):
     def test_dashboard_keeps_same_primary_concepts_on_desktop_and_mobile(self):
         html = (ROOT / "viz" / "index.html").read_text()
 
-        self.assertIn('class="row dashboard-overview primary-row"', html)
+        self.assertIn('class="row dashboard-overview primary-operator-row"', html)
+        self.assertIn('class="row dashboard-overview local-evidence-row"', html)
         self.assertIn('class="mobile-state-grid"', html)
+        self.assertIn('id="mobileTechnicalConditionValue"', html)
+        self.assertIn('id="mobileUserImpactValue"', html)
+        self.assertIn('id="mobileAffectedScopeValue"', html)
+        self.assertIn('id="mobileCurrentActionValue"', html)
+        self.assertIn('id="supportingContextDetails"', html)
         self.assertIn('id="dnsCard"', html)
         self.assertIn('id="mobileDnsCard"', html)
         self.assertIn('id="mobileDnsDisclosure"', html)
