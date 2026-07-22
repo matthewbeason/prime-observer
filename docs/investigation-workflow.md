@@ -22,6 +22,13 @@ separate local assistant worker. The tracked LaunchAgent checks every 60 seconds
 the worker delegates provider work to `bin/build_operator_assistant_output.py`
 and never blocks this transform cycle.
 
+Phase 2 adds Python-owned multidimensional health dimensions during the same
+transform cycle. `bin/health_dimensions.py` evaluates technical condition, user
+impact, operational risk, detection confidence, refined attribution confidence,
+dependency-group state, optional diagnostic evidence, and deterministic operator
+interpretation inputs. These fields are additive in `viz/investigation.json`;
+the Investigation renderer does not consume them yet.
+
 The worker transitions pending work through `generating` to `complete`, or to
 `retry_wait` after a transient failure. It respects `next_retry_at`, stops after
 three worker attempts for one semantic hash, and marks persistent/configuration
@@ -77,12 +84,17 @@ The automatic schema is `schema_version: 2` and uses:
 - `operator_brief`, `scope_impact`, `episode_summary`, `evidence_argument`, and
   `evidence_buckets` for renderer-only Operator Assessment fallback and
   structured operator workflow
+- additive `health_dimensions`, `impact_assessment`, `dependency_state`, and
+  `deterministic_operator_interpretation` fields from the Phase 2 evaluator
 
 Completed historical snapshots use `artifact_type:
 "completed_investigation_snapshot"`, `immutable: true`, `snapshot_written_at`,
 and minimal generator metadata for future schema evolution. These metadata fields
 are not part of the event semantic hash and must not trigger Operator Assistant
 semantic churn.
+
+Existing completed snapshots are not rewritten for Phase 2. Only newly created
+snapshots can include the additive health-dimensions fields.
 
 Event selection is deterministic:
 

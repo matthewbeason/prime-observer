@@ -29,6 +29,17 @@ class TargetMetadataTest(unittest.TestCase):
         self.assertEqual(self.module.target_label("45.90.30.134"), "NextDNS secondary")
         self.assertEqual(self.module.target_class("192.168.1.1"), "gateway_probe")
 
+    def test_resolver_targets_include_provider_neutral_dependency_metadata(self):
+        primary = self.module.target_metadata("45.90.28.134")
+        secondary = self.module.target_metadata("45.90.30.134")
+
+        self.assertEqual(primary["dependency_group_id"], secondary["dependency_group_id"])
+        self.assertEqual(primary["dependency_type"], "dns_resolver_pair")
+        self.assertEqual(primary["role"], "primary")
+        self.assertEqual(secondary["role"], "secondary")
+        self.assertEqual(primary["endpoint"], "45.90.28.134")
+        self.assertEqual(secondary["endpoint"], "45.90.30.134")
+
     def test_unknown_target_falls_back_safely(self):
         self.assertEqual(self.module.target_metadata("203.0.113.10"), {
             "target_label": "203.0.113.10",

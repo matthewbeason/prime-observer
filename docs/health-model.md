@@ -303,6 +303,58 @@ classified against LAN evidence during the same interval:
 Window confidence is based on whether incidents consistently support one class
 or contain mixed/inconclusive evidence.
 
+## Multidimensional Health Dimensions
+
+Phase 2 adds Python-owned multidimensional health semantics in
+`bin/health_dimensions.py`. These semantics are additive and do not remove or
+redefine the legacy attribution labels or dashboard User Noticeability score.
+
+The evaluator emits:
+
+- `technical_condition`: `healthy`, `elevated`, `degraded`, `severe`, or
+  `unknown`
+- `user_impact`: `not_observed`, `unlikely`, `possible`, `likely`, `confirmed`,
+  or `unknown`
+- `operational_risk`: `low`, `guarded`, `elevated`, `high`, `critical`, or
+  `unknown`
+- `detection_confidence`: `low`, `medium`, or `high`
+- `attribution_confidence`: `low`, `medium`, or `high`
+
+Technical condition is derived from telemetry, persistence, latency, jitter,
+loss, baseline delta when available, and corroborating direct DNS query evidence
+when present. User impact is a separate dimension; resolver p95 alone must not
+produce high user impact. Operational risk rises when redundancy is reduced,
+active paths degrade, both members degrade, or fallback is unavailable.
+
+Refined attribution domains are deterministic and scoped more narrowly than the
+legacy local/upstream labels when evidence supports it. Domains are:
+
+- `local_gateway`
+- `local_lan_or_wifi`
+- `broad_isp_path`
+- `upstream_transit_route`
+- `resolver_provider_path`
+- `resolver_endpoint_or_pop`
+- `broad_internet_condition`
+- `power_environmental`
+- `mixed`
+- `unknown`
+
+Resolver dependency groups are provider-neutral. Current resolver target metadata
+adds dependency group ID, dependency type, member ID, role, provider, and endpoint
+for the configured primary and secondary resolver probes. The evaluator computes
+dependency state, active member, active-member confidence, fallback status, and
+`redundancy_status` independently from provider names.
+
+Optional diagnostic evidence is read from `viz/diagnostic_evidence.json` when it
+exists. Missing or malformed diagnostic evidence is safe and does not break the
+transform. Stale evidence is retained as context but does not count as current
+corroboration. Operator assertions and external diagnostics may refine impact or
+confidence, but they must not silently override telemetry.
+
+Rendering changes are deferred. `viz/index.html` and `viz/investigate.html` do
+not render these fields yet.
+
 ## User Noticeability
 
 User Noticeability is a dashboard-only deterministic score intended to estimate

@@ -23,6 +23,7 @@ from health_model import (
     is_wan_bad,
     lan_elevation,
 )
+from health_dimensions import evaluate_health_dimensions, load_diagnostic_evidence
 from observation_domain import (
     OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observations,
@@ -48,6 +49,7 @@ DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
+DIAGNOSTIC_EVIDENCE_IN = VIZ_DIR / "diagnostic_evidence.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -699,7 +701,7 @@ def compute_window_attribution(incidents, lan_series, wan_series_marked):
     }
 
 
-def compute_network_attribution(rows, generated_at):
+def compute_network_attribution(rows, generated_at, health_dimensions=None):
     lan_series, wan_series = to_dashboard_series(rows)
     wan_series_marked = mark_persistent_wan_bad(wan_series)
     current = compute_recent_attribution(lan_series, wan_series_marked, generated_at)
@@ -715,7 +717,7 @@ def compute_network_attribution(rows, generated_at):
     window_start = min((d["t"] for d in (lan_series + wan_series_marked)), default=None)
     window_end = max((d["t"] for d in (lan_series + wan_series_marked)), default=None)
 
-    return {
+    payload = {
         "attribution_status": current["attribution_status"],
         "attribution_label": current_label,
         "attribution_confidence": current_confidence,
@@ -747,6 +749,18 @@ def compute_network_attribution(rows, generated_at):
             "resolver_probe_samples": all_groups.get("resolver_probe", {}).get("sample_count", 0),
         },
     }
+    refined = (health_dimensions or {}).get("attribution") if isinstance(health_dimensions, dict) else None
+    if isinstance(refined, dict):
+        payload["refined_attribution"] = {
+            "schema_version": (health_dimensions or {}).get("schema_version"),
+            "model_version": (health_dimensions or {}).get("model_version"),
+            "domain": refined.get("domain"),
+            "confidence": refined.get("confidence"),
+            "evidence_for": refined.get("evidence_for") or [],
+            "evidence_against": refined.get("evidence_against") or [],
+            "unresolved_evidence": refined.get("unresolved_evidence") or [],
+        }
+    return payload
 
 
 def camelize_classification_counts(counts):
@@ -879,7 +893,7 @@ def build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at):
     return sorted(out, key=lambda item: item["t"])
 
 
-def build_dashboard_health(rows, attribution, generated_at):
+def build_dashboard_health(rows, attribution, generated_at, health_dimensions=None):
     lan_series, wan_series = to_dashboard_series(rows)
     wan_series_marked = mark_persistent_wan_bad(wan_series)
     wan_buckets = classify_buckets(wan_series_marked)
@@ -888,7 +902,7 @@ def build_dashboard_health(rows, attribution, generated_at):
     window_counts = attribution_evidence_counts(window_groups, lan_series, window_lan["elevated"])
     window_start = min((d["t"] for d in (lan_series + wan_series_marked)), default=None)
     window_end = max((d["t"] for d in (lan_series + wan_series_marked)), default=None)
-    return {
+    payload = {
         "schema_version": 1,
         "generated_at": generated_at.isoformat(),
         "model_version": "prime_observer.dashboard_health.v1",
@@ -921,6 +935,26 @@ def build_dashboard_health(rows, attribution, generated_at):
         },
         "attribution_evidence_counts": camelize_classification_counts(window_counts),
     }
+    if isinstance(health_dimensions, dict):
+        payload["health_dimensions"] = {
+            key: health_dimensions.get(key)
+            for key in (
+                "schema_version",
+                "model_version",
+                "generated_at",
+                "technical_condition",
+                "user_impact",
+                "operational_risk",
+                "detection_confidence",
+                "attribution_confidence",
+                "attribution",
+                "unresolved_evidence",
+                "diagnostic_evidence",
+                "deterministic_operator_interpretation",
+            )
+        }
+        payload["dependency_groups"] = health_dimensions.get("dependency_groups") or []
+    return payload
 
 
 def write_json_atomic(path, data):
@@ -985,9 +1019,15 @@ def main():
 
     tmp.replace(OUT)
 
-    attribution = compute_network_attribution(rows_out, now)
+    diagnostic_evidence = load_diagnostic_evidence(DIAGNOSTIC_EVIDENCE_IN, generated_at=now)
+    health_dimensions = evaluate_health_dimensions(
+        rows_out,
+        generated_at=now,
+        diagnostic_evidence=diagnostic_evidence,
+    )
+    attribution = compute_network_attribution(rows_out, now, health_dimensions=health_dimensions)
     write_json_atomic(ATTRIBUTION_OUT, attribution)
-    dashboard_health = build_dashboard_health(rows_out, attribution, now)
+    dashboard_health = build_dashboard_health(rows_out, attribution, now, health_dimensions=health_dimensions)
     write_json_atomic(DASHBOARD_HEALTH_OUT, dashboard_health)
     lan_series, wan_series = to_dashboard_series(rows_out)
     wan_series_marked = mark_persistent_wan_bad(wan_series)
@@ -1018,6 +1058,7 @@ def main():
         wan_series_marked=wan_series_marked,
         attribution=attribution,
         dashboard_health=dashboard_health,
+        health_dimensions=health_dimensions,
         observations_projection=observations_projection,
     )
     investigation_write = write_investigation_if_changed(INVESTIGATION_OUT, investigation)
@@ -1029,6 +1070,7 @@ def main():
         wan_series_marked=wan_series_marked,
         attribution=attribution,
         dashboard_health=dashboard_health,
+        health_dimensions=health_dimensions,
         observations_projection=observations_projection,
         investigations_dir=VIZ_DIR / "investigations",
         catalog_path=VIZ_DIR / "investigation_catalog.json",

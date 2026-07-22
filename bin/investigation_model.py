@@ -18,6 +18,7 @@ from health_model import (
     bucket_start,
     is_turbulence_bucket,
 )
+from health_dimensions import semantic_health_dimensions
 
 
 BASE = Path(__file__).resolve().parents[1]
@@ -977,6 +978,7 @@ def build_automatic_investigation(
     wan_series_marked=None,
     attribution=None,
     dashboard_health=None,
+    health_dimensions=None,
     observations_projection=None,
     selected_event_id=None,
     historical=False,
@@ -1039,6 +1041,10 @@ def build_automatic_investigation(
         "freshness": freshness(generated_at, telemetry_latest_at, evidence_latest_at),
         "selected_event": selected,
         "operator_brief": brief,
+        "impact_assessment": (health_dimensions or {}).get("user_impact") if isinstance(health_dimensions, dict) else None,
+        "dependency_state": (health_dimensions or {}).get("dependency_groups") if isinstance(health_dimensions, dict) else [],
+        "health_dimensions": health_dimensions if isinstance(health_dimensions, dict) else None,
+        "deterministic_operator_interpretation": (health_dimensions or {}).get("deterministic_operator_interpretation") if isinstance(health_dimensions, dict) else None,
         "scope_impact": scope,
         "recovery_progress": recovery,
         "episode_summary": episodes,
@@ -1243,6 +1249,7 @@ def write_completed_investigation_history(
     wan_series_marked=None,
     attribution=None,
     dashboard_health=None,
+    health_dimensions=None,
     observations_projection=None,
     investigations_dir=INVESTIGATIONS_DIR,
     catalog_path=INVESTIGATION_CATALOG_OUT,
@@ -1254,6 +1261,7 @@ def write_completed_investigation_history(
         wan_series_marked=wan_series_marked,
         attribution=attribution,
         dashboard_health=dashboard_health,
+        health_dimensions=health_dimensions,
         observations_projection=observations_projection,
     )
     completed_events = [
@@ -1292,6 +1300,7 @@ def write_completed_investigation_history(
             wan_series_marked=snapshot_marked,
             attribution=attribution,
             dashboard_health=dashboard_health,
+            health_dimensions=health_dimensions,
             observations_projection=observations_projection,
             selected_event_id=completed_event_id,
             historical=True,
@@ -1369,6 +1378,7 @@ def event_semantic_payload(payload):
         },
         "selected_event": {key: selected.get(key) for key in selected_keys},
         "secondary_context": payload.get("secondary_context"),
+        "health_dimensions": semantic_health_dimensions(payload.get("health_dimensions")),
         "windows": {
             name: {
                 "available": window.get("available"),

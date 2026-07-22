@@ -117,6 +117,7 @@ def normalized_input_payload(input_payload):
     investigation = safe_dict(payload.get("investigation"))
     attribution = safe_dict(payload.get("attribution"))
     environmental = safe_dict(payload.get("environmental_context"))
+    health_dimensions = safe_dict(payload.get("health_dimensions"))
 
     def normalized_context(value, *, include_provider=False):
         context = safe_dict(value)
@@ -150,6 +151,25 @@ def normalized_input_payload(input_payload):
             "evidence_lag_seconds": safe_dict(payload.get("freshness")).get("evidence_lag_seconds"),
         },
         "operator_brief": safe_dict(payload.get("operator_brief")),
+        "health_dimensions": {
+            "technical_condition": safe_dict(health_dimensions.get("technical_condition")).get("state"),
+            "user_impact": safe_dict(health_dimensions.get("user_impact")).get("state"),
+            "operational_risk": safe_dict(health_dimensions.get("operational_risk")).get("state"),
+            "detection_confidence": health_dimensions.get("detection_confidence"),
+            "attribution_domain": safe_dict(health_dimensions.get("attribution")).get("domain"),
+            "attribution_confidence": health_dimensions.get("attribution_confidence"),
+            "dependency_groups": [
+                {
+                    "state": safe_dict(group).get("state"),
+                    "redundancy_status": safe_dict(group).get("redundancy_status"),
+                    "active_member": safe_dict(group).get("active_member"),
+                    "fallback_status": safe_dict(group).get("fallback_status"),
+                }
+                for group in health_dimensions.get("dependency_groups", [])
+                if isinstance(group, dict)
+            ],
+            "unresolved_evidence": health_dimensions.get("unresolved_evidence") or [],
+        },
         "scope_impact": safe_dict(payload.get("scope_impact")),
         "recovery_progress": safe_dict(payload.get("recovery_progress")),
         "episode_summary": safe_dict(payload.get("episode_summary")),
@@ -455,6 +475,7 @@ def build_package(investigation, source_file):
     selected_event = safe_dict(investigation.get("selected_event"))
     artifact_state = safe_dict(investigation.get("artifact_state"))
     freshness = safe_dict(investigation.get("freshness"))
+    health_dimensions = safe_dict(investigation.get("health_dimensions"))
     target_class = selected_event.get("target_class")
     use_schema2 = investigation.get("schema_version") == 2 and bool(windows)
 
@@ -485,6 +506,10 @@ def build_package(investigation, source_file):
             for row in bounded_items(investigation.get("timeline"), 8)
         },
         "operator_brief": safe_dict(investigation.get("operator_brief")),
+        "health_dimensions": health_dimensions,
+        "deterministic_operator_interpretation": safe_dict(investigation.get("deterministic_operator_interpretation")),
+        "dependency_groups": investigation.get("dependency_state") if isinstance(investigation.get("dependency_state"), list) else [],
+        "impact_assessment": safe_dict(investigation.get("impact_assessment")),
         "scope_impact": safe_dict(investigation.get("scope_impact")),
         "recovery_progress": safe_dict(investigation.get("recovery_progress")),
         "episode_summary": safe_dict(investigation.get("episode_summary")),
@@ -525,6 +550,8 @@ def build_package(investigation, source_file):
             "observed_fact": "Use only directly supplied deterministic evidence for facts.",
             "inference": "Likely meaning may be inferred when phrased as an engineering assessment, not proof.",
             "unknown": "State unknowns when evidence is insufficient or contradictory.",
+            "impact": "Do not convert technical severity into user impact without symptom, active-path, fallback, or application evidence.",
+            "telemetry": "Operator assertions and diagnostics may refine confidence or impact, but must not silently override telemetry.",
         },
         "prohibited_claims": [
             "Do not claim definite ISP, DNS provider, local network, routing, or power fault unless the evidence explicitly supports that certainty.",
@@ -576,6 +603,10 @@ def unavailable_package(source_file, limitations):
         },
         "limitations": limitations[:10],
         "operator_brief": {},
+        "health_dimensions": {},
+        "deterministic_operator_interpretation": {},
+        "dependency_groups": [],
+        "impact_assessment": {},
         "scope_impact": {},
         "recovery_progress": {},
         "episode_summary": {},

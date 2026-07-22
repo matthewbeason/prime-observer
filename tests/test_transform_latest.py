@@ -38,6 +38,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.DASHBOARD_HEALTH_OUT = self.viz_dir / "dashboard_health.json"
         self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
         self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
+        self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -136,9 +137,16 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
         self.assertEqual(dashboard_health["schema_version"], 1)
         self.assertEqual(dashboard_health["model_version"], "prime_observer.dashboard_health.v1")
+        self.assertIn("health_dimensions", dashboard_health)
+        self.assertIn("dependency_groups", dashboard_health)
+        self.assertEqual(dashboard_health["health_dimensions"]["model_version"], "prime_observer.health_dimensions.v1")
         self.assertEqual(investigation["schema_version"], 2)
         self.assertEqual(investigation["mode"], "automatic")
         self.assertEqual(investigation["artifact_type"], "current_investigation")
+        self.assertIn("health_dimensions", investigation)
+        self.assertIn("impact_assessment", investigation)
+        self.assertIn("dependency_state", investigation)
+        self.assertIn("deterministic_operator_interpretation", investigation)
         self.assertFalse(investigation["immutable"])
         self.assertEqual(investigation_catalog["schema_version"], 1)
         self.assertEqual(investigation_catalog["artifact_type"], "investigation_catalog")
@@ -172,6 +180,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("attribution_label", attribution)
         self.assertIn("current_attribution", attribution)
         self.assertIn("window_attribution", attribution)
+        self.assertIn("refined_attribution", attribution)
+        self.assertEqual(attribution["refined_attribution"]["model_version"], "prime_observer.health_dimensions.v1")
         self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
         self.assertEqual(len(observations["observations"]), 3)
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
@@ -230,6 +240,14 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("OPERATOR_ASSISTANT_GENERATION_STATE_OUT", source)
         self.assertIn("pending_generation_state", source)
         self.assertNotIn("build_operator_assistant_output", source)
+
+    def test_browser_files_do_not_render_health_dimensions_yet(self):
+        dashboard_html = INDEX_HTML_PATH.read_text()
+        investigation_html = INVESTIGATE_HTML_PATH.read_text()
+
+        self.assertNotIn("health_dimensions", dashboard_html)
+        self.assertNotIn("dependency_groups", dashboard_html)
+        self.assertNotIn("health_dimensions", investigation_html)
 
     def test_dashboard_health_projection_matches_python_classification(self):
         base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)

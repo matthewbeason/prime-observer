@@ -16,10 +16,22 @@ TARGET_METADATA = {
     "45.90.28.134": {
         "label": "NextDNS primary",
         "class": "resolver_probe",
+        "dependency_group_id": "resolver_pair_home",
+        "dependency_type": "dns_resolver_pair",
+        "member_id": "nextdns_primary",
+        "role": "primary",
+        "provider": "NextDNS",
+        "endpoint": "45.90.28.134",
     },
     "45.90.30.134": {
         "label": "NextDNS secondary",
         "class": "resolver_probe",
+        "dependency_group_id": "resolver_pair_home",
+        "dependency_type": "dns_resolver_pair",
+        "member_id": "nextdns_secondary",
+        "role": "secondary",
+        "provider": "NextDNS",
+        "endpoint": "45.90.30.134",
     },
 }
 
@@ -37,10 +49,14 @@ def target_metadata(host):
     clean_host = (host or "").strip()
     meta = TARGET_METADATA.get(clean_host)
     if meta:
-        return {
+        payload = {
             "target_label": meta["label"],
             "target_class": meta["class"],
         }
+        for key in ("dependency_group_id", "dependency_type", "member_id", "role", "provider", "endpoint"):
+            if key in meta:
+                payload[key] = meta[key]
+        return payload
     if clean_host in WAN_HOSTS:
         return {
             "target_label": clean_host,

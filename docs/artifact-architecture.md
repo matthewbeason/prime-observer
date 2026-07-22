@@ -119,7 +119,9 @@ Stage ownership:
   `resolver_probe_summary`, `incidents`, `generated_at`, `observation_window`
 - Optional fields: additive nested metrics and target-group facts inside
   `current_attribution`, `window_attribution`, `incidents`, and
-  `attribution_evidence`
+  `attribution_evidence`; Phase 2 adds `refined_attribution` with
+  provider-neutral attribution domain, confidence, supporting evidence, evidence
+  against, and unresolved evidence while retaining the legacy fields unchanged
 - Unavailable behavior: no dedicated unavailable artifact; current-attribution
   rendering can fall back to `viz/observations.json` first and to browser-side
   deterministic computation last
@@ -145,6 +147,25 @@ Stage ownership:
   generation records unavailable projection provenance if the file is missing or
   unreadable
 - Authoritative: yes
+- Generated: yes
+- Should be committed: no
+
+### `viz/dashboard_health.json`
+
+- Producer: `bin/transform_latest.py`
+- Consumers: `viz/index.html`; evidence source for automatic investigation
+- Purpose: Python-owned dashboard health projection for WAN sample
+  classification, target-group buckets, composite WAN buckets, LAN evidence, and
+  additive Phase 2 health dimensions
+- Required fields: `schema_version`, `generated_at`, `model_version`,
+  `dashboard_window`, `wan_samples`, `wan_target_group_buckets`,
+  `composite_wan_buckets`, `lan_evidence`, and `attribution_evidence_counts`
+- Optional fields: Phase 2 adds `health_dimensions` and `dependency_groups`
+  without changing existing fields or renderer behavior
+- Unavailable behavior: no dedicated unavailable artifact; the dashboard can
+  still use existing fallback logic when the artifact is unavailable or malformed
+- Authoritative: yes, for generated dashboard health classification and Phase 2
+  health dimensions
 - Generated: yes
 - Should be committed: no
 
@@ -183,6 +204,28 @@ Stage ownership:
 - Generated: yes
 - Should be committed: no
 
+### `viz/diagnostic_evidence.json`
+
+- Producer: optional manual/import tooling; not required by the transform
+- Consumers: `bin/transform_latest.py` through `bin/health_dimensions.py`
+- Purpose: optional provider-neutral diagnostic evidence that can refine health
+  dimensions, attribution confidence, and impact assessment without overriding
+  telemetry
+- Required fields when present: `schema_version`, `model_version`, `status`, and
+  `items`
+- Optional item fields: `type`, `observed_at`, `ingested_at`, `freshness`,
+  `provenance`, `confidence`, `target_association`, `incident_association`,
+  `summary`, `details`, and type-specific fields such as resolver route, direct
+  DNS query, traceroute, active dependency path, provider/PoP assignment,
+  application symptom, user report, operator observation, or provider diagnostic
+  reference details
+- Unavailable behavior: an absent file is normal; malformed content is reported
+  as diagnostic-evidence limitations inside the generated health-dimensions block
+  and does not stop artifact generation
+- Authoritative: no; telemetry remains authoritative for measured conditions
+- Generated: optional/local
+- Should be committed: no
+
 ### `viz/investigation.json`
 
 - Producer: `bin/transform_latest.py` via `bin/investigation_model.py` for
@@ -206,7 +249,10 @@ Stage ownership:
   `notes`
 - Optional fields: `internet_conditions_context`; observation references inside
   event details; empty evidence sections when no samples are present;
-  automatic `message` when no sustained incident is present
+  automatic `message` when no sustained incident is present; Phase 2 adds
+  `health_dimensions`, `impact_assessment`, `dependency_state`, and
+  `deterministic_operator_interpretation` additively for current artifacts and
+  for new snapshots only
 - Unavailable behavior: no dedicated unavailable artifact; the script still
   writes a valid investigation payload and uses `status: "no_samples"` when no
   telemetry matches the selected source window. Automatic mode emits a valid
@@ -305,6 +351,8 @@ historical artifacts should pass a unique `--out` path.
   `claim_boundaries`, `prohibited_claims`,
   `recommended_safe_diagnostic_categories`, `limitations`, and `provenance`
 - Optional fields: additive provider details inside `environmental_context`
+  plus Phase 2 deterministic `health_dimensions`, `dependency_groups`,
+  `impact_assessment`, and `deterministic_operator_interpretation`
 - Unavailable behavior: if `viz/investigation.json` is missing or unreadable,
   the producer still writes a valid minimal package with empty evidence and
   explicit limitations

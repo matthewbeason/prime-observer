@@ -16,6 +16,8 @@ Prime Observer currently ships:
 - operator-first Investigation rendering with deterministic fallback assessment
 - OpenRouter-backed Operator Assistant interpretation as the primary
   operator-facing narrative when output is valid for the evidence package
+- Python-owned multidimensional health evaluation with additive artifact fields;
+  dashboard and Investigation rendering for those fields is deferred
 - asynchronous pending-work consumption through a separate local worker and
   tracked 60-second LaunchAgent
 - manual requested-window investigation generation and viewing
@@ -34,6 +36,8 @@ Repository-backed recent milestones:
   lifecycle, hardened completed-event history, and operator-first Investigation
   redesign with asynchronous Operator Assistant generation and last-known-good
   publication behavior
+- post-`v0.9.0` health-dimensions work: Phase 1 calibration document and Phase 2
+  deterministic evaluator with additive artifact output
 
 Recent commits before `v0.9.0` show this sequence:
 

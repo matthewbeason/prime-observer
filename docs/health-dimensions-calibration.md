@@ -1,8 +1,12 @@
 # Health Dimensions Calibration
 
-Phase 1 status: proposal and calibration fixture only. This document does not
-change production health behavior, dashboard behavior, investigation rendering,
-attribution outputs, generated artifacts, or Operator Assistant generation.
+Phase 1 produced the proposal and calibration fixtures. Phase 2 implements the
+first Python-owned evaluator in `bin/health_dimensions.py` and writes additive
+artifact fields only. This document remains the calibration reference; dashboard
+and investigation rendering changes are deferred to Phase 3.
+
+The Phase 2 implementation does not remove legacy noticeability, does not call
+OpenRouter, does not add a database, and does not rewrite historical snapshots.
 
 ## Incident Summary
 
@@ -204,6 +208,12 @@ path)`. The model cannot express `resolver_provider_path`, `upstream_transit_rou
 `resolver_endpoint_or_pop`, active fallback, or a provider anycast route problem.
 
 ## Proposed Dimensions
+
+Phase 2 implementation note: the production evaluator uses the same dimensional
+separation with production enum names aligned to `docs/health-model.md`:
+`technical_condition` includes `elevated`, `user_impact` includes `unlikely` and
+`likely`, and `operational_risk` uses `low`, `guarded`, `elevated`, `high`, and
+`critical`.
 
 The next model should emit separate dimensions. No dimension is a renamed
 noticeability score. Each dimension should preserve its own evidence, missing
