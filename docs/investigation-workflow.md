@@ -27,9 +27,9 @@ transform cycle. `bin/health_dimensions.py` evaluates technical condition, user
 impact, operational risk, detection confidence, refined attribution confidence,
 dependency-group state, optional diagnostic evidence, and deterministic operator
 interpretation inputs. These fields are additive in `viz/investigation.json`;
-the Investigation renderer presents them in the Multidimensional Health section
-and uses deterministic interpretation text when matching Operator Assistant
-output is unavailable.
+the Investigation renderer presents them as an Incident Record and uses
+deterministic interpretation text when matching Operator Assistant output is
+unavailable.
 
 The worker transitions pending work through `generating` to `complete`, or to
 `retry_wait` after a transient failure. It respects `next_retry_at`, stops after
@@ -213,21 +213,35 @@ loads `investigation.json` through browser `fetch`, and direct `file://` access
 can prevent the JSON file from loading.
 
 The page loads `investigation.json` with `cache: "no-store"`, optionally loads
-`investigation_catalog.json`, and renders:
+`investigation_catalog.json`, and renders an Incident Record organized around
+operator decisions:
 
-- a primary Operator Assessment from matching LLM output or deterministic
-  `operator_brief` fallback
-- Recommended Next Actions near the top of the page
-- Scope and Impact with affected and unaffected target groups
+- a primary Operator Assessment from matching Operator Assistant output or
+  deterministic `operator_brief` / health-dimensions fallback
+- Current Status and Impact with lifecycle, technical condition, user impact, and
+  the current action
+- Affected and Healthy Scope with affected target groups, healthy comparisons,
+  gateway condition, Internet condition, and resolver-path condition
+- concrete DNS Resolver Paths dependency presentation, including active resolver
+  evidence and fallback state
+- Likely Fault Domain with supporting, limiting, and unresolved attribution
+  evidence
+- Recommended Next Checks near the top of the page
 - compact freshness and mode information
 - automatic baseline, degradation, and recovery timeline rows when schema 2 is available
 - representative phase metrics, persistence counts, sample counts, duration, and
   maximum excursions as separate timeline columns
-- recovery progress in practical operator terms
+- lifecycle milestones such as first anomalous sample, sustained confirmation,
+  attribution update, impact assessment, recovery candidate, recovery started,
+  and recovered when those facts exist
+- Evidence Quality for detection confidence, attribution confidence, persistence,
+  corroboration, contradictions, missing evidence, and stale evidence
 - structured supporting evidence, limiting evidence, evidence against broader
   impact, and verification steps
-- condensed evidence-bucket summary with stable buckets collapsed by default
-- raw forensic evidence in secondary disclosures
+- environmental context as supporting or limiting evidence; normal Cloudflare
+  Radar context does not prove a measured path is healthy
+- raw forensic evidence, evidence buckets, provenance, model metadata, legacy
+  fields, and sample tables in secondary disclosures
 - a completed-event History panel sourced directly from the catalog
 - immutable snapshots selected by their catalog-provided `snapshot_path`
 - URL-addressable historical selection through `?event=<event-id>`

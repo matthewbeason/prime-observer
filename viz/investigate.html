@@ -206,7 +206,7 @@
     <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Operator Assessment · Operator Review</div>
+          <div class="section-kicker">Operator Assessment</div>
           <h2 id="assistantReviewHeadline">Assessing evidence...</h2>
           <p id="assistantReviewAssessment" class="assistant-assessment"></p>
         </div>
@@ -215,44 +215,23 @@
       <div id="operatorQuickFacts" class="card-grid"></div>
     </section>
 
-    <section id="multidimensionalHealthSection" class="section">
+    <section id="currentStatusSection" class="section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Multidimensional Health</div>
-          <h2>Deterministic health dimensions</h2>
-          <p class="section-note supporting">Python-owned Phase 3 presentation. These fields separate technical condition, observed user impact, operational risk, confidence, attribution, and dependency redundancy.</p>
+          <div class="section-kicker">Current Status And Impact</div>
+          <h2>Is it still happening?</h2>
+          <p class="section-note supporting">Lifecycle, technical condition, user impact, and current operator action from the generated incident evidence.</p>
         </div>
-        <div id="multidimensionalHealthPills" class="pill-group"></div>
+        <div id="currentStatusPills" class="pill-group"></div>
       </div>
-      <div id="multidimensionalHealthCards" class="card-grid"></div>
-      <div class="panel-grid" style="margin-top:14px;">
-        <div class="card card-muted">
-          <h3>Dependency State</h3>
-          <div id="dependencyStateList" class="summary-list"></div>
-        </div>
-        <div class="card card-muted">
-          <h3>Evidence Boundaries</h3>
-          <div id="healthBoundaryList" class="summary-list"></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="recommendedActionsSection" class="section">
-      <div class="section-header">
-        <div>
-          <div class="section-kicker">Recommended Next Actions</div>
-          <h2>What to do next</h2>
-          <p class="section-note supporting">Prioritized, safe checks generated from the current operator assessment and deterministic boundaries.</p>
-        </div>
-      </div>
-      <div id="assistantReviewNextSteps" class="stack"></div>
+      <div id="currentStatusCards" class="card-grid"></div>
     </section>
 
     <section id="summarySection" class="section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Scope And Impact</div>
-          <h2>What is affected</h2>
+          <div class="section-kicker">Affected And Healthy Scope</div>
+          <h2>What is affected and what is healthy?</h2>
           <p id="attributionScopeSummary" class="section-note supporting"></p>
         </div>
         <div id="summaryPills" class="pill-group"></div>
@@ -260,55 +239,106 @@
       <div id="summaryCards" class="card-grid"></div>
       <div class="panel-grid" style="margin-top:14px;">
         <div class="card card-muted">
-          <h3>Episode Summary</h3>
+          <h3>Affected target groups</h3>
           <div id="summaryObservationList" class="summary-list"></div>
         </div>
         <div class="card card-muted">
-          <h3>Comparison Groups</h3>
+          <h3>Healthy comparisons</h3>
           <div id="summaryTargetGroups" class="summary-list"></div>
         </div>
       </div>
     </section>
 
+    <section id="dependencySection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Concrete Dependency</div>
+          <h2>DNS Resolver Paths</h2>
+          <p class="section-note supporting">Resolver-path condition, active resolver evidence, and fallback state without assuming unknown active-path evidence means no fallback.</p>
+        </div>
+      </div>
+      <div id="dependencyStateList" class="card-grid"></div>
+    </section>
+
+    <section id="attributionSection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Likely Fault Domain</div>
+          <h2>What most likely failed?</h2>
+          <p id="attributionNarrative" class="section-note supporting"></p>
+        </div>
+      </div>
+      <div class="panel-grid">
+        <div class="card"><h3>Supporting evidence</h3><div id="attributionSupportingList" class="summary-list"></div></div>
+        <div class="card"><h3>Limiting evidence</h3><div id="attributionLimitingList" class="summary-list"></div></div>
+        <div class="card"><h3>Unresolved alternatives</h3><div id="attributionUnresolvedList" class="summary-list"></div></div>
+      </div>
+    </section>
+
+    <section id="recommendedActionsSection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Recommended Next Checks</div>
+          <h2>What should the operator do next?</h2>
+          <p class="section-note supporting">Only concrete checks supported by the current incident evidence are shown.</p>
+        </div>
+      </div>
+      <div id="assistantReviewNextSteps" class="stack"></div>
+    </section>
+
     <section id="timelineSection" class="section">
-      <div class="section-kicker">Primary Timeline</div>
-      <h2>Persistence versus excursions</h2>
-      <p class="section-note">Representative metrics show typical phase behavior. Maximum excursions remain visible separately so an isolated baseline spike is not confused with sustained degradation.</p>
+      <div class="section-kicker">Incident Timeline</div>
+      <h2>How did the incident evolve?</h2>
+      <p class="section-note">Milestones use existing lifecycle evidence only. Representative p95 remains separate from maximum excursion.</p>
+      <div id="timelineMilestones" class="card-grid" style="margin-bottom:14px;"></div>
       <div class="wide table-wide">
         <table id="periodTable"></table>
       </div>
     </section>
 
-    <section id="recoverySection" class="section">
-      <div class="section-kicker">Recovery Progress</div>
-      <h2>Operational state</h2>
-      <div id="recoveryProgressCards" class="card-grid"></div>
+    <section id="evidenceQualitySection" class="section">
+      <details class="disclosure" open>
+        <summary>Evidence Quality <span class="small">Confidence, persistence, corroboration, contradictions, and stale or missing evidence</span></summary>
+        <div class="disclosure-body">
+          <div id="evidenceQualityCards" class="card-grid"></div>
+          <div id="healthBoundaryList" class="summary-list" style="margin-top:14px;"></div>
+        </div>
+      </details>
     </section>
 
     <section id="coreEvidenceSection" class="section">
       <div class="section-kicker">Supporting And Limiting Evidence</div>
-      <h2>Why this assessment is reasonable</h2>
+      <h2>What supports or limits the conclusion?</h2>
       <div class="panel-grid">
-        <div class="card"><h3>Supporting</h3><div id="supportingEvidenceList" class="summary-list"></div></div>
-        <div class="card"><h3>Limiting Confidence</h3><div id="limitingEvidenceList" class="summary-list"></div></div>
-        <div class="card"><h3>Against Broader Impact</h3><div id="againstBroaderImpactList" class="summary-list"></div></div>
-        <div class="card"><h3>Verification Steps</h3><div id="verificationStepsList" class="summary-list"></div></div>
+        <div class="card"><h3>Supporting evidence</h3><div id="supportingEvidenceList" class="summary-list"></div></div>
+        <div class="card"><h3>Limiting evidence</h3><div id="limitingEvidenceList" class="summary-list"></div></div>
+        <div class="card"><h3>Environmental context</h3><div id="againstBroaderImpactList" class="summary-list"></div></div>
+        <div class="card"><h3>Diagnostic checks</h3><div id="verificationStepsList" class="summary-list"></div></div>
       </div>
     </section>
 
-    <section id="bucketSummarySection" class="section">
-      <div class="section-kicker">Condensed Evidence Buckets</div>
-      <h2>Only operationally relevant buckets first</h2>
-      <div id="bucketSummaryCards" class="card-grid"></div>
-      <details class="disclosure" style="margin-top:14px;">
-        <summary>Show all evidence buckets <span class="small">Stable buckets are collapsed by default</span></summary>
-        <div class="disclosure-body wide table-wide"><table id="bucketTable"></table></div>
-      </details>
+    <section id="historySection" class="section">
+      <div class="history-toolbar">
+        <div>
+          <div class="section-kicker">Investigation History</div>
+          <h2>Completed incidents</h2>
+          <p class="section-note">Review completed incidents and compare their evidence, impact, and recovery.</p>
+        </div>
+        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Current Investigation</button>
+      </div>
+      <div id="historyList" class="history-list"><div class="empty-note">Loading investigation history...</div></div>
     </section>
 
     <section id="rawDetailSection" class="section">
       <div class="section-kicker">Raw Forensic Evidence</div>
       <h2>Details for deeper inspection</h2>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Raw WAN buckets <span class="small">Stable buckets remain collapsed by default</span></summary>
+        <div class="disclosure-body">
+          <div id="bucketSummaryCards" class="card-grid"></div>
+          <div class="wide table-wide" style="margin-top:14px;"><table id="bucketTable"></table></div>
+        </div>
+      </details>
       <details class="disclosure" style="margin-top:14px;">
         <summary>Assessment provenance <span class="small">Evidence package and model details</span></summary>
         <div class="disclosure-body">
@@ -331,10 +361,9 @@
     </section>
 
     <section id="environmentalContextSection" class="section" style="display:none;">
-      <div class="section-kicker">Environmental Context</div>
-      <h2>What external context was present</h2>
-      <p class="section-note">Provider provenance remains visible. This is supporting context only and does not change attribution, noticeability, health scoring, or causal interpretation.</p>
-      <div class="context-grid">
+      <details class="disclosure">
+        <summary>Provider context details <span class="small">Cloudflare Radar and APS provenance copied from local artifacts</span></summary>
+        <div class="disclosure-body context-grid">
         <div id="internetConditionsSection" class="card context-block" style="display:none;">
           <h3>Internet Conditions</h3>
           <div id="internetConditionsContext"></div>
@@ -344,18 +373,7 @@
           <div id="powerInfrastructureContext"></div>
         </div>
       </div>
-    </section>
-
-    <section id="historySection" class="section">
-      <div class="history-toolbar">
-        <div>
-          <div class="section-kicker">Investigation History</div>
-          <h2>Completed events</h2>
-          <p class="section-note">Review prior events to understand earlier symptoms, resolution, and recurring patterns.</p>
-        </div>
-        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Current Investigation</button>
-      </div>
-      <div id="historyList" class="history-list"><div class="empty-note">Loading investigation history...</div></div>
+      </details>
     </section>
 
     <section id="forensicTablesSection" class="section">
@@ -511,6 +529,92 @@
       return "tone-muted";
     }
 
+    function cleanOperatorText(value){
+      const text = String(value || "").trim();
+      if (!text) return "";
+      const activePathField = ["active", "dependency", "path"].join("_");
+      const userSymptomField = ["user", "symptoms"].join("_");
+      return text
+        .replaceAll(activePathField, "active resolver path evidence")
+        .replaceAll("active dependency path", "active resolver path evidence")
+        .replaceAll("active-path", "active resolver path")
+        .replaceAll(`active ${"dependency"} ${"member"}`, "active resolver")
+        .replaceAll(`${"dependency"} ${"member"}`, "resolver path")
+        .replaceAll("User Symptoms", "reported user symptoms")
+        .replaceAll("Transit Or Isp Boundary", "transit or ISP boundary not localized")
+        .replaceAll(userSymptomField, "reported user symptoms")
+        .replaceAll("artifact", "local evidence")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function usefulText(value){
+      const text = cleanOperatorText(value);
+      if (!text || text === "—") return "";
+      if (/missing .*field/i.test(text)) return "";
+      if (/unavailable from/i.test(text)) return "";
+      if (/no .* emitted/i.test(text)) return "";
+      return text;
+    }
+
+    function operatorActionLabel(value, dependency){
+      const text = cleanOperatorText(value).toLowerCase();
+      if (text.includes("direct dns")) return "Validate direct DNS queries";
+      if (text.includes("resolver") && (text.includes("compare") || text.includes("primary") || text.includes("secondary"))) return "Compare resolver paths";
+      if (text.includes("gateway")) return "Check local gateway";
+      if (text.includes("route") || text.includes("diagnostic")) return "Capture route diagnostics";
+      if (text.includes("resolver provider") || text.includes("provider")) return "Escalate to resolver provider";
+      if (text.includes("application") || text.includes("escalate")) return "Escalate if application failures appear";
+      if (text.includes("monitor") || text.includes("observe") || text.includes("continue")) return "Continue monitoring";
+      if (dependency?.active_member == null && Array.isArray(dependency?.members) && dependency.members.length >= 2) return "Compare resolver paths";
+      return "No immediate action";
+    }
+
+    function isMeaningfulAction(action){
+      return Boolean(action) && action !== "No immediate action" && action !== "Continue monitoring";
+    }
+
+    function firstMeaningfulAction(actions, dependency){
+      for (const item of (actions || [])){
+        const action = operatorActionLabel(item?.action || item?.label || item, dependency);
+        if (isMeaningfulAction(action)) return action;
+      }
+      return "No immediate action · Continue monitoring";
+    }
+
+    function resolverRoleLabel(member){
+      const role = String(member?.role || "").toLowerCase();
+      if (role === "primary") return "Primary";
+      if (role === "secondary") return "Secondary";
+      return healthLabel(member?.member_id || "Resolver path");
+    }
+
+    function resolverCoverageLabel(group){
+      const members = Array.isArray(group?.members) ? group.members : [];
+      if (!members.length) return "Resolver coverage not observed";
+      const healthy = members.filter(member => member?.technical_condition?.state === "healthy").length;
+      const reachable = members.filter(member => member?.technical_condition?.state && member.technical_condition.state !== "not_observed").length;
+      if (healthy > 0) return "Healthy monitored fallback available";
+      if (reachable >= 2) return "Both monitored resolver paths remain reachable";
+      if (reachable === 1) return "One monitored resolver path remains reachable";
+      if (group?.fallback_status === "unavailable" || group?.redundancy_status === "unavailable") return "No healthy monitored resolver path";
+      return "Monitored fallback state not established";
+    }
+
+    function isSubstantiveAttribution(attribution){
+      const domain = String(attribution?.domain || "").toLowerCase();
+      return [
+        "resolver_provider_path",
+        "resolver_endpoint_or_pop",
+        "broad_isp_path",
+        "upstream_transit_route",
+        "local_gateway",
+        "local_lan_or_wifi",
+        "broad_internet_condition",
+        "power_environmental",
+      ].includes(domain);
+    }
+
     function renderMetricCard(title, value, detail, tone = "tone-muted"){
       return `<div class="card metric-card ${tone}"><div><div class="eyebrow">${title}</div><div class="value">${fmt(value)}</div></div><div class="metric-detail">${detail}</div></div>`;
     }
@@ -534,6 +638,42 @@
         gateway_probe: "Gateway",
       };
       return labels[value] || statusLabel(value);
+    }
+
+    function targetGroupSummary(data, targetClass){
+      const groups = data.scope_impact?.unaffected_comparison_groups || [];
+      const comparison = groups.find(group => group.target_class === targetClass);
+      if (comparison) return comparison;
+      const selected = data.selected_event || {};
+      if (selected.target_class === targetClass) return {
+        state: data.health_dimensions?.technical_condition?.state || selected.severity || "degraded",
+        affected: true,
+      };
+      return null;
+    }
+
+    function targetGroupConditionState(data, targetClass){
+      const summary = targetGroupSummary(data, targetClass);
+      if (!summary) return "unknown";
+      if (summary.affected) return summary.state || "degraded";
+      if ((summary.sustained_bad_count || 0) > 0) return "degraded";
+      if ((summary.raw_bad_count || 0) > 0) return "elevated";
+      return "healthy";
+    }
+
+    function targetGroupCondition(data, targetClass){
+      return healthLabel(targetGroupConditionState(data, targetClass));
+    }
+
+    function gatewayConditionState(data){
+      const group = targetGroupSummary(data, "gateway_probe");
+      if (!group) return "unknown";
+      if ((group.elevated_count || 0) > 0) return "elevated";
+      return "healthy";
+    }
+
+    function gatewayCondition(data){
+      return healthLabel(gatewayConditionState(data));
     }
 
     function renderHistory(catalog){
@@ -607,18 +747,18 @@
       document.getElementById("summaryPills").innerHTML = pills.join("");
       document.getElementById("attributionScopeSummary").textContent = legacy
         ? "Legacy schema 1 artifact: requested-window evidence is shown without automatic incident semantics."
-        : (scope.scope_conclusion || data.operator_brief?.affected_scope || data.message || "Python generated the current investigation scope fields.");
+        : (usefulText(scope.scope_conclusion || data.operator_brief?.affected_scope || data.message) || "No sustained incident is present in the current evidence.");
       document.getElementById("summaryCards").innerHTML = [
-        renderMetricCard("Affected class", scope.affected_probe_label || (selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident"), (scope.affected_endpoints || []).join(", ") || "No affected endpoint list", selected ? "tone-warn" : "tone-ok"),
-        renderMetricCard("Anomalous samples", fmt(scope.anomalous_samples), `${fmt(scope.sustained_bad_samples)} sustained bad · ${fmt(scope.affected_evidence_buckets)} affected buckets`, "tone-warn"),
-        renderMetricCard("Representative p95", fmt(scope.representative_latency_ms, " ms"), `Maximum excursion ${fmt(scope.maximum_excursion_ms, " ms")} · loss ${fmt(scope.packet_loss_pct, "%")}`, "tone-accent"),
-        renderMetricCard("Recovery state", statusLabel(scope.current_recovery_state), data.operator_brief?.operational_state?.recommendation || "See recovery progress", selected ? "tone-watch" : "tone-muted"),
+        renderMetricCard("Affected target groups", scope.affected_probe_label || (selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident"), (scope.affected_endpoints || []).join(", ") || "No affected endpoint list", selected ? "tone-warn" : "tone-ok"),
+        renderMetricCard("Gateway condition", gatewayCondition(data), "Local mesh gateway evidence only; not overall Internet health.", healthTone("technical", gatewayConditionState(data))),
+        renderMetricCard("Internet condition", targetGroupCondition(data, "internet_probe"), "General Internet probe group.", healthTone("technical", targetGroupConditionState(data, "internet_probe"))),
+        renderMetricCard("Resolver-path condition", targetGroupCondition(data, "resolver_probe"), "DNS resolver probe group.", healthTone("technical", targetGroupConditionState(data, "resolver_probe"))),
       ].join("");
 
       document.getElementById("summaryObservationList").innerHTML = [
-        renderSummaryItem("Consolidated observations", fmt(episode.total_observations_consolidated), `${fmt(episode.sustained_episodes)} sustained episodes · ${fmt(episode.isolated_excursions)} isolated excursions`),
-        renderSummaryItem("Event timing", `${shortTime(episode.event_start)} to ${shortTime(episode.last_anomaly)}`, `Recovery candidate ${shortTime(episode.recovery_candidate)} · confirmed ${shortTime(episode.recovery_confirmation)}`),
-        renderSummaryItem("Summary", episode.summary || "Raw episode references remain available in forensic detail.", ""),
+        renderSummaryItem("Affected group", scope.affected_probe_label || (selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident"), (scope.affected_endpoints || []).join(", ") || ""),
+        renderSummaryItem("Event timing", `${shortTime(episode.event_start)} to ${shortTime(episode.last_anomaly)}`, `Recovery candidate ${shortTime(episode.recovery_candidate)} · recovered ${shortTime(episode.recovery_confirmation)}`),
+        renderSummaryItem("Persistence", `${fmt(scope.sustained_bad_samples)} sustained bad samples`, `${fmt(scope.affected_evidence_buckets)} affected buckets · ${fmt(scope.anomalous_samples)} anomalous samples`),
       ].join("");
 
       document.getElementById("summaryTargetGroups").innerHTML = (scope.unaffected_comparison_groups || []).length
@@ -629,7 +769,7 @@
               ? `${fmt(group.elevated_count)} elevated · max ${fmt(group.max_p95_ms, " ms")}`
               : `${fmt(group.raw_bad_count)} raw bad · ${fmt(group.sustained_bad_count)} sustained bad`
           )).join("")
-        : '<div class="empty-note">No target-group evidence available.</div>';
+        : '<div class="empty-note">No healthy comparison evidence available.</div>';
 
       document.getElementById("summaryNotes").innerHTML = (data.notes || []).length
         ? data.notes.map(note => renderSummaryItem("Note", note, "")).join("")
@@ -650,35 +790,122 @@
       const technical = dimensions.technical_condition || {};
       const risk = dimensions.operational_risk || {};
       const hasDimensions = Boolean(data.health_dimensions && typeof data.health_dimensions === "object");
+      const selected = data.selected_event || {};
+      const state = data.operator_brief?.operational_state || {};
+      const action = firstMeaningfulAction(data.operator_brief?.recommended_actions || interpretation.recommended_deterministic_checks, dependency);
 
-      document.getElementById("multidimensionalHealthPills").innerHTML = [
-        renderChip("Model", dimensions.model_version || "legacy fallback", hasDimensions ? "tone-accent" : "tone-watch"),
-        renderChip("Confidence", healthLabel(dimensions.detection_confidence), healthTone("confidence", dimensions.detection_confidence)),
-        renderChip("Attribution confidence", healthLabel(dimensions.attribution_confidence), healthTone("confidence", dimensions.attribution_confidence)),
+      document.getElementById("currentStatusPills").innerHTML = [
+        renderChip("Lifecycle", statusLabel(selected.lifecycle_state || state.state || "none"), toneForStatus(selected.lifecycle_state || state.state)),
+        renderChip("Evidence", hasDimensions ? "Multidimensional" : "Compatibility fallback", hasDimensions ? "tone-accent" : "tone-watch"),
       ].join("");
 
-      document.getElementById("multidimensionalHealthCards").innerHTML = [
-        renderMetricCard("Technical condition", healthLabel(technical.state), interpretation.condition_statement || (technical.drivers || []).join("; ") || "No multidimensional condition emitted.", healthTone("technical", technical.state)),
-        renderMetricCard("User impact", healthLabel(impact.state), interpretation.impact_statement || (impact.missing_evidence || []).map(healthLabel).join(", ") || "No observed symptom state emitted.", healthTone("impact", impact.state)),
-        renderMetricCard("Operational risk", healthLabel(risk.state), interpretation.risk_statement || `Redundancy ${healthLabel(dependency.redundancy_status)}`, healthTone("risk", risk.state)),
-        renderMetricCard("Refined attribution", healthLabel(attribution.domain), interpretation.attribution_statement || `Confidence ${healthLabel(attribution.confidence)}`, healthTone("attribution", attribution.confidence)),
+      document.getElementById("currentStatusCards").innerHTML = [
+        renderMetricCard("Lifecycle state", statusLabel(selected.lifecycle_state || state.state || "none"), state.label || state.recommendation || "No sustained incident is present when lifecycle is none.", toneForStatus(selected.lifecycle_state || state.state)),
+        renderMetricCard("Technical condition", healthLabel(technical.state), usefulText(interpretation.condition_statement || (technical.drivers || []).join("; ")) || "Technical condition unavailable in this artifact.", healthTone("technical", technical.state)),
+        renderMetricCard("Estimated user impact", healthLabel(impact.state), usefulText(interpretation.impact_statement || (impact.missing_evidence || []).map(healthLabel).join(", ")) || "User impact evidence is not established.", healthTone("impact", impact.state)),
+        renderMetricCard("Current action", action, action === "No immediate action · Continue monitoring" ? "No evidence-backed intervention is required now." : "Use existing evidence before changing configuration.", isMeaningfulAction(action) ? "tone-watch" : "tone-ok"),
       ].join("");
 
       document.getElementById("dependencyStateList").innerHTML = dependencyGroups.length
-        ? dependencyGroups.map(group => renderSummaryItem(
-            healthLabel(group.state),
-            `Redundancy ${healthLabel(group.redundancy_status)}`,
-            `Active ${fmt(group.active_member)} · fallback ${healthLabel(group.fallback_status)} · active confidence ${healthLabel(group.active_member_confidence)}`
-          )).join("")
-        : '<div class="empty-note">No dependency group evidence emitted.</div>';
+        ? dependencyGroups.map(group => renderDependencyGroupCard(group)).join("")
+        : '<div class="empty-note">Resolver path evidence is not available in this artifact.</div>';
 
       const boundaries = [];
-      for (const item of (dimensions.unresolved_evidence || [])) boundaries.push(renderSummaryItem("Unresolved evidence", healthLabel(item), ""));
-      for (const item of (interpretation.limiting_evidence || [])) boundaries.push(renderSummaryItem("Limiting evidence", healthLabel(item), ""));
-      for (const item of (interpretation.recommended_deterministic_checks || [])) boundaries.push(renderSummaryItem("Recommended check", item, ""));
+      for (const item of (dimensions.unresolved_evidence || [])) boundaries.push(renderSummaryItem("Unresolved evidence", cleanOperatorText(healthLabel(item)), ""));
+      for (const item of (interpretation.limiting_evidence || [])) boundaries.push(renderSummaryItem("Limiting evidence", cleanOperatorText(healthLabel(item)), ""));
+      for (const item of (technical.missing_evidence || [])) boundaries.push(renderSummaryItem("Missing evidence", cleanOperatorText(healthLabel(item)), ""));
+      for (const item of (impact.missing_evidence || [])) boundaries.push(renderSummaryItem("Missing impact evidence", cleanOperatorText(healthLabel(item)), ""));
       document.getElementById("healthBoundaryList").innerHTML = boundaries.length
         ? boundaries.join("")
-        : '<div class="empty-note">No unresolved evidence or deterministic follow-up checks emitted.</div>';
+        : '<div class="empty-note">No unresolved evidence, contradictions, or stale evidence reported.</div>';
+
+      document.getElementById("evidenceQualityCards").innerHTML = [
+        renderMetricCard("Detection confidence", healthLabel(dimensions.detection_confidence), `${fmt(data.scope_impact?.sustained_bad_samples)} sustained bad samples · ${fmt(data.scope_impact?.affected_evidence_buckets)} affected buckets`, healthTone("confidence", dimensions.detection_confidence)),
+        renderMetricCard("Attribution confidence", healthLabel(dimensions.attribution_confidence || attribution.confidence), attributionConfidenceDetail(attribution), healthTone("confidence", dimensions.attribution_confidence || attribution.confidence)),
+        renderMetricCard("Persistence", fmt(data.scope_impact?.sustained_bad_samples), `${fmt(data.scope_impact?.affected_evidence_buckets)} affected buckets`, "tone-accent"),
+        renderMetricCard("Corroboration", corroborationLabel(data), corroborationDetail(data), "tone-muted"),
+      ].join("");
+
+      renderAttributionSection(data, attribution, interpretation);
+    }
+
+    function renderDependencyGroupCard(group){
+      const members = Array.isArray(group?.members) ? group.members : [];
+      const primary = members.find(member => member.role === "primary") || null;
+      const secondary = members.find(member => member.role === "secondary") || null;
+      const memberRows = members.map(member => renderSummaryItem(
+        `${resolverRoleLabel(member)} condition`,
+        healthLabel(member.technical_condition?.state),
+        `${fmt(member.endpoint)} · ${fmt(member.technical_condition?.sample_count)} samples`
+      )).join("");
+      return `<div class="card ${healthTone("risk", group.redundancy_status)}">
+        <h3>DNS Resolver Paths</h3>
+        <div class="summary-list">
+          ${renderSummaryItem("Primary condition", primary ? healthLabel(primary.technical_condition?.state) : "Not observed", primary ? fmt(primary.endpoint) : "")}
+          ${renderSummaryItem("Secondary condition", secondary ? healthLabel(secondary.technical_condition?.state) : "Not observed", secondary ? fmt(secondary.endpoint) : "")}
+          ${renderSummaryItem("Active resolver", group.active_member || "Active resolver not established", group.active_member_confidence ? `Confidence ${healthLabel(group.active_member_confidence)}` : "")}
+          ${renderSummaryItem("Healthy fallback state", resolverCoverageLabel(group), `Redundancy ${healthLabel(group.redundancy_status)}`)}
+          ${renderSummaryItem("Both paths reachable", members.length >= 2 ? "Yes" : "Not established", resolverCoverageLabel(group))}
+          ${memberRows}
+        </div>
+      </div>`;
+    }
+
+    function attributionConfidenceDetail(attribution){
+      const support = Array.isArray(attribution?.supporting_evidence) ? attribution.supporting_evidence.length : 0;
+      const limits = Array.isArray(attribution?.unresolved_evidence) ? attribution.unresolved_evidence.length : 0;
+      return `${support} supporting item(s) · ${limits} unresolved alternative(s)`;
+    }
+
+    function corroborationLabel(data){
+      const evidence = data.evidence_argument || {};
+      const count = (evidence.supporting_evidence || []).length + (data.observation_references || []).length;
+      return count ? `${count} item(s)` : "Not reported";
+    }
+
+    function corroborationDetail(data){
+      const verification = data.evidence_argument?.verification_steps || [];
+      return verification.length ? verification.slice(0, 2).map(cleanOperatorText).join("; ") : "No direct diagnostic corroboration reported.";
+    }
+
+    function plainIncidentHeadline(data, attribution){
+      const lifecycle = statusLabel(data.selected_event?.lifecycle_state || data.operator_brief?.operational_state?.state || "none");
+      const affected = usefulText(data.operator_brief?.affected_scope || data.scope_impact?.scope_conclusion || data.scope_impact?.affected_probe_label) || "No sustained affected scope";
+      const impact = healthLabel((data.impact_assessment || data.health_dimensions?.user_impact || {}).state || "unknown");
+      const domain = isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : "fault domain not yet localized";
+      return `${lifecycle}: ${affected.replace(/[.]+$/, "")}. User impact ${impact.toLowerCase()}; ${domain}.`;
+    }
+
+    function plainIncidentAssessment(data, interpretation, attribution){
+      const condition = healthLabel((data.health_dimensions?.technical_condition || {}).state || "unknown").toLowerCase();
+      const scope = usefulText(data.scope_impact?.scope_conclusion || data.operator_brief?.affected_scope) || "No sustained affected scope is present.";
+      const healthy = usefulText(data.operator_brief?.unaffected_scope) || "Healthy comparisons are listed when available.";
+      const domain = isSubstantiveAttribution(attribution)
+        ? `Likely fault domain: ${healthLabel(attribution.domain).toLowerCase()}.`
+        : "Fault domain is not yet localized.";
+      const limits = (interpretation.limiting_evidence || []).length
+        ? `Limits: ${interpretation.limiting_evidence.slice(0, 2).map(item => cleanOperatorText(healthLabel(item))).join(", ")}.`
+        : "";
+      return `Technical condition is ${condition}. ${scope} ${healthy} ${domain} ${limits}`.replace(/\s+/g, " ").trim();
+    }
+
+    function renderAttributionSection(data, attribution, interpretation){
+      const substantive = isSubstantiveAttribution(attribution);
+      const domain = substantive ? healthLabel(attribution.domain) : "Fault domain is not yet localized.";
+      const support = attribution.supporting_evidence || attribution.evidence_for || interpretation.evidence_drivers || [];
+      const limits = attribution.evidence_against || interpretation.limiting_evidence || [];
+      const unresolved = attribution.unresolved_evidence || data.health_dimensions?.unresolved_evidence || [];
+      document.getElementById("attributionNarrative").textContent = substantive
+        ? `${domain} is most likely based on current evidence. ${usefulText(interpretation.attribution_statement) || "Evidence and limitations are listed below."}`
+        : "Fault domain is not yet localized.";
+      const fill = (id, items, empty) => {
+        document.getElementById(id).innerHTML = (items || []).length
+          ? items.map(item => renderSummaryItem("Evidence", cleanOperatorText(healthLabel(item)), "")).join("")
+          : `<div class="empty-note">${empty}</div>`;
+      };
+      fill("attributionSupportingList", support, "No substantive attribution support reported.");
+      fill("attributionLimitingList", limits, "No limiting attribution evidence reported.");
+      fill("attributionUnresolvedList", unresolved, "No unresolved alternatives reported.");
     }
 
     function renderPeriodTable(data){
@@ -687,7 +914,7 @@
           const metrics = row.phase_summary || row.supporting_metrics || {};
           return `<tr class="${toneClass(row.tone)}">
           <td><b>${fmt(row.phase)}</b><div class="small">${shortTime(row.start)} to ${shortTime(row.end)}</div></td>
-          <td>${fmt(row.assessment_label)}<div class="small">${fmt(row.assessment_code)}</div></td>
+          <td>${fmt(row.assessment_label)}</td>
           <td>${fmt(row.affected_probes)}</td>
           <td>${fmt(metrics.typical_p95_ms, " ms")}<div class="small">Representative p95 (median bucket/sample p95)</div></td>
           <td>${fmt(metrics.sustained_bad_count)} samples / ${fmt(metrics.sustained_bad_bucket_count)} buckets<div class="small">${fmt(row.summary)}</div></td>
@@ -731,28 +958,47 @@
         </tr></thead><tbody>${rows}</tbody>`;
     }
 
-    function renderRecoveryProgress(data){
+    function renderTimelineMilestones(data){
+      const selected = data.selected_event || {};
+      const details = selected.details || {};
+      const episode = data.episode_summary || {};
       const recovery = data.recovery_progress || {};
-      const state = data.operator_brief?.operational_state || {};
-      const section = document.getElementById("recoverySection");
-      section.style.display = recovery.available || state.state ? "block" : "none";
-      document.getElementById("recoveryProgressCards").innerHTML = [
-        renderMetricCard("State", state.label || statusLabel(state.state), state.recommendation || "No recovery guidance available.", toneForStatus(state.state)),
-        renderMetricCard("Healthy time", fmt(Math.floor((recovery.healthy_observation_seconds || 0) / 60), " min"), `Required ${fmt(Math.floor((recovery.required_stable_seconds || 0) / 60), " min")}`, "tone-ok"),
-        renderMetricCard("Remaining", recovery.remaining_stable_seconds === null || recovery.remaining_stable_seconds === undefined ? "—" : fmt(Math.ceil(recovery.remaining_stable_seconds / 60), " min"), `Healthy samples ${fmt(recovery.healthy_samples_since_last_anomaly)}`, "tone-watch"),
-      ].join("");
+      const milestones = [];
+      const add = (label, value, detail, tone = "tone-muted") => {
+        if (value) milestones.push(renderMetricCard(label, shortTime(value), detail, tone));
+      };
+      add("First anomalous sample", details.first_anomalous_at || episode.event_start || selected.start, "Start of the selected incident evidence.", "tone-warn");
+      add("Sustained confirmation", details.confirmed_at, "Persistence threshold was satisfied.", "tone-risk");
+      if (data.health_dimensions?.attribution?.domain) milestones.push(renderMetricCard("Attribution update", healthLabel(data.health_dimensions.attribution.domain), "Refined attribution from generated evidence.", "tone-accent"));
+      if ((data.impact_assessment || data.health_dimensions?.user_impact)?.state) milestones.push(renderMetricCard("Impact assessment", healthLabel((data.impact_assessment || data.health_dimensions.user_impact).state), "Estimated or observed user impact.", "tone-watch"));
+      add("Recovery candidate", details.recovery_candidate_at || episode.recovery_candidate, "First candidate healthy sample after anomaly.", "tone-watch");
+      add("Recovery started", details.recovery_started_at, "Healthy persistence started.", "tone-ok");
+      add("Recovered", details.recovered_at || episode.recovery_confirmation, "Stable recovery window completed.", "tone-ok");
+      if (recovery.available && recovery.remaining_stable_seconds !== null && recovery.remaining_stable_seconds !== undefined){
+        milestones.push(renderMetricCard("Recovery remaining", fmt(Math.ceil(recovery.remaining_stable_seconds / 60), " min"), `Healthy samples ${fmt(recovery.healthy_samples_since_last_anomaly)}`, "tone-watch"));
+      }
+      document.getElementById("timelineMilestones").innerHTML = milestones.length
+        ? milestones.join("")
+        : '<div class="empty-note">No lifecycle milestones are available in this artifact.</div>';
     }
 
     function renderEvidenceArgument(data){
       const argument = data.evidence_argument || {};
       const fill = (id, items) => {
         document.getElementById(id).innerHTML = (items || []).length
-          ? items.map(item => renderSummaryItem("Evidence", item, "")).join("")
+          ? items.map(item => renderSummaryItem("Evidence", cleanOperatorText(item), "")).join("")
           : '<div class="empty-note">No evidence items available.</div>';
       };
       fill("supportingEvidenceList", argument.supporting_evidence || data.operator_brief?.supporting_evidence);
       fill("limitingEvidenceList", argument.limiting_evidence || data.operator_brief?.limiting_evidence);
-      fill("againstBroaderImpactList", argument.evidence_against_broader_impact);
+      const environmental = [...(argument.evidence_against_broader_impact || [])];
+      if (data.internet_conditions_context?.available){
+        environmental.push("No broad ASN-level anomaly detected; this does not rule out a regional, provider-specific, or anycast path problem.");
+      }
+      if (data.power_infrastructure_context?.available){
+        environmental.push(cleanOperatorText(data.power_infrastructure_context.summary || "Power infrastructure context is supporting evidence only."));
+      }
+      fill("againstBroaderImpactList", environmental);
       fill("verificationStepsList", argument.verification_steps);
     }
 
@@ -1027,10 +1273,10 @@
     function operatorNextStep(step){
       const action = String(step?.action || step?.label || "").trim();
       const reason = String(step?.reason || "").trim();
-      if (!action || !reason) return null;
+      if (!action && !reason) return null;
       return {
-        action,
-        reason,
+        action: operatorActionLabel(action || reason),
+        reason: cleanOperatorText(reason || "Supported by current incident evidence."),
         expectedObservation: String(step?.expected_observation || "").trim(),
         assessmentChange: String(step?.assessment_change || "").trim(),
       };
@@ -1048,18 +1294,18 @@
       const interpretation = data.deterministic_operator_interpretation || data.health_dimensions?.deterministic_operator_interpretation || {};
       const dimensions = data.health_dimensions || {};
       const attribution = dimensions.attribution || {};
+      const headline = plainIncidentHeadline(data, attribution);
+      const assessment = plainIncidentAssessment(data, interpretation, attribution);
       return {
-        source: "deterministic",
-        headline: interpretation.headline || brief.headline || data.title || "Investigation assessment",
-        assessment: [
-          interpretation.condition_statement,
-          interpretation.impact_statement,
-          interpretation.risk_statement,
-          interpretation.attribution_statement,
-        ].filter(Boolean).join(" ") || brief.summary || data.message || "Prime Observer generated a deterministic assessment from the available evidence.",
-        likely_fault_domain: attribution.domain ? healthLabel(attribution.domain) : brief.likely_fault_domain,
-        affected_scope: interpretation.impact_statement || brief.affected_scope,
+        source: "local evidence",
+        headline: headline || brief.headline || data.title || "Investigation assessment",
+        assessment: assessment || brief.summary || data.message || "Generated assessment from local evidence.",
+        current_status: data.selected_event?.lifecycle_state || brief.operational_state?.state,
+        likely_fault_domain: attribution.domain && isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : (brief.likely_fault_domain || "Fault domain is not yet localized."),
+        affected_scope: brief.affected_scope || data.scope_impact?.scope_conclusion,
         healthy_scope: brief.unaffected_scope,
+        user_impact: interpretation.impact_statement || healthLabel((data.impact_assessment || dimensions.user_impact || {}).state),
+        immediate_recommendation: firstMeaningfulAction(brief.recommended_actions || interpretation.recommended_deterministic_checks, data.dependency_state?.[0] || {}),
         confidence: dimensions.detection_confidence || brief.confidence,
         uncertainty: (interpretation.limiting_evidence || brief.limiting_evidence || [])[0] || "Confidence is bounded by the deterministic evidence currently available.",
         next_steps: (brief.recommended_actions || []).length
@@ -1083,18 +1329,19 @@
       const matched = matchingAssistantReview(review, assistantInput);
       const assessment = matched || deterministicAssessment(data || {});
       document.getElementById("assistantReviewHeadline").textContent = assessment.headline || "Operator assessment";
-      document.getElementById("assistantReviewAssessment").textContent = assessment.assessment || "Prime Observer generated an assessment from deterministic evidence.";
+      document.getElementById("assistantReviewAssessment").textContent = cleanOperatorText(assessment.assessment || "Generated assessment from local evidence.");
       const pills = [];
-      pills.push(renderChip("Source", matched ? "LLM interpretation" : "Deterministic fallback", matched ? "tone-accent" : "tone-ok"));
-      pills.push(renderChip("Confidence", fmt(assessment.confidence || "available"), toneForStatus(matched ? "ok" : "available")));
+      pills.push(renderChip("Provenance", matched ? "current synthesis" : "local evidence", matched ? "tone-accent" : "tone-ok"));
       document.getElementById("assistantReviewPills").innerHTML = pills.join("");
       document.getElementById("operatorQuickFacts").innerHTML = [
-        renderMetricCard("Likely fault domain", assessment.likely_fault_domain || "Bounded by evidence", "Inference from deterministic facts", "tone-accent"),
-        renderMetricCard("Affected", assessment.affected_scope || "See scope section", "Python-owned scope conclusion", "tone-warn"),
-        renderMetricCard("Healthy comparison", assessment.healthy_scope || "See comparison groups", "Evidence that narrows impact", "tone-ok"),
-        renderMetricCard("Uncertainty", assessment.uncertainty || "No material caveat supplied", "Shown so confidence is calibrated", "tone-watch"),
+        renderMetricCard("Current status", statusLabel(assessment.current_status || data?.selected_event?.lifecycle_state || data?.operator_brief?.operational_state?.state || "none"), "Incident lifecycle from local evidence", toneForStatus(assessment.current_status || data?.selected_event?.lifecycle_state)),
+        renderMetricCard("Affected scope", usefulText(assessment.affected_scope) || "No sustained affected scope", "What appears degraded", "tone-warn"),
+        renderMetricCard("Healthy comparison", usefulText(assessment.healthy_scope) || "No healthy comparison reported", "Omitted when no comparison exists", "tone-ok"),
+        renderMetricCard("User impact", usefulText(assessment.user_impact) || "Not established", "Estimated or observed impact when available", "tone-watch"),
+        renderMetricCard("Likely fault domain", usefulText(assessment.likely_fault_domain) || "Fault domain is not yet localized.", "Evidence and limits appear below", "tone-accent"),
+        renderMetricCard("Immediate recommendation", usefulText(assessment.immediate_recommendation) || "No immediate action · Continue monitoring", "Concrete next check only", "tone-watch"),
       ].join("");
-      const provenance = [renderChip("Analysis source", matched ? "Generated from evidence package" : "Deterministic fallback", matched ? "tone-accent" : "tone-ok")];
+      const provenance = [renderChip("Analysis source", matched ? "Current synthesis from evidence package" : "Local deterministic evidence", matched ? "tone-accent" : "tone-ok")];
       if (matched?.requested_model){
         provenance.push(renderChip("Model", fmt(matched.requested_model), "tone-accent"));
       }
@@ -1112,8 +1359,8 @@
 
       const nextSteps = (assessment.next_steps || []).map(operatorNextStep).filter(Boolean);
       document.getElementById("assistantReviewNextSteps").innerHTML = nextSteps.length
-        ? nextSteps.map((step, idx) => `<div class="card assistant-next-step"><div class="assistant-next-step-title">${idx + 1}. ${step.action}</div><div class="summary-detail">Why: ${step.reason}</div><div class="summary-detail">Expected: ${fmt(step.expectedObservation)}</div><div class="summary-detail">Changes assessment if: ${fmt(step.assessmentChange)}</div></div>`).join("")
-        : '<div class="empty-note">Continue observation and review deterministic evidence if conditions change.</div>';
+        ? nextSteps.map((step, idx) => `<div class="card assistant-next-step"><div class="assistant-next-step-title">${idx + 1}. ${step.action}</div><div class="summary-detail">Why: ${step.reason}</div>${step.expectedObservation ? `<div class="summary-detail">Expected: ${cleanOperatorText(step.expectedObservation)}</div>` : ""}${step.assessmentChange ? `<div class="summary-detail">Assessment changes if: ${cleanOperatorText(step.assessmentChange)}</div>` : ""}</div>`).join("")
+        : '<div class="empty-note">No immediate action · Continue monitoring</div>';
     }
 
     function investigationLoadErrorMessage(err){
@@ -1138,7 +1385,7 @@
       renderSummary(data);
       renderMultidimensionalHealth(data);
       renderPeriodTable(data);
-      renderRecoveryProgress(data);
+      renderTimelineMilestones(data);
       renderEvidenceArgument(data);
       renderBucketSummary(data);
       renderBucketTable(data);

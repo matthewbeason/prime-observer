@@ -39,6 +39,9 @@ Repository-backed recent milestones:
 - post-`v0.9.0` health-dimensions work: Phase 1 calibration document, Phase 2
   deterministic evaluator with additive artifact output, and Phase 3 browser
   rendering for emitted multidimensional fields
+- post-`v0.9.0` Investigation IA work: Phase 4.2 redesigns
+  `viz/investigate.html` as an Incident Record over existing artifacts, keeping
+  evaluator semantics and schemas unchanged
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -92,10 +95,10 @@ Current projection state:
 The repository currently says to live with `v0.9.0` for several days before
 expanding functionality.
 
-The current uncommitted work should be completed by validating the operator-first
-Investigation redesign before committing. Direct links/bookmarks for historical
-investigations are now implemented through `?event=<event-id>`. Event comparison
-and recurrence or similarity detection remain future work.
+The current uncommitted work should be completed by validating the Incident
+Record Investigation redesign before committing. Direct links/bookmarks for
+historical investigations are now implemented through `?event=<event-id>`. Event
+comparison and recurrence or similarity detection remain future work.
 
 Generated JSON and CSV artifacts remain canonical. No database is needed at the
 current local scale; any future PostgreSQL or Supabase work should be an optional

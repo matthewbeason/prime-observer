@@ -50,10 +50,15 @@ The dashboard and Investigation UI render these emitted fields only:
 - `dependency_groups` / `dependency_state`
 - `deterministic_operator_interpretation`
 
-The browser maps enum values to labels and visual tones. It does not calculate
-new multidimensional health, dependency state, attribution domains, or next
-actions from telemetry. Legacy dashboard noticeability and broad attribution
-cards remain visible as compatibility disclosure and fallback behavior.
+The browser maps enum values to labels, visual tones, and operator-facing section
+placement. It does not calculate new multidimensional health, dependency state,
+attribution domains, or next actions from telemetry. The Investigation page uses
+these fields to present an Incident Record: Operator Assessment, Current Status
+and Impact, Affected and Healthy Scope, DNS Resolver Paths, Likely Fault Domain,
+Recommended Next Checks, Timeline, Evidence Quality, Supporting/Limiting
+Evidence, History, and Raw Forensic Evidence. Legacy dashboard noticeability and
+broad attribution cards remain visible as compatibility disclosure and fallback
+behavior.
 
 ## Samples
 

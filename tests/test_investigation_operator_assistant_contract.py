@@ -150,7 +150,7 @@ console.log(JSON.stringify({{
         self.assertIn("Resolver probe", rendered["headline"])
         self.assertNotIn("unavailable", rendered["assessment"].lower())
         self.assertNotIn("failed", rendered["assessment"].lower())
-        self.assertIn("Deterministic fallback", rendered["pills"])
+        self.assertIn("local evidence", rendered["pills"])
 
     def test_matching_llm_assessment_is_primary(self):
         review = {
@@ -179,7 +179,7 @@ console.log(JSON.stringify({{
 
         self.assertEqual(rendered["headline"], "LLM headline")
         self.assertEqual(rendered["assessment"], "LLM operator assessment")
-        self.assertIn("LLM interpretation", rendered["pills"])
+        self.assertIn("current synthesis", rendered["pills"])
 
     def test_stale_llm_output_falls_back_without_exposing_stale_error(self):
         review = {"status": "ok", "input_hash": "a" * 64, "headline": "Old", "assessment": "Old analysis"}
@@ -191,7 +191,7 @@ console.log(JSON.stringify({{assessment: document.getElementById("assistantRevie
 
         self.assertNotIn("Old analysis", rendered["assessment"])
         self.assertNotIn("does not match", rendered["assessment"])
-        self.assertIn("Deterministic fallback", rendered["pills"])
+        self.assertIn("local evidence", rendered["pills"])
 
     def test_malformed_matching_llm_output_falls_back_to_deterministic(self):
         review = {"status": "ok", "input_hash": "a" * 64, "headline": "", "assessment": ""}
@@ -202,7 +202,7 @@ console.log(JSON.stringify({{headline: document.getElementById("assistantReviewH
         rendered = json.loads(self.run_node(body))
 
         self.assertIn("Resolver probe", rendered["headline"])
-        self.assertIn("Deterministic fallback", rendered["pills"])
+        self.assertIn("local evidence", rendered["pills"])
 
     def test_pending_generation_keeps_safe_deterministic_content_visible(self):
         body = f"""
@@ -212,7 +212,7 @@ console.log(JSON.stringify({{assessment: document.getElementById("assistantRevie
         rendered = json.loads(self.run_node(body))
 
         self.assertIn("Resolver probes", rendered["assessment"])
-        self.assertIn("Continue observation", rendered["nextSteps"])
+        self.assertIn("Continue monitoring", rendered["nextSteps"])
         self.assertNotIn("generation", rendered["assessment"].lower())
         self.assertNotIn("pending", rendered["assessment"].lower())
 
@@ -231,7 +231,7 @@ console.log(JSON.stringify({{nextSteps: document.getElementById("assistantReview
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertIn("Compare resolver and internet", rendered["nextSteps"])
+        self.assertIn("Compare resolver paths", rendered["nextSteps"])
         self.assertNotIn("COMPARE_RESOLVER_AND_INTERNET", rendered["nextSteps"])
 
     def test_material_limitations_are_secondary_disclosures(self):

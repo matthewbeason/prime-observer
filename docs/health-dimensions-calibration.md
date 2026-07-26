@@ -4,6 +4,8 @@ Phase 1 produced the proposal and calibration fixtures. Phase 2 implements the
 first Python-owned evaluator in `bin/health_dimensions.py` and writes additive
 artifact fields. Phase 3 renders those emitted fields in the dashboard and
 Investigation UI without moving health interpretation into browser JavaScript.
+Phase 4.2 reorganizes the Investigation renderer as an Incident Record over the
+same emitted fields; it does not change evaluator semantics or artifact schemas.
 
 The Phase 2 and Phase 3 implementation does not remove legacy noticeability,
 does not call OpenRouter from browser code, does not add a database, and does not

@@ -13,14 +13,16 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_operator_first_section_order(self):
         section_ids = [
             'id="assistantReviewSection"',
-            'id="recommendedActionsSection"',
+            'id="currentStatusSection"',
             'id="summarySection"',
+            'id="dependencySection"',
+            'id="attributionSection"',
+            'id="recommendedActionsSection"',
             'id="timelineSection"',
-            'id="recoverySection"',
+            'id="evidenceQualitySection"',
             'id="coreEvidenceSection"',
-            'id="bucketSummarySection"',
-            'id="rawDetailSection"',
             'id="historySection"',
+            'id="rawDetailSection"',
             'id="forensicTablesSection"',
         ]
         indexes = [self.html.index(section_id) for section_id in section_ids]
@@ -29,14 +31,16 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_primary_page_uses_operator_language(self):
         for text in (
             "Operator Assessment",
-            "Recommended Next Actions",
-            "Scope And Impact",
-            "Primary Timeline",
-            "Recovery Progress",
+            "Current Status And Impact",
+            "Affected And Healthy Scope",
+            "DNS Resolver Paths",
+            "Likely Fault Domain",
+            "Recommended Next Checks",
+            "Incident Timeline",
+            "Evidence Quality",
             "Supporting And Limiting Evidence",
-            "Condensed Evidence Buckets",
-            "Raw Forensic Evidence",
             "Investigation History",
+            "Raw Forensic Evidence",
         ):
             self.assertIn(text, self.html)
         self.assertNotIn("Artifact state", self.html)
@@ -46,7 +50,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertNotIn("Operator Assistant review is unavailable", self.html)
         self.assertNotIn("does not match the current evidence package and is hidden", self.html)
         self.assertNotIn("Provider error", self.html)
-        self.assertIn("Deterministic fallback", self.html)
+        self.assertIn("local evidence", self.html)
 
     def test_renderer_uses_python_generated_operator_fields(self):
         for field in (
@@ -72,6 +76,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("Assessment provenance", self.html)
         self.assertIn("Observation references", self.html)
         self.assertIn("Health and thresholds", self.html)
+        self.assertIn("Raw WAN buckets", self.html)
         self.assertIn("Investigation Events", self.html)
         self.assertIn("Timeline Samples", self.html)
         self.assertIn("Telemetry Sources", self.html)
@@ -98,12 +103,27 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("Maximum", self.html)
         self.assertIn("Isolated excursions stay separate", self.html)
         self.assertIn("Persistence", self.html)
+        self.assertIn("timelineMilestones", self.html)
 
     def test_buckets_are_condensed_by_default(self):
-        self.assertIn("Stable buckets are collapsed by default", self.html)
-        self.assertIn("Show all evidence buckets", self.html)
+        self.assertIn("Stable buckets remain collapsed by default", self.html)
+        self.assertIn("Raw WAN buckets", self.html)
         self.assertIn("summary.stable_buckets", self.html)
         self.assertIn("summary.sustained_degradation_buckets", self.html)
+
+    def test_incident_record_adds_phase_4_2_operator_contract(self):
+        for text in (
+            "Active resolver not established",
+            "No healthy monitored resolver path",
+            "Both monitored resolver paths remain reachable",
+            "Fault domain is not yet localized.",
+            "No immediate action · Continue monitoring",
+            "No broad ASN-level anomaly detected; this does not rule out a regional, provider-specific, or anycast path problem.",
+            "Review completed incidents and compare their evidence, impact, and recovery.",
+        ):
+            self.assertIn(text, self.html)
+        self.assertNotIn("generic Dependency State", self.html)
+        self.assertNotIn("assessment_code}</div>", self.html)
 
     def test_history_is_url_addressable_and_local(self):
         self.assertIn("data-event-id", self.html)

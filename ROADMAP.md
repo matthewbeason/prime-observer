@@ -56,6 +56,9 @@ Current watch period:
   artifact fields. Phase 3 renders those fields in the dashboard and
   Investigation UI while retaining legacy noticeability and attribution cards as
   compatibility disclosure.
+- Phase 4.1 simplified the dashboard hierarchy. Phase 4.2 redesigns the
+  Investigation page as an Incident Record over existing artifact fields, with no
+  evaluator or schema changes.
 
 ## Next Logical Milestone
 
