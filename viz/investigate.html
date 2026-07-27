@@ -208,19 +208,18 @@
         <div>
           <div class="section-kicker">Operator Assessment</div>
           <h2 id="assistantReviewHeadline">Assessing evidence...</h2>
-          <p id="assistantReviewAssessment" class="assistant-assessment"></p>
+          <p id="assistantReviewAssessment" class="assistant-assessment" style="display:none;"></p>
         </div>
         <div id="assistantReviewPills" class="pill-group"></div>
       </div>
-      <div id="operatorQuickFacts" class="card-grid"></div>
     </section>
 
     <section id="currentStatusSection" class="section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Current Status And Impact</div>
-          <h2>Is it still happening?</h2>
-          <p class="section-note supporting">Lifecycle, technical condition, user impact, and current operator action from the generated incident evidence.</p>
+          <div class="section-kicker">Current Status</div>
+          <h2>Current incident summary</h2>
+          <p class="section-note supporting">Lifecycle, impact, affected scope, supported cause, and application evidence from generated local artifacts.</p>
         </div>
         <div id="currentStatusPills" class="pill-group"></div>
       </div>
@@ -228,6 +227,9 @@
     </section>
 
     <section id="summarySection" class="section">
+      <details class="disclosure">
+      <summary>Affected and healthy scope details <span class="small">Collapsed supporting evidence</span></summary>
+      <div class="disclosure-body">
       <div class="section-header">
         <div>
           <div class="section-kicker">Affected And Healthy Scope</div>
@@ -247,20 +249,30 @@
           <div id="summaryTargetGroups" class="summary-list"></div>
         </div>
       </div>
+      </div>
+      </details>
     </section>
 
     <section id="dependencySection" class="section">
+      <details class="disclosure">
+      <summary>Resolver evidence <span class="small">Path state and fallback details</span></summary>
+      <div class="disclosure-body">
       <div class="section-header">
         <div>
           <div class="section-kicker">Concrete Dependency</div>
-          <h2>DNS Resolver Paths</h2>
+          <h2>Resolver evidence</h2>
           <p class="section-note supporting">Resolver-path condition, active resolver evidence, and fallback state without assuming unknown active-path evidence means no fallback.</p>
         </div>
       </div>
       <div id="dependencyStateList" class="card-grid"></div>
+      </div>
+      </details>
     </section>
 
     <section id="attributionSection" class="section">
+      <details class="disclosure">
+      <summary>Attribution evidence <span class="small">Confidence, limits, and unresolved alternatives</span></summary>
+      <div class="disclosure-body">
       <div class="section-header">
         <div>
           <div class="section-kicker">Likely Fault Domain</div>
@@ -273,6 +285,8 @@
         <div class="card"><h3>Limiting evidence</h3><div id="attributionLimitingList" class="summary-list"></div></div>
         <div class="card"><h3>Unresolved alternatives</h3><div id="attributionUnresolvedList" class="summary-list"></div></div>
       </div>
+      </div>
+      </details>
     </section>
 
     <section id="recommendedActionsSection" class="section">
@@ -346,6 +360,7 @@
           <div id="assistantReviewLimitations" class="assistant-list"></div>
         </div>
       </details>
+      <div id="rawApplicationDetails" style="margin-top:14px;"></div>
       <details class="disclosure">
         <summary>Observation references <span class="small">Raw deterministic observations</span></summary>
         <div class="disclosure-body"><div id="observationReferenceList" class="summary-list"></div></div>
@@ -617,14 +632,12 @@
 
     function operatorActionLabel(value, dependency){
       const text = cleanOperatorText(value).toLowerCase();
-      if (text.includes("direct dns")) return "Validate direct DNS queries";
-      if (text.includes("resolver") && (text.includes("compare") || text.includes("primary") || text.includes("secondary"))) return "Compare resolver paths";
-      if (text.includes("gateway")) return "Check local gateway";
-      if (text.includes("route") || text.includes("diagnostic")) return "Capture route diagnostics";
-      if (text.includes("resolver provider") || text.includes("provider")) return "Escalate to resolver provider";
-      if (text.includes("application") || text.includes("escalate")) return "Escalate if application failures appear";
+      if (text.includes("power")) return "Check local power equipment";
+      if (text.includes("cable") || text.includes("cabling")) return "Check cabling";
+      if (text.includes("restart") || text.includes("reboot")) return "Restart local equipment";
+      if (text.includes("gateway") && (text.includes("check") || text.includes("restart") || text.includes("reboot"))) return "Check local gateway";
+      if (text.includes("configuration") || text.includes("config change")) return "Review consequential configuration change";
       if (text.includes("monitor") || text.includes("observe") || text.includes("continue")) return "Continue monitoring";
-      if (dependency?.active_member == null && Array.isArray(dependency?.members) && dependency.members.length >= 2) return "Compare resolver paths";
       return "No immediate action";
     }
 
@@ -854,20 +867,26 @@
       const selected = data.selected_event || {};
       const state = data.operator_brief?.operational_state || {};
       const action = firstMeaningfulAction(data.operator_brief?.recommended_actions || interpretation.recommended_deterministic_checks, dependency);
+      const actionNeeded = isMeaningfulAction(action);
+      const causeSupported = isSubstantiveAttribution(attribution);
+      const scopeText = usefulText(data.operator_brief?.affected_scope || data.scope_impact?.scope_conclusion || data.scope_impact?.affected_probe_label) || "No sustained affected scope";
+      const impactText = `Estimated ${healthLabel(estimatedImpact.state)} · observed ${healthLabel(observedImpact.state)}`;
+      const statusDetail = usefulText(interpretation.condition_statement || (technical.drivers || []).join("; ")) || "Technical condition unavailable in this artifact.";
+      const cards = [
+        renderMetricCard("Current status", statusLabel(selected.lifecycle_state || state.state || "none"), statusDetail, toneForStatus(selected.lifecycle_state || state.state)),
+        renderMetricCard("Estimated / Observed Impact", impactText, observedImpactDetail(observedImpact, feedback), healthTone("impact", estimatedImpact.state)),
+        renderMetricCard("Affected Scope", scopeText, usefulText(data.operator_brief?.unaffected_scope) || "Healthy comparisons are in supporting evidence.", selected?.target_class ? "tone-warn" : "tone-ok"),
+        renderMetricCard("Likely Cause", causeSupported ? healthLabel(attribution.domain) : "Not localized", causeSupported ? attributionConfidenceDetail(attribution) : "Shown only when supported by local evidence.", causeSupported ? "tone-accent" : "tone-muted"),
+        renderMetricCard("Application Experience", applicationSummary(application), application?.generated_at ? `Evidence timestamp ${shortTime(application.generated_at)}` : "Application evidence is unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
+      ];
+      if (actionNeeded) cards.push(renderMetricCard("Operator Intervention", action, "Shown only for human or physical intervention.", "tone-watch"));
 
       document.getElementById("currentStatusPills").innerHTML = [
         renderChip("Lifecycle", statusLabel(selected.lifecycle_state || state.state || "none"), toneForStatus(selected.lifecycle_state || state.state)),
         renderChip("Evidence", hasDimensions ? "Multidimensional" : "Compatibility fallback", hasDimensions ? "tone-accent" : "tone-watch"),
       ].join("");
 
-      document.getElementById("currentStatusCards").innerHTML = [
-        renderMetricCard("Lifecycle state", statusLabel(selected.lifecycle_state || state.state || "none"), state.label || state.recommendation || "No sustained incident is present when lifecycle is none.", toneForStatus(selected.lifecycle_state || state.state)),
-        renderMetricCard("Technical condition", healthLabel(technical.state), usefulText(interpretation.condition_statement || (technical.drivers || []).join("; ")) || "Technical condition unavailable in this artifact.", healthTone("technical", technical.state)),
-        renderMetricCard("Estimated impact", healthLabel(estimatedImpact.state), usefulText((estimatedImpact.drivers || []).map(cleanOperatorText).join("; ")) || "Estimated impact is inferred from local evidence.", healthTone("impact", estimatedImpact.state)),
-        renderMetricCard("Observed impact", healthLabel(observedImpact.state), observedImpactDetail(observedImpact, feedback), healthTone("impact", observedImpact.state)),
-        renderMetricCard("Application checks", applicationSummary(application), application?.generated_at ? `Evidence timestamp ${shortTime(application.generated_at)}` : "Application evidence is unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
-        renderMetricCard("Current action", action, action === "No immediate action · Continue monitoring" ? "No evidence-backed intervention is required now." : "Use existing evidence before changing configuration.", isMeaningfulAction(action) ? "tone-watch" : "tone-ok"),
-      ].join("");
+      document.getElementById("currentStatusCards").innerHTML = cards.join("");
 
       document.getElementById("dependencyStateList").innerHTML = dependencyGroups.length
         ? dependencyGroups.map(group => renderDependencyGroupCard(group)).join("")
@@ -889,8 +908,8 @@
         renderMetricCard("Attribution confidence", healthLabel(dimensions.attribution_confidence || attribution.confidence), attributionConfidenceDetail(attribution), healthTone("confidence", dimensions.attribution_confidence || attribution.confidence)),
         renderMetricCard("Persistence", fmt(data.scope_impact?.sustained_bad_samples), `${fmt(data.scope_impact?.affected_evidence_buckets)} affected buckets`, "tone-accent"),
         renderMetricCard("Corroboration", corroborationLabel(data), corroborationDetail(data), "tone-muted"),
-        renderMetricCard("Application freshness", application?.is_current ? "Fresh" : healthLabel(application?.freshness || "missing"), applicationSummary(application), application?.is_current ? "tone-ok" : "tone-muted"),
-      ].join("") + applicationDetailDisclosure(application);
+      ].join("");
+      document.getElementById("rawApplicationDetails").innerHTML = applicationDetailDisclosure(application);
 
       renderAttributionSection(data, attribution, interpretation);
     }
@@ -905,7 +924,7 @@
         `${fmt(member.endpoint)} · ${fmt(member.technical_condition?.sample_count)} samples`
       )).join("");
       return `<div class="card ${healthTone("risk", group.redundancy_status)}">
-        <h3>DNS Resolver Paths</h3>
+        <h3>Resolver evidence</h3>
         <div class="summary-list">
           ${renderSummaryItem("Primary condition", primary ? healthLabel(primary.technical_condition?.state) : "Not observed", primary ? fmt(primary.endpoint) : "")}
           ${renderSummaryItem("Secondary condition", secondary ? healthLabel(secondary.technical_condition?.state) : "Not observed", secondary ? fmt(secondary.endpoint) : "")}
@@ -936,24 +955,18 @@
 
     function plainIncidentHeadline(data, attribution){
       const lifecycle = statusLabel(data.selected_event?.lifecycle_state || data.operator_brief?.operational_state?.state || "none");
-      const affected = usefulText(data.operator_brief?.affected_scope || data.scope_impact?.scope_conclusion || data.scope_impact?.affected_probe_label) || "No sustained affected scope";
-      const estimated = healthLabel((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions?.user_impact || {}).state || "unknown");
-      const observed = healthLabel((data.health_dimensions?.observed_user_impact || {}).state || "unknown");
-      const domain = isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : "fault domain not yet localized";
-      return `${lifecycle}: ${affected.replace(/[.]+$/, "")}. Estimated impact ${estimated.toLowerCase()}; observed impact ${observed.toLowerCase()}; ${domain}.`;
+      const condition = healthLabel((data.health_dimensions?.technical_condition || {}).state || "unknown").toLowerCase();
+      const app = data.health_dimensions?.application_experience || {};
+      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return `${lifecycle}: ${condition} technical condition; current application checks did not reproduce a user-facing failure.`;
+      return `${lifecycle}: ${condition} technical condition from local evidence.`;
     }
 
     function plainIncidentAssessment(data, interpretation, attribution){
       const condition = healthLabel((data.health_dimensions?.technical_condition || {}).state || "unknown").toLowerCase();
-      const scope = usefulText(data.scope_impact?.scope_conclusion || data.operator_brief?.affected_scope) || "No sustained affected scope is present.";
-      const healthy = usefulText(data.operator_brief?.unaffected_scope) || "Healthy comparisons are listed when available.";
-      const domain = isSubstantiveAttribution(attribution)
-        ? `Likely fault domain: ${healthLabel(attribution.domain).toLowerCase()}.`
-        : "Fault domain is not yet localized.";
       const limits = (interpretation.limiting_evidence || []).length
         ? `Limits: ${interpretation.limiting_evidence.slice(0, 2).map(item => cleanOperatorText(healthLabel(item))).join(", ")}.`
         : "";
-      return `Technical condition is ${condition}. ${scope} ${healthy} ${domain} ${limits}`.replace(/\s+/g, " ").trim();
+      return `Technical condition is ${condition}. ${limits}`.replace(/\s+/g, " ").trim();
     }
 
     function renderAttributionSection(data, attribution, interpretation){
@@ -1372,7 +1385,7 @@
       const assessment = plainIncidentAssessment(data, interpretation, attribution);
       return {
         source: "local evidence",
-        headline: headline || brief.headline || data.title || "Investigation assessment",
+        headline: brief.headline || headline || data.title || "Investigation assessment",
         assessment: assessment || brief.summary || data.message || "Generated assessment from local evidence.",
         current_status: data.selected_event?.lifecycle_state || brief.operational_state?.state,
         likely_fault_domain: attribution.domain && isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : (brief.likely_fault_domain || "Fault domain is not yet localized."),
@@ -1403,18 +1416,10 @@
       const matched = matchingAssistantReview(review, assistantInput);
       const assessment = matched || deterministicAssessment(data || {});
       document.getElementById("assistantReviewHeadline").textContent = assessment.headline || "Operator assessment";
-      document.getElementById("assistantReviewAssessment").textContent = cleanOperatorText(assessment.assessment || "Generated assessment from local evidence.");
+      document.getElementById("assistantReviewAssessment").textContent = "";
       const pills = [];
       pills.push(renderChip("Provenance", matched ? "current synthesis" : "local evidence", matched ? "tone-accent" : "tone-ok"));
       document.getElementById("assistantReviewPills").innerHTML = pills.join("");
-      document.getElementById("operatorQuickFacts").innerHTML = [
-        renderMetricCard("Current status", statusLabel(assessment.current_status || data?.selected_event?.lifecycle_state || data?.operator_brief?.operational_state?.state || "none"), "Incident lifecycle from local evidence", toneForStatus(assessment.current_status || data?.selected_event?.lifecycle_state)),
-        renderMetricCard("Affected scope", usefulText(assessment.affected_scope) || "No sustained affected scope", "What appears degraded", "tone-warn"),
-        renderMetricCard("Healthy comparison", usefulText(assessment.healthy_scope) || "No healthy comparison reported", "Omitted when no comparison exists", "tone-ok"),
-        renderMetricCard("User impact", usefulText(assessment.user_impact) || "Not established", "Estimated and observed impact remain separate", "tone-watch"),
-        renderMetricCard("Likely fault domain", usefulText(assessment.likely_fault_domain) || "Fault domain is not yet localized.", "Evidence and limits appear below", "tone-accent"),
-        renderMetricCard("Immediate recommendation", usefulText(assessment.immediate_recommendation) || "No immediate action · Continue monitoring", "Concrete next check only", "tone-watch"),
-      ].join("");
       const provenance = [renderChip("Analysis source", matched ? "Current synthesis from evidence package" : "Local deterministic evidence", matched ? "tone-accent" : "tone-ok")];
       if (matched?.requested_model){
         provenance.push(renderChip("Model", fmt(matched.requested_model), "tone-accent"));
@@ -1431,10 +1436,12 @@
         ? limitationItems.join("")
         : '<div class="empty-note">No additional limitations reported.</div>';
 
-      const nextSteps = (assessment.next_steps || []).map(operatorNextStep).filter(Boolean);
+      const nextSteps = (assessment.next_steps || []).map(operatorNextStep).filter(step => step && isMeaningfulAction(step.action));
+      const actionsSection = document.getElementById("recommendedActionsSection");
+      actionsSection.style.display = nextSteps.length ? "" : "none";
       document.getElementById("assistantReviewNextSteps").innerHTML = nextSteps.length
         ? nextSteps.map((step, idx) => `<div class="card assistant-next-step"><div class="assistant-next-step-title">${idx + 1}. ${step.action}</div><div class="summary-detail">Why: ${step.reason}</div>${step.expectedObservation ? `<div class="summary-detail">Expected: ${cleanOperatorText(step.expectedObservation)}</div>` : ""}${step.assessmentChange ? `<div class="summary-detail">Assessment changes if: ${cleanOperatorText(step.assessmentChange)}</div>` : ""}</div>`).join("")
-        : '<div class="empty-note">No immediate action · Continue monitoring</div>';
+        : "";
     }
 
     function investigationLoadErrorMessage(err){

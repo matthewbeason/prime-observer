@@ -123,9 +123,8 @@ class DashboardNextDnsTest(unittest.TestCase):
         html = (ROOT / "viz" / "index.html").read_text()
 
         self.assertIn("Estimated User Impact", html)
-        self.assertIn("Observed User Impact", html)
-        self.assertIn('id="observedImpactCard"', html)
-        self.assertIn('id="mobileObservedImpactCard"', html)
+        self.assertIn('id="observedImpactInline"', html)
+        self.assertIn('id="mobileObservedImpactInline"', html)
         self.assertIn("Application Experience", html)
         self.assertIn('id="applicationExperienceCard"', html)
         self.assertIn('id="mobileApplicationExperienceCard"', html)
@@ -158,7 +157,7 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn('id="mobileTechnicalConditionValue"', html)
         self.assertIn('id="mobileUserImpactValue"', html)
         self.assertIn('id="mobileAffectedScopeValue"', html)
-        self.assertIn('id="mobileCurrentActionValue"', html)
+        self.assertIn('id="mobileLikelyCauseValue"', html)
         self.assertIn('id="supportingContextDetails"', html)
         self.assertIn('id="dnsCard"', html)
         self.assertIn('id="mobileDnsCard"', html)
@@ -171,11 +170,10 @@ class DashboardNextDnsTest(unittest.TestCase):
         html = (ROOT / "viz" / "index.html").read_text()
 
         self.assertIn("plainFallbackHeadline(dimensions, dependency, refined)", html)
-        self.assertIn("Estimated user impact is not established from current evidence.", html)
-        self.assertIn("No immediate action · Continue monitoring", html)
+        self.assertIn("current application checks did not reproduce a user-facing failure", html)
         self.assertIn('document.getElementById("userImpactCard").style.display = estimatedState ? "" : "none";', html)
-        self.assertIn('document.getElementById("observedImpactCard").style.display = hasMeaningfulObservedImpact ? "" : "none";', html)
-        self.assertIn('document.getElementById("currentActionCard").style.display = hasMeaningfulCurrentAction ? "" : "none";', html)
+        self.assertIn('document.getElementById("observedImpactInline").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "No reported impact";', html)
+        self.assertIn('document.getElementById("likelyCauseCard").style.display = attributionSubstantive ? "" : "none";', html)
         self.assertIn('document.getElementById("refinedAttributionCard").style.display = attributionSubstantive ? "" : "none";', html)
         self.assertIn("Fault domain not yet localized", html)
         self.assertNotIn("No healthy comparison text emitted", html)
@@ -202,11 +200,29 @@ class DashboardNextDnsTest(unittest.TestCase):
         html = (ROOT / "viz" / "index.html").read_text()
 
         self.assertIn('<details class="supporting-context" id="supportingContextDetails">', html)
+        self.assertLess(html.index('id="supportingContextDetails"'), html.index('id="dnsCard"'))
+        self.assertLess(html.index('id="supportingContextDetails"'), html.index('id="dependencyStateCard"'))
+        self.assertLess(html.index('id="supportingContextDetails"'), html.index('id="refinedAttributionCard"'))
         self.assertIn("Cloudflare Radar", html)
         self.assertIn("Power Infrastructure", html)
         self.assertIn("Normal ASN traffic does not prove a measured path is healthy", html)
         self.assertIn('supportingContext.open = status !== "normal";', html)
         self.assertIn('if (supportingContext && isActivePowerInfrastructureStatus(status)) supportingContext.open = true;', html)
+
+    def test_dashboard_primary_view_removes_duplicate_action_resolver_and_attribution_cards(self):
+        html = (ROOT / "viz" / "index.html").read_text()
+        primary = html[html.index('id="operatorAssessmentCard"'):html.index('id="supportingContextDetails"')]
+
+        self.assertIn("Technical Condition", primary)
+        self.assertIn("Estimated User Impact", primary)
+        self.assertIn("Affected Scope", primary)
+        self.assertIn("Likely Cause", primary)
+        self.assertIn("Application Experience", primary)
+        self.assertNotIn("Current Action", primary)
+        self.assertNotIn("DNS Resolver Paths", primary)
+        self.assertNotIn("Refined Attribution", primary)
+        self.assertNotIn("Detection Confidence", primary)
+        self.assertNotIn("Compare primary and secondary resolver paths", html)
 
     def test_investigation_view_renders_dns_context_without_api_access(self):
         html = (ROOT / "viz" / "investigate.html").read_text()

@@ -148,6 +148,7 @@ console.log(JSON.stringify({{
 
         self.assertTrue(rendered["visible"])
         self.assertIn("Resolver probe", rendered["headline"])
+        self.assertEqual(rendered["assessment"], "")
         self.assertNotIn("unavailable", rendered["assessment"].lower())
         self.assertNotIn("failed", rendered["assessment"].lower())
         self.assertIn("local evidence", rendered["pills"])
@@ -178,7 +179,7 @@ console.log(JSON.stringify({{
         rendered = json.loads(self.run_node(body))
 
         self.assertEqual(rendered["headline"], "LLM headline")
-        self.assertEqual(rendered["assessment"], "LLM operator assessment")
+        self.assertEqual(rendered["assessment"], "")
         self.assertIn("current synthesis", rendered["pills"])
 
     def test_stale_llm_output_falls_back_without_exposing_stale_error(self):
@@ -211,8 +212,8 @@ console.log(JSON.stringify({{assessment: document.getElementById("assistantRevie
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertIn("Resolver probes", rendered["assessment"])
-        self.assertIn("Continue monitoring", rendered["nextSteps"])
+        self.assertEqual(rendered["assessment"], "")
+        self.assertEqual(rendered["nextSteps"], "")
         self.assertNotIn("generation", rendered["assessment"].lower())
         self.assertNotIn("pending", rendered["assessment"].lower())
 
@@ -231,7 +232,7 @@ console.log(JSON.stringify({{nextSteps: document.getElementById("assistantReview
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertIn("Compare resolver paths", rendered["nextSteps"])
+        self.assertEqual(rendered["nextSteps"], "")
         self.assertNotIn("COMPARE_RESOLVER_AND_INTERNET", rendered["nextSteps"])
 
     def test_material_limitations_are_secondary_disclosures(self):
@@ -293,7 +294,7 @@ globalThis.fetch = async (url) => {{
 
         self.assertIn("current investigation", rendered["status"])
         self.assertIn("catalog is not available", rendered["history"])
-        self.assertIn("Resolver probes", rendered["assessment"])
+        self.assertEqual(rendered["assessment"], "")
 
     def test_empty_catalog_and_invalid_snapshot_metadata_render_calm_history_status(self):
         body = """

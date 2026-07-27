@@ -31,11 +31,10 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_primary_page_uses_operator_language(self):
         for text in (
             "Operator Assessment",
-            "Current Status And Impact",
-            "Affected And Healthy Scope",
-            "DNS Resolver Paths",
-            "Likely Fault Domain",
-            "Recommended Next Checks",
+            "Current Status",
+            "Affected and healthy scope details",
+            "Resolver evidence",
+            "Attribution evidence",
             "Incident Timeline",
             "Evidence Quality",
             "Supporting And Limiting Evidence",
@@ -143,11 +142,11 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         for text in (
             "Estimated impact",
             "Observed impact",
-            "Application checks",
-            "Application freshness",
+            "Estimated / Observed Impact",
+            "Application Experience",
             "Raw application transaction details",
             "Operator note:",
-            "Estimated and observed impact remain separate",
+            "Estimated / Observed Impact",
             "Application evidence is unavailable or stale.",
         ):
             self.assertIn(text, self.html)
@@ -156,6 +155,18 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("data.health_dimensions?.estimated_user_impact", self.html)
         self.assertIn("data.health_dimensions?.observed_user_impact", self.html)
         self.assertNotIn("is_wan_bad", self.html)
+
+    def test_investigation_top_summary_avoids_duplicate_primary_conclusions(self):
+        top = self.html[self.html.index('id="assistantReviewSection"'):self.html.index('id="timelineSection"')]
+
+        self.assertIn("Current incident summary", top)
+        self.assertIn('renderMetricCard("Estimated / Observed Impact"', self.html)
+        self.assertIn('renderMetricCard("Affected Scope"', self.html)
+        self.assertIn('renderMetricCard("Likely Cause"', self.html)
+        self.assertIn('renderMetricCard("Application Experience"', self.html)
+        self.assertNotIn("Compare resolver paths", self.html)
+        self.assertNotIn("Immediate recommendation", top)
+        self.assertNotIn('id="operatorQuickFacts"', self.html)
 
 
 if __name__ == "__main__":

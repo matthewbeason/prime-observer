@@ -545,12 +545,6 @@
     <div class="card operator-card" id="operatorAssessmentCard">
       <h4><span>Operator Assessment</span><span class="subtle" id="operatorAssessmentProvenance">local artifact</span></h4>
       <div class="operator-summary" id="operatorAssessmentHeadline">Awaiting operator assessment artifact.</div>
-      <div class="operator-grid">
-        <div class="operator-fact"><div class="label">Affected scope</div><div class="metric-value" id="operatorAssessmentAffectedScope">—</div></div>
-        <div class="operator-fact"><div class="label">User impact</div><div class="metric-value" id="operatorAssessmentUserImpact">—</div></div>
-        <div class="operator-fact"><div class="label">Likely fault domain</div><div class="metric-value" id="operatorAssessmentFaultDomain">—</div></div>
-        <div class="operator-fact"><div class="label">Immediate action</div><div class="metric-value" id="operatorAssessmentCurrentAction">—</div></div>
-      </div>
     </div>
   </div>
 
@@ -572,21 +566,17 @@
         <h4>Estimated User Impact</h4>
         <div class="value-inline" id="mobileUserImpactValue">—</div>
         <div class="detail-line" id="mobileUserImpactDetail">—</div>
-        </div>
-        <div class="mobile-state-card" id="mobileObservedImpactCard">
-        <h4>Observed User Impact</h4>
-        <div class="value-inline" id="mobileObservedImpactValue">—</div>
-        <div class="detail-line" id="mobileObservedImpactDetail">—</div>
+        <div class="detail-line"><b>Observed:</b> <span id="mobileObservedImpactInline">Unknown</span></div>
         </div>
         <div class="mobile-state-card">
         <h4>Affected Scope</h4>
         <div class="value-inline" id="mobileAffectedScopeValue">—</div>
         <div class="detail-line" id="mobileAffectedScopeDetail">—</div>
         </div>
-        <div class="mobile-state-card span-2" id="mobileCurrentActionCard">
-        <h4>Current Action</h4>
-        <div class="value-inline" id="mobileCurrentActionValue">—</div>
-        <div class="detail-line" id="mobileCurrentActionDetail">—</div>
+        <div class="mobile-state-card span-2" id="mobileLikelyCauseCard">
+        <h4>Likely Cause</h4>
+        <div class="value-inline" id="mobileLikelyCauseValue">—</div>
+        <div class="detail-line" id="mobileLikelyCauseDetail">Only shown when supported by local evidence.</div>
         </div>
         <div class="mobile-state-card span-2" id="mobileApplicationExperienceCard">
         <h4>Application Experience</h4>
@@ -625,21 +615,17 @@
       <h4><span>Estimated User Impact</span><span class="pill" id="userImpactPill">v1</span></h4>
       <div class="value" id="userImpactValue">—</div>
       <div class="legacy-disclosure" id="userImpactDetail">Inferred from local evidence.</div>
-    </div>
-    <div class="card" id="observedImpactCard">
-      <h4><span>Observed User Impact</span><span class="pill" id="observedImpactPill">reported</span></h4>
-      <div class="value" id="observedImpactValue">—</div>
-      <div class="legacy-disclosure" id="observedImpactDetail">Reported operator or symptom evidence.</div>
+      <div class="legacy-disclosure"><b>Observed:</b> <span id="observedImpactInline">Unknown</span></div>
     </div>
     <div class="card" id="affectedScopeCard">
       <h4><span>Affected Scope</span><span class="pill" id="affectedScopePill">v1</span></h4>
       <div class="value" id="affectedScopeValue">—</div>
       <div class="legacy-disclosure" id="affectedScopeDetail">Scope from emitted local evidence.</div>
     </div>
-    <div class="card" id="currentActionCard">
-      <h4><span>Current Action</span><span class="pill" id="currentActionPill">v1</span></h4>
-      <div class="value" id="currentActionValue">—</div>
-      <div class="legacy-disclosure" id="currentActionDetail">Recommended check from local artifacts.</div>
+    <div class="card" id="likelyCauseCard">
+      <h4><span>Likely Cause</span><span class="pill" id="likelyCausePill">evidence</span></h4>
+      <div class="value" id="likelyCauseValue">—</div>
+      <div class="legacy-disclosure" id="likelyCauseDetail">Only shown when sufficiently supported.</div>
     </div>
   </div>
 
@@ -653,18 +639,24 @@
         <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="lastTs">—</span></div>
       </div>
     </div>
-    <div class="card wide-card" id="dependencyStateCard">
-      <h4><span>DNS Resolver Paths</span><span class="pill" id="dependencyStatePill">v1</span></h4>
-      <div class="value" style="font-size:20px;" id="dependencyStateValue">—</div>
+    <div class="card wide-card" id="applicationExperienceCard">
+      <h4><span>Application Experience</span><span class="pill" id="applicationExperiencePill">local</span></h4>
+      <div class="value" style="font-size:20px;" id="applicationExperienceValue">—</div>
+      <div class="status-summary" id="applicationExperienceSummary">Application evidence is unavailable or stale.</div>
       <div class="metric-stack" style="margin-top:8px;">
-        <div class="metric-pair"><span class="label">Primary</span><span class="metric-value" id="dependencyPrimaryValue">—</span></div>
-        <div class="metric-pair"><span class="label">Secondary</span><span class="metric-value" id="dependencySecondaryValue">—</span></div>
-        <div class="metric-pair"><span class="label">Active resolver</span><span class="metric-value" id="dependencyActiveMemberValue">—</span></div>
-        <div class="metric-pair"><span class="label">Resolver coverage</span><span class="metric-value" id="dependencyRedundancyValue">—</span></div>
+        <div class="metric-pair"><span class="label">System DNS</span><span class="metric-value" id="applicationSystemDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Direct primary resolver</span><span class="metric-value" id="applicationPrimaryDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Direct secondary resolver</span><span class="metric-value" id="applicationSecondaryDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">HTTPS transaction</span><span class="metric-value" id="applicationHttpsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Freshness</span><span class="metric-value" id="applicationExperienceFreshness">—</span></div>
       </div>
-      <div class="chip-row" id="dependencyMembersChips"></div>
     </div>
-    <div class="card accent-ok wide-card" id="dnsCard">
+  </div>
+
+  <details class="supporting-context" id="supportingContextDetails">
+    <summary>Supporting Context</summary>
+    <div class="row dashboard-overview dashboard-detail-row" style="margin-top:16px;">
+      <div class="card accent-ok wide-card" id="dnsCard">
       <h4><span>DNS Activity</span><span class="hmeta"><span class="subtle" id="dnsStale"></span><span class="pill info" id="dnsProviderBadge">NextDNS</span></span></h4>
       <div class="value" style="font-size:20px;" id="dnsValue">—</div>
       <div id="dnsDetails">
@@ -696,33 +688,27 @@
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
-    <div class="card wide-card" id="applicationExperienceCard">
-      <h4><span>Application Experience</span><span class="pill" id="applicationExperiencePill">local</span></h4>
-      <div class="value" style="font-size:20px;" id="applicationExperienceValue">—</div>
-      <div class="status-summary" id="applicationExperienceSummary">Application evidence is unavailable or stale.</div>
+      <div class="card wide-card" id="dependencyStateCard">
+      <h4><span>Resolver Evidence</span><span class="pill" id="dependencyStatePill">v1</span></h4>
+      <div class="value" style="font-size:20px;" id="dependencyStateValue">—</div>
       <div class="metric-stack" style="margin-top:8px;">
-        <div class="metric-pair"><span class="label">System DNS</span><span class="metric-value" id="applicationSystemDnsValue">—</span></div>
-        <div class="metric-pair"><span class="label">Direct primary resolver</span><span class="metric-value" id="applicationPrimaryDnsValue">—</span></div>
-        <div class="metric-pair"><span class="label">Direct secondary resolver</span><span class="metric-value" id="applicationSecondaryDnsValue">—</span></div>
-        <div class="metric-pair"><span class="label">HTTPS transaction</span><span class="metric-value" id="applicationHttpsValue">—</span></div>
-        <div class="metric-pair"><span class="label">Freshness</span><span class="metric-value" id="applicationExperienceFreshness">—</span></div>
+        <div class="metric-pair"><span class="label">Primary</span><span class="metric-value" id="dependencyPrimaryValue">—</span></div>
+        <div class="metric-pair"><span class="label">Secondary</span><span class="metric-value" id="dependencySecondaryValue">—</span></div>
+        <div class="metric-pair"><span class="label">Active resolver</span><span class="metric-value" id="dependencyActiveMemberValue">—</span></div>
+        <div class="metric-pair"><span class="label">Resolver coverage</span><span class="metric-value" id="dependencyRedundancyValue">—</span></div>
       </div>
+      <div class="chip-row" id="dependencyMembersChips"></div>
     </div>
-    <div class="card wide-card" id="refinedAttributionCard">
-      <h4><span>Refined Attribution</span><span class="pill" id="refinedAttributionPill">v1</span></h4>
+      <div class="card wide-card" id="refinedAttributionCard">
+      <h4><span>Attribution Evidence</span><span class="pill" id="refinedAttributionPill">v1</span></h4>
       <div class="value" style="font-size:20px;" id="refinedAttributionValue">—</div>
       <div class="legacy-disclosure" id="refinedAttributionDetail">Uses multidimensional attribution when present.</div>
       <div class="legacy-disclosure" id="refinedAttributionUncertainty">Uncertainty unavailable.</div>
       <div class="metric-pair" style="margin-top:8px;"><span class="label">Attribution confidence</span><span class="metric-value" id="refinedAttributionConfidence">—</span></div>
     </div>
-  </div>
-
-  <details class="supporting-context" id="supportingContextDetails">
-    <summary>Supporting Context</summary>
-    <div class="row dashboard-overview dashboard-detail-row" style="margin-top:16px;">
-      <div class="card" style="min-width:240px;" id="detectionConfidenceCard">
-        <h4><span>Detection Confidence</span><span class="pill" id="detectionConfidencePill">v1</span></h4>
-        <div class="value" id="detectionConfidenceValue">—</div>
+      <div class="card" style="min-width:240px;" id="evidenceQualityCard">
+        <h4><span>Evidence Quality</span><span class="pill" id="detectionConfidencePill">v1</span></h4>
+        <div class="status-summary">Detection confidence: <span id="detectionConfidenceValue">—</span></div>
         <div class="legacy-disclosure" id="detectionConfidenceDetail">Confidence emitted by local artifacts.</div>
       </div>
 
@@ -1085,17 +1071,17 @@
       copyValueState("technicalConditionValue", "mobileTechnicalConditionValue");
       copyValueState("userImpactValue", "mobileUserImpactValue");
       copyValueState("affectedScopeValue", "mobileAffectedScopeValue");
-      copyValueState("currentActionValue", "mobileCurrentActionValue");
+      copyValueState("likelyCauseValue", "mobileLikelyCauseValue");
       document.getElementById("mobileTechnicalConditionDetail").textContent = document.getElementById("technicalConditionDetail").textContent;
       document.getElementById("mobileUserImpactDetail").textContent = document.getElementById("userImpactDetail").textContent;
       document.getElementById("mobileAffectedScopeDetail").textContent = document.getElementById("affectedScopeDetail").textContent;
-      document.getElementById("mobileCurrentActionDetail").textContent = document.getElementById("currentActionDetail").textContent;
+      document.getElementById("mobileLikelyCauseDetail").textContent = document.getElementById("likelyCauseDetail").textContent;
       const userImpactCard = document.getElementById("userImpactCard");
       const mobileUserImpactCard = document.getElementById("mobileUserImpactCard");
-      const currentActionCard = document.getElementById("currentActionCard");
-      const mobileCurrentActionCard = document.getElementById("mobileCurrentActionCard");
+      const likelyCauseCard = document.getElementById("likelyCauseCard");
+      const mobileLikelyCauseCard = document.getElementById("mobileLikelyCauseCard");
       if (mobileUserImpactCard && userImpactCard) mobileUserImpactCard.style.display = userImpactCard.style.display;
-      if (mobileCurrentActionCard && currentActionCard) mobileCurrentActionCard.style.display = currentActionCard.style.display;
+      if (mobileLikelyCauseCard && likelyCauseCard) mobileLikelyCauseCard.style.display = likelyCauseCard.style.display;
     }
 
     function copyValueState(sourceId, targetId){
@@ -2038,24 +2024,14 @@
     }
 
     function actionableGuidance(items, dependency){
-      const allowed = [
-        "No immediate action",
-        "Continue monitoring",
-        "Validate direct DNS queries",
-        "Compare primary and secondary resolver paths",
-        "Check local gateway",
-        "Capture route diagnostics",
-        "Escalate if application failures appear",
-      ];
       const raw = firstActionLabel(items);
       const text = cleanOperatorText(raw || "").toLowerCase();
-      if (text.includes("direct dns")) return "Validate direct DNS queries";
-      if (text.includes("resolver") && (text.includes("compare") || text.includes("primary") || text.includes("secondary"))) return "Compare primary and secondary resolver paths";
-      if (text.includes("gateway")) return "Check local gateway";
-      if (text.includes("route")) return "Capture route diagnostics";
-      if (text.includes("escalate") || text.includes("application")) return "Escalate if application failures appear";
-      if (dependency?.active_member == null && Array.isArray(dependency?.members) && dependency.members.length >= 2) return "Compare primary and secondary resolver paths";
-      return allowed[0];
+      if (text.includes("power")) return "Check local power equipment";
+      if (text.includes("cable") || text.includes("cabling")) return "Check cabling";
+      if (text.includes("restart") || text.includes("reboot")) return "Restart local equipment";
+      if (text.includes("gateway") && (text.includes("check") || text.includes("restart") || text.includes("reboot"))) return "Check local gateway";
+      if (text.includes("configuration") || text.includes("config change")) return "Review consequential configuration change";
+      return "No immediate action";
     }
 
     function isMeaningfulAction(action){
@@ -2105,17 +2081,12 @@
     }
 
     function plainFallbackHeadline(dimensions, dependency, refined){
-      const degraded = affectedScopeFromDimensions(dimensions, dependency);
-      const healthy = healthyScopeFromDimensions(dimensions, dependency);
       const impactState = (dimensions?.estimated_user_impact || dimensions?.user_impact || {}).state;
-      const impact = meaningfulUserImpactState(impactState)
-        ? `Estimated user impact is ${healthLabel(impactState).toLowerCase()}.`
-        : "Estimated user impact is not established from current evidence.";
-      const fault = isSubstantiveAttribution(refined)
-        ? `Likely fault domain: ${healthLabel(refined.domain).toLowerCase()}.`
-        : "Fault domain not yet localized.";
-      const healthyText = healthy ? ` ${cleanOperatorText(healthy)}.` : "";
-      return `${degraded} affected.${healthyText} ${impact} ${fault}`;
+      const technicalState = dimensions?.technical_condition?.state;
+      const app = dimensions?.application_experience;
+      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return `${healthLabel(technicalState)} technical condition; current application checks did not reproduce a user-facing failure.`;
+      if (meaningfulUserImpactState(impactState)) return `${healthLabel(technicalState)} technical condition with ${healthLabel(impactState).toLowerCase()} estimated user impact.`;
+      return `${healthLabel(technicalState)} technical condition from local evidence.`;
     }
 
     function isSubstantiveAttribution(refined){
@@ -2181,20 +2152,14 @@
       const observedState = observedImpact?.state;
       const hasMeaningfulObservedImpact = observedState && observedState !== "unknown";
       const impactLabel = estimatedState ? healthLabel(estimatedState) : "Not established";
-      const currentAction = actionableGuidance(matchedReview?.next_steps || operator?.recommended_deterministic_checks, dependency);
-      const hasMeaningfulCurrentAction = isMeaningfulAction(currentAction);
       const attributionSubstantive = isSubstantiveAttribution(refined);
       const faultDomain = cleanOperatorText(matchedReview?.likely_fault_domain || (attributionSubstantive ? healthLabel(refined?.domain) : "Fault domain not yet localized"));
 
       document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline || (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Legacy artifact rendered safely; multidimensional evidence is not available.");
       document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "compatibility mode");
-      document.getElementById("operatorAssessmentAffectedScope").textContent = scope;
-      document.getElementById("operatorAssessmentUserImpact").textContent = `${impactLabel} estimated${hasMeaningfulObservedImpact ? ` · ${healthLabel(observedState)} observed` : ""}`;
-      document.getElementById("operatorAssessmentFaultDomain").textContent = faultDomain;
-      document.getElementById("operatorAssessmentCurrentAction").textContent = hasMeaningfulCurrentAction ? currentAction : "No immediate action · Continue monitoring";
 
       renderDimensionCard("technicalConditionCard", "technicalConditionValue", "technicalConditionPill", "technicalConditionDetail", "Technical", dimensions?.technical_condition, "technical");
-      renderDimensionCard("detectionConfidenceCard", "detectionConfidenceValue", "detectionConfidencePill", "detectionConfidenceDetail", "Confidence", dimensions?.detection_confidence, "confidence");
+      renderDimensionCard("evidenceQualityCard", "detectionConfidenceValue", "detectionConfidencePill", "detectionConfidenceDetail", "Confidence", dimensions?.detection_confidence, "confidence");
       const technicalScope = technicalScopeText(dimensions);
       if (technicalScope) document.getElementById("technicalConditionDetail").textContent = technicalScope;
 
@@ -2205,9 +2170,7 @@
         document.getElementById("userImpactDetail").textContent = "Estimated impact is reflected in Operator Assessment until useful evidence is available.";
       }
 
-      renderDimensionCard("observedImpactCard", "observedImpactValue", "observedImpactPill", "observedImpactDetail", "Observed", observedImpact, "impact");
-      document.getElementById("observedImpactCard").style.display = hasMeaningfulObservedImpact ? "" : "none";
-      document.getElementById("observedImpactDetail").textContent = observedImpactDetail(observedImpact, feedback);
+      document.getElementById("observedImpactInline").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "No reported impact";
 
       renderApplicationExperience(application);
 
@@ -2215,10 +2178,12 @@
       document.getElementById("affectedScopeDetail").textContent = healthyScope;
       setPillText("affectedScopePill", "Scope", hasDimensions ? "info" : "watch");
 
-      document.getElementById("currentActionValue").textContent = currentAction;
-      document.getElementById("currentActionDetail").textContent = hasMeaningfulCurrentAction ? "Use existing evidence before changing configuration." : "";
-      document.getElementById("currentActionCard").style.display = hasMeaningfulCurrentAction ? "" : "none";
-      setPillText("currentActionPill", "Action", hasDimensions ? "info" : "watch");
+      document.getElementById("likelyCauseCard").style.display = attributionSubstantive ? "" : "none";
+      document.getElementById("likelyCauseValue").textContent = attributionSubstantive ? faultDomain : "—";
+      document.getElementById("likelyCauseDetail").textContent = Array.isArray(refined?.evidence_for) && refined.evidence_for.length
+        ? refined.evidence_for.slice(0, 2).map(cleanOperatorText).join("; ")
+        : "Only shown when sufficiently supported.";
+      setPillText("likelyCausePill", attributionSubstantive ? healthLabel(refined?.confidence) : "Hidden", attributionSubstantive ? healthTone("confidence", refined?.confidence) : "neutral");
 
       const dependencyTone = healthTone("dependency", dependency?.state);
       const members = Array.isArray(dependency?.members) ? dependency.members : [];
@@ -2254,9 +2219,7 @@
 
       document.getElementById("mobileUserImpactValue").textContent = impactLabel;
       document.getElementById("mobileUserImpactDetail").textContent = "Inferred from local evidence.";
-      document.getElementById("mobileObservedImpactCard").style.display = hasMeaningfulObservedImpact ? "" : "none";
-      document.getElementById("mobileObservedImpactValue").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "Unknown";
-      document.getElementById("mobileObservedImpactDetail").textContent = observedImpactDetail(observedImpact, feedback);
+      document.getElementById("mobileObservedImpactInline").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "No reported impact";
     }
 
     function selectCurrentAttributionObservation(payload){
