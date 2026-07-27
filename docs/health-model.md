@@ -397,9 +397,13 @@ local collector and includes direct resolver DNS transactions, system resolver
 DNS, and one lightweight HTTPS transaction. Fresh successful system-DNS and HTTPS
 transactions reduce estimated impact, direct resolver timeouts raise timeout
 evidence, and system DNS, TCP, TLS, or HTTP failures weigh more than latency
-alone. Stale, malformed, or missing application evidence is retained only as a
-limitation and does not affect current impact. Observed user impact remains
-separate from synthetic probes.
+alone. The default freshness window is 2100 seconds, covering the 1800-second
+scheduled optional-context refresh interval plus execution-delay tolerance. When
+fresh system DNS and HTTPS checks succeed with zero application failures or
+timeouts and no reported symptoms, telemetry-only `likely` estimated impact is
+damped to `possible`. Stale, malformed, or missing application evidence is
+retained only as a limitation and does not affect current impact. Observed user
+impact remains separate from synthetic probes.
 
 Optional operator feedback is read from `viz/operator_impact_feedback.json` when
 it exists and matches the current incident ID. It is written by

@@ -40,7 +40,7 @@ class FetchApplicationExperienceTest(unittest.TestCase):
             "dns_secondary_resolver": "192.0.2.11",
             "https_url": "https://example.com/status?token=secret",
             "timeout_seconds": 1.0,
-            "stale_after_seconds": 300,
+            "stale_after_seconds": self.module.DEFAULT_STALE_AFTER_SECONDS,
         }
 
     def dns_ok(self, name, resolver, timeout, *, now=None):
@@ -90,6 +90,8 @@ class FetchApplicationExperienceTest(unittest.TestCase):
 
         self.assertEqual(payload["schema_version"], 1)
         self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["freshness"]["stale_after_seconds"], 2100)
+        self.assertGreater(payload["freshness"]["stale_after_seconds"], 1800)
         self.assertEqual(payload["failure_counts"]["total"], 0)
         self.assertEqual([item["role"] for item in payload["dns_transactions"]], ["primary", "secondary", "system"])
         self.assertEqual(payload["https_transaction"]["http_status"], 204)

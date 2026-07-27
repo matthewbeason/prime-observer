@@ -351,6 +351,54 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
         self.assertIn("System DNS queries are succeeding normally.", result["estimated_user_impact"]["drivers"])
         self.assertEqual(result["observed_user_impact"]["state"], "unknown")
 
+    def test_current_healthy_application_evidence_dampens_telemetry_only_likely_impact(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        rows = custom_rows(
+            gateway=[8, 8, {"p95": 20, "loss": 2}],
+            internet=[170, 180, {"p95": 190, "loss": 3}],
+            primary=[260, 280, 290],
+            secondary=[220, 230, 240],
+        )
+        baseline = self.module.evaluate_health_dimensions(
+            rows,
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+        )
+        result = self.module.evaluate_health_dimensions(
+            rows,
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at),
+        )
+
+        self.assertEqual(baseline["estimated_user_impact"]["state"], "likely")
+        self.assertEqual(result["estimated_user_impact"]["state"], "possible")
+        self.assertIn("Current application checks did not reproduce user-facing failure.", result["estimated_user_impact"]["drivers"])
+        self.assertEqual(result["technical_condition"], baseline["technical_condition"])
+        self.assertEqual(result["attribution"], baseline["attribution"])
+        self.assertEqual(result["dependency_groups"], baseline["dependency_groups"])
+        self.assertEqual(result["observed_user_impact"], baseline["observed_user_impact"])
+
+    def test_stale_healthy_application_evidence_does_not_dampen_telemetry_likely_impact(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        stale = app_payload(generated_at - dt.timedelta(seconds=self.module.APPLICATION_EXPERIENCE_FRESHNESS_SECONDS + 1))
+        stale["freshness"] = {"stale_after_seconds": self.module.APPLICATION_EXPERIENCE_FRESHNESS_SECONDS}
+
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(
+                gateway=[8, 8, {"p95": 20, "loss": 2}],
+                internet=[170, 180, {"p95": 190, "loss": 3}],
+                primary=[260, 280, 290],
+                secondary=[220, 230, 240],
+            ),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=self.module.normalize_application_experience(stale, generated_at=generated_at),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "likely")
+        self.assertNotIn("Current application checks did not reproduce user-facing failure.", result["estimated_user_impact"]["drivers"])
+
     def test_application_direct_timeout_raises_estimated_impact_but_system_https_dampen(self):
         generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
         result = self.module.evaluate_health_dimensions(
@@ -385,6 +433,44 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
 
         self.assertEqual(result["estimated_user_impact"]["state"], "likely")
         self.assertEqual(result["observed_user_impact"]["state"], "unknown")
+
+    def test_application_failure_is_not_dampened_by_healthy_direct_resolver_checks(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(
+                gateway=[8, 8, {"p95": 20, "loss": 2}],
+                internet=[170, 180, {"p95": 190, "loss": 3}],
+                primary=[260, 280, 290],
+                secondary=[220, 230, 240],
+            ),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at, https="failed", https_category="tls_failure"),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "likely")
+        self.assertNotIn("Current application checks did not reproduce user-facing failure.", result["estimated_user_impact"]["drivers"])
+
+    def test_reported_and_confirmed_impact_are_not_dampened_by_healthy_application_checks(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        rows = custom_rows(gateway=[8, 8], internet=[25, 25], primary=[35, 35], secondary=[35, 35])
+        reported = self.module.evaluate_health_dimensions(
+            rows,
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": [{"type": "user_report", "status": "symptoms_confirmed", "freshness": "fresh"}]},
+            application_experience=app_payload(generated_at),
+        )
+        confirmed = self.module.evaluate_health_dimensions(
+            rows,
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": [{"type": "application_symptom", "status": "confirmed_service_failure", "freshness": "fresh"}]},
+            application_experience=app_payload(generated_at),
+        )
+
+        self.assertEqual(reported["observed_user_impact"]["state"], "reported_major")
+        self.assertEqual(reported["estimated_user_impact"]["state"], "likely")
+        self.assertEqual(confirmed["observed_user_impact"]["state"], "confirmed_service_failure")
+        self.assertEqual(confirmed["estimated_user_impact"]["state"], "severe")
 
     def test_application_broad_transaction_failure_can_be_severe(self):
         generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
@@ -432,6 +518,10 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
                     application_experience=payload,
                 )
                 self.assertEqual(result["estimated_user_impact"]["state"], "none_expected")
+
+    def test_application_default_freshness_exceeds_scheduled_refresh_cadence(self):
+        self.assertGreater(self.module.APPLICATION_EXPERIENCE_FRESHNESS_SECONDS, 1800)
+        self.assertEqual(self.module.APPLICATION_EXPERIENCE_FRESHNESS_SECONDS, 2100)
 
     def test_legacy_inputs_without_application_experience_remain_compatible(self):
         result = self.evaluate_fixture("nextdns_anycast_primary_sydney_active_secondary")

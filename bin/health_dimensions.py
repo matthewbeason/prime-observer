@@ -47,7 +47,7 @@ DEPENDENCY_STATES = {
 
 DIRECT_DNS_HEALTHY_MS = 80.0
 FRESHNESS_SECONDS = 60 * 60
-APPLICATION_EXPERIENCE_FRESHNESS_SECONDS = 5 * 60
+APPLICATION_EXPERIENCE_FRESHNESS_SECONDS = 35 * 60
 OPERATOR_IMPACT_FEEDBACK_FRESHNESS_SECONDS = 24 * 60 * 60
 OPERATOR_IMPACT_FEEDBACK_STATES = {
     "none_observed",
@@ -754,6 +754,8 @@ def application_transaction_summary(application_experience: dict[str, Any] | Non
             "https_failed": False,
             "https_failure_category": None,
             "broad_failure_count": 0,
+            "total_failures": 0.0,
+            "total_timeouts": 0.0,
             "high_latency_only": False,
             "drivers": ["Application evidence is unavailable or stale."],
         }
@@ -769,6 +771,10 @@ def application_transaction_summary(application_experience: dict[str, Any] | Non
     healthy_system_dns = bool(system_dns and system_dns.get("success"))
     healthy_https = bool(https_transaction and https_transaction.get("success"))
     broad_failure_count = direct_failures + (1 if system_failed else 0) + (1 if https_failed else 0)
+    failure_counts_raw = app.get("failure_counts")
+    failure_counts = failure_counts_raw if isinstance(failure_counts_raw, dict) else {}
+    total_failures = parse_float(failure_counts.get("total"), broad_failure_count) or 0.0
+    total_timeouts = parse_float(failure_counts.get("timeouts"), direct_timeouts) or 0.0
     slow_dns = [item for item in dns_transactions if item.get("success") and (parse_float(item.get("latency_ms"), 0.0) or 0.0) > 200.0]
     slow_https = bool(healthy_https and (parse_float(https_transaction.get("total_duration_ms"), 0.0) or 0.0) > 1200.0)
     drivers = list(app.get("evidence") or [])
@@ -781,6 +787,8 @@ def application_transaction_summary(application_experience: dict[str, Any] | Non
         "https_failed": https_failed,
         "https_failure_category": https_transaction.get("failure_category"),
         "broad_failure_count": broad_failure_count,
+        "total_failures": total_failures,
+        "total_timeouts": total_timeouts,
         "high_latency_only": bool((slow_dns or slow_https) and broad_failure_count == 0),
         "drivers": drivers,
     }
@@ -891,12 +899,17 @@ def estimated_user_impact_assessment(
     elif observed_state == "unknown":
         missing.append("user_symptoms")
 
+    app_zero_failures = app_summary["total_failures"] == 0 and app_summary["total_timeouts"] == 0 and app_summary["broad_failure_count"] == 0
     if app_summary["current"] and app_summary["healthy_system_dns"] and app_summary["healthy_https"] and state in {"possible", "likely"} and not (app_summary["system_dns_failed"] or app_summary["https_failed"]):
         if repeated_timeouts and app_summary["direct_dns_timeouts"]:
             state = "possible"
         elif not gateway_bad and not internet_bad:
             state = "low"
         confidence = "medium"
+    if app_summary["current"] and app_zero_failures and observed_state in {"unknown", "none_reported"} and state == "likely" and not repeated_timeouts:
+        state = "possible"
+        confidence = "medium"
+        drivers.append("Current application checks did not reproduce user-facing failure.")
     if app_summary["current"] and app_summary["high_latency_only"] and state == "none_expected":
         state = "low"
 
