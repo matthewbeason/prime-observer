@@ -45,9 +45,11 @@ build_hourly_baseline.py
 .env.nextdns
 .env.cloudflare
 .env.openrouter
+.env.application_experience
 viz/nextdns_summary.json
 viz/internet_conditions.json
 viz/aps_power_context.json
+viz/application_experience.json
 viz/network_attribution.json
 viz/observations.json
 viz/dashboard_health.json

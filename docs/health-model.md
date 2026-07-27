@@ -391,6 +391,16 @@ transform. Stale evidence is retained as context but does not count as current
 corroboration. Operator assertions and external diagnostics may refine impact or
 confidence, but they must not silently override telemetry.
 
+Optional application-experience evidence is read from
+`viz/application_experience.json` when it exists. It is produced by a separate
+local collector and includes direct resolver DNS transactions, system resolver
+DNS, and one lightweight HTTPS transaction. Fresh successful system-DNS and HTTPS
+transactions reduce estimated impact, direct resolver timeouts raise timeout
+evidence, and system DNS, TCP, TLS, or HTTP failures weigh more than latency
+alone. Stale, malformed, or missing application evidence is retained only as a
+limitation and does not affect current impact. Observed user impact remains
+separate from synthetic probes.
+
 `viz/index.html` and `viz/investigate.html` render these fields directly from the
 generated artifacts. Browser code may label enum values and choose visual tone,
 but it must not derive new multidimensional health semantics from telemetry.

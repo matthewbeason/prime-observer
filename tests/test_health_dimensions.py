@@ -85,6 +85,57 @@ def diagnostic_payload(summary):
     return {"status": "ok", "items": summary.get("diagnostics") or []}
 
 
+def app_payload(generated_at, *, primary="ok", secondary="ok", system="ok", https="ok", https_category=None, https_total=100):
+    def dns(role, status):
+        success = status == "ok"
+        return {
+            "role": role,
+            "type": "system_dns" if role == "system" else "direct_dns",
+            "target_hostname": "example.com",
+            "resolver_endpoint": "system" if role == "system" else f"192.0.2.{10 if role == 'primary' else 11}",
+            "checked_at": generated_at.isoformat().replace("+00:00", "Z"),
+            "status": "ok" if success else status,
+            "success": success,
+            "latency_ms": 25 if success else None,
+            "timeout": status == "timeout",
+            "rcode": "NOERROR" if success else None,
+            "failure_category": None if success else status,
+        }
+    https_success = https == "ok"
+    evidence = []
+    if system == "ok":
+        evidence.append("System DNS queries are succeeding normally.")
+    if secondary == "timeout":
+        evidence.append("Direct secondary resolver queries are timing out.")
+    if https_success:
+        evidence.append("HTTPS session establishment remains normal.")
+    else:
+        evidence.append("HTTPS transaction failed.")
+    return {
+        "schema_version": 1,
+        "model_version": "prime_observer.application_experience.v1",
+        "generated_at": generated_at.isoformat().replace("+00:00", "Z"),
+        "status": "ok" if all(item == "ok" for item in (primary, secondary, system, https)) else "degraded",
+        "freshness": "fresh",
+        "is_current": True,
+        "dns_transactions": [dns("primary", primary), dns("secondary", secondary), dns("system", system)],
+        "https_transaction": {
+            "target_url": "https://example.com/status",
+            "checked_at": generated_at.isoformat().replace("+00:00", "Z"),
+            "status": "ok" if https_success else "failed",
+            "success": https_success,
+            "http_status": 204 if https_success else None,
+            "timeout": https == "timeout",
+            "failure_category": None if https_success else (https_category or https),
+            "total_duration_ms": https_total,
+        },
+        "failure_counts": {"total": len([item for item in (primary, secondary, system, https) if item != "ok"])},
+        "latency_summaries": {},
+        "evidence": evidence,
+        "limitations": [],
+    }
+
+
 class HealthDimensionsEvaluatorTest(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
@@ -268,6 +319,107 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
 
         self.assertEqual(semantic["estimated_user_impact"], "low")
         self.assertEqual(semantic["observed_user_impact"], "none_reported")
+
+    def test_application_success_reduces_estimated_impact_for_direct_resolver_degradation(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[260, 280, 290], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "low")
+        self.assertIn("System DNS queries are succeeding normally.", result["estimated_user_impact"]["drivers"])
+        self.assertEqual(result["observed_user_impact"]["state"], "unknown")
+
+    def test_application_direct_timeout_raises_estimated_impact_but_system_https_dampen(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[35, 35, 35], secondary=[260, 280, 290]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at, secondary="timeout"),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "possible")
+        self.assertIn("Direct secondary resolver queries are timing out.", result["estimated_user_impact"]["drivers"])
+
+    def test_application_system_dns_timeout_raises_estimated_impact(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[35, 35, 35], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at, system="timeout"),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "likely")
+
+    def test_application_https_failure_raises_estimated_impact(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[35, 35, 35], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at, https="failed", https_category="tls_failure"),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "likely")
+        self.assertEqual(result["observed_user_impact"]["state"], "unknown")
+
+    def test_application_broad_transaction_failure_can_be_severe(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[35, 35, 35], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at, primary="timeout", secondary="timeout", system="timeout", https="failed", https_category="tcp_failure"),
+        )
+
+        self.assertEqual(result["estimated_user_impact"]["state"], "severe")
+
+    def test_application_high_latency_without_failure_remains_low(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        payload = app_payload(generated_at, https_total=1400)
+        payload["evidence"].append("HTTPS transaction is slow without failure.")
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[35, 35, 35], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=payload,
+        )
+
+        self.assertIn(result["estimated_user_impact"]["state"], {"none_expected", "low"})
+
+    def test_stale_malformed_and_missing_application_artifacts_do_not_affect_impact(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = self.module.load_application_experience(Path(tmp) / "missing.json", generated_at=generated_at)
+            malformed_path = Path(tmp) / "application_experience.json"
+            malformed_path.write_text("{bad-json")
+            malformed = self.module.load_application_experience(malformed_path, generated_at=generated_at)
+            stale_path = Path(tmp) / "stale.json"
+            stale_payload = app_payload(generated_at - dt.timedelta(minutes=30), system="timeout", https="failed")
+            stale_payload["freshness"] = {"stale_after_seconds": 300}
+            stale_path.write_text(json.dumps(stale_payload))
+            stale = self.module.load_application_experience(stale_path, generated_at=generated_at)
+
+        for payload in (missing, malformed, stale):
+            with self.subTest(status=payload["status"]):
+                result = self.module.evaluate_health_dimensions(
+                    custom_rows(gateway=[8, 8, 8], internet=[25, 26, 25], primary=[35, 35, 35], secondary=[35, 35, 35]),
+                    generated_at=generated_at,
+                    diagnostic_evidence={"status": "ok", "items": []},
+                    application_experience=payload,
+                )
+                self.assertEqual(result["estimated_user_impact"]["state"], "none_expected")
+
+    def test_legacy_inputs_without_application_experience_remain_compatible(self):
+        result = self.evaluate_fixture("nextdns_anycast_primary_sydney_active_secondary")
+
+        self.assertEqual(result["user_impact"]["state"], "not_observed")
+        self.assertEqual(result["application_experience"]["status"], "missing")
 
 
 if __name__ == "__main__":

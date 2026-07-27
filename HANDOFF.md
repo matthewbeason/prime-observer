@@ -25,6 +25,7 @@ Prime Observer currently ships:
 - manual requested-window investigation generation and viewing
 - optional NextDNS summary context
 - optional Cloudflare Radar Internet Conditions context
+- optional local Application Experience probes that feed estimated impact only
 
 ## Recent Completed Work
 
@@ -48,6 +49,9 @@ Repository-backed recent milestones:
   pinned to `google/gemini-3.5-flash` by default, provider auto-routing is
   rejected, and additive impact-v2 fields distinguish estimated and observed
   user impact
+- post-`v0.9.0` Phase 4.4 work adds a separate local application-experience
+  collector and `viz/application_experience.json`; transform reads the artifact
+  without network calls and uses fresh evidence only for estimated user impact
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -72,6 +76,8 @@ Current artifact flow:
 - `bin/build_investigation.py` generates manual requested-window evidence
   artifacts
 - optional fetchers generate DNS and Internet Conditions summaries
+- `bin/fetch_application_experience.py` generates local DNS/HTTPS transaction
+  evidence for impact-v2 corroboration
 - `viz/index.html` and `viz/investigate.html` consume generated local files
 
 Current projection state:

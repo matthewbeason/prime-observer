@@ -265,6 +265,25 @@ viz/aps_power_context.json
 viz/index.html
 ```
 
+Optional Application Experience probes:
+
+```text
+.env.application_experience or environment variables
+        |
+        v
+bin/fetch_application_experience.py
+        |
+        v
+viz/application_experience.json
+        |
+        v
+bin/transform_latest.py
+```
+
+The application probe collector performs local DNS and HTTPS transaction checks
+and writes a deterministic artifact. The transform reads that artifact for
+impact-v2 evidence but never performs network calls itself.
+
 Historical investigation:
 
 ```text

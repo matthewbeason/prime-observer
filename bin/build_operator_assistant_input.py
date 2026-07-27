@@ -118,6 +118,7 @@ def normalized_input_payload(input_payload):
     attribution = safe_dict(payload.get("attribution"))
     environmental = safe_dict(payload.get("environmental_context"))
     health_dimensions = safe_dict(payload.get("health_dimensions"))
+    application_experience = safe_dict(health_dimensions.get("application_experience"))
 
     def normalized_context(value, *, include_provider=False):
         context = safe_dict(value)
@@ -160,6 +161,13 @@ def normalized_input_payload(input_payload):
             "detection_confidence": health_dimensions.get("detection_confidence"),
             "attribution_domain": safe_dict(health_dimensions.get("attribution")).get("domain"),
             "attribution_confidence": health_dimensions.get("attribution_confidence"),
+            "application_experience": {
+                "status": application_experience.get("status"),
+                "freshness": application_experience.get("freshness"),
+                "is_current": application_experience.get("is_current"),
+                "failure_counts": safe_dict(application_experience.get("failure_counts")),
+                "evidence": application_experience.get("evidence") or [],
+            },
             "dependency_groups": [
                 {
                     "state": safe_dict(group).get("state"),

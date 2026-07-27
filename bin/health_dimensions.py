@@ -12,6 +12,7 @@ from target_metadata import target_metadata
 HEALTH_DIMENSIONS_SCHEMA_VERSION = 1
 HEALTH_DIMENSIONS_MODEL_VERSION = "prime_observer.health_dimensions.v1"
 DIAGNOSTIC_EVIDENCE_MODEL_VERSION = "prime_observer.diagnostic_evidence.v1"
+APPLICATION_EXPERIENCE_MODEL_VERSION = "prime_observer.application_experience.v1"
 
 TECHNICAL_STATES = {"healthy", "elevated", "degraded", "severe", "unknown"}
 USER_IMPACT_STATES = {"not_observed", "unlikely", "possible", "likely", "confirmed", "unknown"}
@@ -45,6 +46,7 @@ DEPENDENCY_STATES = {
 
 DIRECT_DNS_HEALTHY_MS = 80.0
 FRESHNESS_SECONDS = 60 * 60
+APPLICATION_EXPERIENCE_FRESHNESS_SECONDS = 5 * 60
 
 
 def parse_ts(value: Any) -> dt.datetime | None:
@@ -136,6 +138,105 @@ def load_diagnostic_evidence(path: Path, *, generated_at: dt.datetime | None = N
         "items": items,
         "limitations": [],
     }
+
+
+def normalize_application_experience(payload: dict[str, Any], *, generated_at: dt.datetime | None = None) -> dict[str, Any]:
+    checked_at = parse_ts(payload.get("generated_at"))
+    freshness_raw = payload.get("freshness")
+    freshness_payload = freshness_raw if isinstance(freshness_raw, dict) else {}
+    stale_after = parse_float(freshness_payload.get("stale_after_seconds"), APPLICATION_EXPERIENCE_FRESHNESS_SECONDS)
+    freshness = "unknown"
+    if checked_at and generated_at:
+        age = max(0.0, (generated_at - checked_at).total_seconds())
+        freshness = "fresh" if age <= (stale_after or APPLICATION_EXPERIENCE_FRESHNESS_SECONDS) else "stale"
+    dns_transactions = [item for item in payload.get("dns_transactions", []) if isinstance(item, dict)]
+    https_raw = payload.get("https_transaction")
+    https_transaction = https_raw if isinstance(https_raw, dict) else {}
+    failures = [item for item in dns_transactions if not item.get("success")]
+    if https_transaction and not https_transaction.get("success"):
+        failures.append(https_transaction)
+    system_dns = next((item for item in dns_transactions if item.get("role") == "system"), None)
+    direct_dns = [item for item in dns_transactions if item.get("role") in {"primary", "secondary"}]
+    evidence = []
+    limitations = []
+    if freshness != "fresh":
+        limitations.append("Application experience evidence is unavailable or stale.")
+    elif system_dns and system_dns.get("success"):
+        evidence.append("System DNS queries are succeeding normally.")
+    elif system_dns:
+        evidence.append("System DNS query failed or timed out.")
+    for item in direct_dns:
+        role = item.get("role") or "direct"
+        if item.get("timeout"):
+            evidence.append(f"Direct {role} resolver queries are timing out.")
+        elif item.get("success"):
+            evidence.append(f"Direct {role} resolver queries are succeeding.")
+    if https_transaction.get("success"):
+        evidence.append("HTTPS session establishment remains normal.")
+    elif https_transaction:
+        evidence.append("HTTPS transaction failed.")
+    return {
+        "schema_version": payload.get("schema_version", 1),
+        "model_version": payload.get("model_version") or APPLICATION_EXPERIENCE_MODEL_VERSION,
+        "status": payload.get("status") or payload.get("overall_status") or "unknown",
+        "generated_at": iso(checked_at),
+        "freshness": freshness,
+        "is_current": freshness == "fresh",
+        "dns_transactions": dns_transactions,
+        "https_transaction": https_transaction,
+        "failure_counts": payload.get("failure_counts") if isinstance(payload.get("failure_counts"), dict) else {"total": len(failures)},
+        "latency_summaries": payload.get("latency_summaries") if isinstance(payload.get("latency_summaries"), dict) else {},
+        "evidence": evidence,
+        "limitations": limitations + [item for item in payload.get("limitations", []) if isinstance(item, str)],
+    }
+
+
+def load_application_experience(path: Path, *, generated_at: dt.datetime | None = None) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "schema_version": 1,
+            "model_version": APPLICATION_EXPERIENCE_MODEL_VERSION,
+            "status": "missing",
+            "freshness": "missing",
+            "is_current": False,
+            "dns_transactions": [],
+            "https_transaction": {},
+            "failure_counts": {"total": 0},
+            "latency_summaries": {},
+            "evidence": ["Application evidence is unavailable or stale."],
+            "limitations": ["Application experience artifact is absent."],
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "schema_version": 1,
+            "model_version": APPLICATION_EXPERIENCE_MODEL_VERSION,
+            "status": "malformed",
+            "freshness": "unknown",
+            "is_current": False,
+            "dns_transactions": [],
+            "https_transaction": {},
+            "failure_counts": {"total": 0},
+            "latency_summaries": {},
+            "evidence": ["Application evidence is unavailable or stale."],
+            "limitations": [f"Application experience artifact is unreadable: {exc}"],
+        }
+    if not isinstance(payload, dict):
+        return {
+            "schema_version": 1,
+            "model_version": APPLICATION_EXPERIENCE_MODEL_VERSION,
+            "status": "malformed",
+            "freshness": "unknown",
+            "is_current": False,
+            "dns_transactions": [],
+            "https_transaction": {},
+            "failure_counts": {"total": 0},
+            "latency_summaries": {},
+            "evidence": ["Application evidence is unavailable or stale."],
+            "limitations": ["Application experience artifact root is not an object."],
+        }
+    return normalize_application_experience(payload, generated_at=generated_at)
 
 
 def normalize_sample(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -520,6 +621,50 @@ def has_repeated_timeout_evidence(diagnostics: list[dict[str, Any]]) -> bool:
     return len(timeout_items) >= 1
 
 
+def application_transaction_summary(application_experience: dict[str, Any] | None) -> dict[str, Any]:
+    app = application_experience if isinstance(application_experience, dict) else {}
+    if not app.get("is_current"):
+        return {
+            "current": False,
+            "healthy_system_dns": False,
+            "healthy_https": False,
+            "direct_dns_timeouts": 0,
+            "system_dns_failed": False,
+            "https_failed": False,
+            "https_failure_category": None,
+            "broad_failure_count": 0,
+            "high_latency_only": False,
+            "drivers": ["Application evidence is unavailable or stale."],
+        }
+    dns_transactions = [item for item in app.get("dns_transactions", []) if isinstance(item, dict)]
+    https_raw = app.get("https_transaction")
+    https_transaction = https_raw if isinstance(https_raw, dict) else {}
+    system_dns = next((item for item in dns_transactions if item.get("role") == "system"), {})
+    direct_dns = [item for item in dns_transactions if item.get("role") in {"primary", "secondary"}]
+    direct_timeouts = len([item for item in direct_dns if item.get("timeout")])
+    direct_failures = len([item for item in direct_dns if not item.get("success")])
+    system_failed = bool(system_dns and not system_dns.get("success"))
+    https_failed = bool(https_transaction and not https_transaction.get("success"))
+    healthy_system_dns = bool(system_dns and system_dns.get("success"))
+    healthy_https = bool(https_transaction and https_transaction.get("success"))
+    broad_failure_count = direct_failures + (1 if system_failed else 0) + (1 if https_failed else 0)
+    slow_dns = [item for item in dns_transactions if item.get("success") and (parse_float(item.get("latency_ms"), 0.0) or 0.0) > 200.0]
+    slow_https = bool(healthy_https and (parse_float(https_transaction.get("total_duration_ms"), 0.0) or 0.0) > 1200.0)
+    drivers = list(app.get("evidence") or [])
+    return {
+        "current": True,
+        "healthy_system_dns": healthy_system_dns,
+        "healthy_https": healthy_https,
+        "direct_dns_timeouts": direct_timeouts,
+        "system_dns_failed": system_failed,
+        "https_failed": https_failed,
+        "https_failure_category": https_transaction.get("failure_category"),
+        "broad_failure_count": broad_failure_count,
+        "high_latency_only": bool((slow_dns or slow_https) and broad_failure_count == 0),
+        "drivers": drivers,
+    }
+
+
 def estimated_user_impact_assessment(
     *,
     technical_state: str,
@@ -530,6 +675,7 @@ def estimated_user_impact_assessment(
     diagnostics: list[dict[str, Any]],
     samples: list[dict[str, Any]],
     observed: dict[str, Any],
+    application_experience: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     drivers = []
     missing = []
@@ -544,6 +690,9 @@ def estimated_user_impact_assessment(
         drivers.append("minor user symptoms were reported")
 
     repeated_timeouts = has_repeated_timeout_evidence(diagnostics)
+    app_summary = application_transaction_summary(application_experience)
+    if app_summary["current"] and app_summary["direct_dns_timeouts"]:
+        repeated_timeouts = True
     lossy_samples = [sample for sample in samples if (sample.get("loss") or 0.0) > WAN_BAD["loss"]]
     gateway_bad = gateway.get("state") in {"degraded", "severe"}
     internet_bad = internet.get("state") in {"degraded", "severe"}
@@ -552,6 +701,8 @@ def estimated_user_impact_assessment(
 
     if repeated_timeouts:
         drivers.append("fresh timeout or failed-transaction evidence")
+    if app_summary["current"]:
+        drivers.extend(app_summary["drivers"])
     if lossy_samples:
         drivers.append("packet loss exceeded degradation threshold")
     if gateway_bad:
@@ -575,7 +726,15 @@ def estimated_user_impact_assessment(
     if "direct_dns_query_measurement" in current_types:
         drivers.append("direct DNS query evidence is available")
 
-    if gateway_bad and (repeated_timeouts or lossy_samples):
+    if app_summary["current"] and app_summary["broad_failure_count"] >= 3:
+        state = "severe"
+        confidence = "high"
+        drivers.append("Application checks corroborate likely user impact.")
+    elif app_summary["current"] and (app_summary["system_dns_failed"] or app_summary["https_failed"]):
+        state = "likely"
+        confidence = "high"
+        drivers.append("Application checks corroborate likely user impact.")
+    elif gateway_bad and (repeated_timeouts or lossy_samples):
         state = "severe"
         confidence = "high"
     elif repeated_timeouts or (internet_bad and resolver_bad and lossy_samples):
@@ -610,6 +769,15 @@ def estimated_user_impact_assessment(
         drivers.append("no symptoms were reported, but absence of reports is not proof of no impact")
     elif observed_state == "unknown":
         missing.append("user_symptoms")
+
+    if app_summary["current"] and app_summary["healthy_system_dns"] and app_summary["healthy_https"] and state in {"possible", "likely"} and not (app_summary["system_dns_failed"] or app_summary["https_failed"]):
+        if repeated_timeouts and app_summary["direct_dns_timeouts"]:
+            state = "possible"
+        elif not gateway_bad and not internet_bad:
+            state = "low"
+        confidence = "medium"
+    if app_summary["current"] and app_summary["high_latency_only"] and state == "none_expected":
+        state = "low"
 
     return {
         "state": state,
@@ -734,15 +902,17 @@ def deterministic_operator_interpretation(dimensions: dict[str, Any]) -> dict[st
     observed = dimensions.get("observed_user_impact", {})
     risk = dimensions.get("operational_risk", {})
     attribution = dimensions.get("attribution", {})
+    application = dimensions.get("application_experience", {})
     dependencies = dimensions.get("dependency_groups", [])
     dep = dependencies[0] if dependencies else {}
-    drivers = list(technical.get("drivers") or []) + list(attribution.get("evidence_for") or [])
+    drivers = list(technical.get("drivers") or []) + list(attribution.get("evidence_for") or []) + list(application.get("evidence") or [])
     limiting = list(dict.fromkeys((technical.get("missing_evidence") or []) + (impact.get("missing_evidence") or []) + (attribution.get("unresolved_evidence") or [])))
     return {
         "headline": f"{technical.get('state', 'unknown').title()} technical condition with {risk.get('state', 'unknown')} operational risk.",
         "condition_statement": f"Technical condition is {technical.get('state', 'unknown')} based on deterministic telemetry.",
         "impact_statement": f"Legacy user impact is {impact.get('state', 'unknown')}; estimated user impact is {estimated.get('state', 'unknown')} and observed user impact is {observed.get('state', 'unknown')}.",
         "impact_reasoning": "A severe technical condition can coexist with low estimated impact when degradation is isolated to an inactive or redundant resolver path and no failures or symptoms are observed.",
+        "application_experience_statement": "; ".join((application.get("evidence") or ["Application evidence is unavailable or stale."])[:3]),
         "risk_statement": f"Operational risk is {risk.get('state', 'unknown')} with redundancy {dep.get('redundancy_status', 'unknown')}.",
         "attribution_statement": f"Refined attribution domain is {attribution.get('domain', 'unknown')} with {attribution.get('confidence', 'low')} confidence.",
         "evidence_drivers": drivers[:8],
@@ -760,6 +930,7 @@ def evaluate_health_dimensions(
     *,
     generated_at: dt.datetime,
     diagnostic_evidence: dict[str, Any] | None = None,
+    application_experience: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     diagnostics = [
         normalize_diagnostic_item(item, generated_at=generated_at)
@@ -846,6 +1017,7 @@ def evaluate_health_dimensions(
         diagnostics=diagnostics,
         samples=marked + lan_samples,
         observed=observed_impact,
+        application_experience=application_experience,
     )
     risk = operational_risk_assessment(technical_state=technical["state"], dependency=dependency, samples=marked)
     attribution = attribution_assessment(
@@ -883,6 +1055,13 @@ def evaluate_health_dimensions(
             "current_items": len([item for item in diagnostics if item.get("is_current")]),
             "stale_items": len([item for item in diagnostics if item.get("freshness") == "stale"]),
         },
+        "application_experience": application_experience if isinstance(application_experience, dict) else {
+            "status": "missing",
+            "freshness": "missing",
+            "is_current": False,
+            "evidence": ["Application evidence is unavailable or stale."],
+            "limitations": ["Application experience artifact is absent."],
+        },
         "unresolved_evidence": unresolved,
     }
     dimensions["deterministic_operator_interpretation"] = deterministic_operator_interpretation(dimensions)
@@ -892,6 +1071,8 @@ def evaluate_health_dimensions(
 def semantic_health_dimensions(dimensions: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(dimensions, dict):
         return {}
+    application_raw = dimensions.get("application_experience")
+    application = application_raw if isinstance(application_raw, dict) else {}
     return {
         "model_version": dimensions.get("model_version"),
         "technical_condition": (dimensions.get("technical_condition") or {}).get("state"),
@@ -902,6 +1083,13 @@ def semantic_health_dimensions(dimensions: dict[str, Any] | None) -> dict[str, A
         "detection_confidence": dimensions.get("detection_confidence"),
         "attribution_domain": (dimensions.get("attribution") or {}).get("domain"),
         "attribution_confidence": dimensions.get("attribution_confidence"),
+        "application_experience": {
+            "status": application.get("status"),
+            "freshness": application.get("freshness"),
+            "is_current": application.get("is_current"),
+            "failure_counts": application.get("failure_counts") or {},
+            "evidence": application.get("evidence") or [],
+        },
         "dependency_groups": [
             {
                 "state": group.get("state"),

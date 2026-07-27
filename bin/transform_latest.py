@@ -23,7 +23,7 @@ from health_model import (
     is_wan_bad,
     lan_elevation,
 )
-from health_dimensions import evaluate_health_dimensions, load_diagnostic_evidence
+from health_dimensions import evaluate_health_dimensions, load_application_experience, load_diagnostic_evidence
 from observation_domain import (
     OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observations,
@@ -50,6 +50,7 @@ INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
 DIAGNOSTIC_EVIDENCE_IN = VIZ_DIR / "diagnostic_evidence.json"
+APPLICATION_EXPERIENCE_IN = VIZ_DIR / "application_experience.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -944,12 +945,15 @@ def build_dashboard_health(rows, attribution, generated_at, health_dimensions=No
                 "generated_at",
                 "technical_condition",
                 "user_impact",
+                "estimated_user_impact",
+                "observed_user_impact",
                 "operational_risk",
                 "detection_confidence",
                 "attribution_confidence",
                 "attribution",
                 "unresolved_evidence",
                 "diagnostic_evidence",
+                "application_experience",
                 "deterministic_operator_interpretation",
             )
         }
@@ -1020,10 +1024,12 @@ def main():
     tmp.replace(OUT)
 
     diagnostic_evidence = load_diagnostic_evidence(DIAGNOSTIC_EVIDENCE_IN, generated_at=now)
+    application_experience = load_application_experience(APPLICATION_EXPERIENCE_IN, generated_at=now)
     health_dimensions = evaluate_health_dimensions(
         rows_out,
         generated_at=now,
         diagnostic_evidence=diagnostic_evidence,
+        application_experience=application_experience,
     )
     attribution = compute_network_attribution(rows_out, now, health_dimensions=health_dimensions)
     write_json_atomic(ATTRIBUTION_OUT, attribution)

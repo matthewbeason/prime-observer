@@ -78,6 +78,8 @@ Stage ownership:
   matching valid LLM interpretation or deterministic fallback assessment.
 - Optional providers: NextDNS and Cloudflare Radar are summary-only and
   fail-safe.
+- Local application-experience probes are synthetic checks, not provider context;
+  they are collected separately and consumed by transform as local evidence.
 - Bounded schemas: artifacts stay small, explicit, and tied to Prime Observer's
   six dashboard questions.
 - Provider independence: provider summaries remain separate from Observation,
@@ -224,6 +226,28 @@ Stage ownership:
   and does not stop artifact generation
 - Authoritative: no; telemetry remains authoritative for measured conditions
 - Generated: optional/local
+- Should be committed: no
+
+### `viz/application_experience.json`
+
+- Producer: `bin/fetch_application_experience.py`
+- Consumers: `bin/transform_latest.py` through `bin/health_dimensions.py`
+- Purpose: deterministic local synthetic DNS and HTTPS transaction evidence for
+  impact-v2 estimation
+- Required fields: `schema_version`, `model_version`, `generated_at`, `status`,
+  `overall_status`, `freshness`, `dns_transactions`, `https_transaction`,
+  `failure_counts`, `latency_summaries`, `source`, `config`, and `limitations`
+- DNS transaction fields: role, target hostname, resolver endpoint when known,
+  checked timestamp, success/failure status, latency, timeout, response code, and
+  failure category
+- HTTPS transaction fields: target URL without query string, checked timestamp,
+  DNS duration when measurable, TCP connect duration, TLS duration, time to first
+  byte, total duration, HTTP status, timeout, and failure category
+- Unavailable behavior: absent, malformed, or stale artifacts are normalized as
+  unavailable evidence and do not affect current estimated impact
+- Authoritative: no, for attribution; yes, as local synthetic transaction
+  evidence considered by `estimated_user_impact`
+- Generated: yes
 - Should be committed: no
 
 ### `viz/investigation.json`

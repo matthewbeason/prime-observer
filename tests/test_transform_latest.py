@@ -39,6 +39,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
         self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
         self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
+        self.module.APPLICATION_EXPERIENCE_IN = self.viz_dir / "application_experience.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -240,6 +241,15 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("OPERATOR_ASSISTANT_GENERATION_STATE_OUT", source)
         self.assertIn("pending_generation_state", source)
         self.assertNotIn("build_operator_assistant_output", source)
+        self.assertNotIn("openrouter", source.lower())
+
+    def test_transform_reads_application_experience_artifact_without_network_calls(self):
+        source = MODULE_PATH.read_text()
+
+        self.assertIn("APPLICATION_EXPERIENCE_IN", source)
+        self.assertIn("load_application_experience", source)
+        self.assertNotIn("socket.", source)
+        self.assertNotIn("urlopen", source)
 
     def test_browser_files_render_phase_4_dashboard_hierarchy(self):
         dashboard_html = INDEX_HTML_PATH.read_text()

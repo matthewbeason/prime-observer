@@ -62,6 +62,10 @@ Current watch period:
 - Phase 4.3 pins Operator Assistant synthesis to an explicit OpenRouter model by
   default and adds Python-owned impact-v2 fields that separate estimated user
   impact from observed reports while preserving legacy compatibility fields.
+- Phase 4.4 adds separate local Application Experience probes. Fresh DNS/HTTPS
+  transaction evidence can refine estimated user impact, while stale, malformed,
+  or missing evidence is ignored and no dashboard or Investigation redesign is
+  included.
 
 ## Next Logical Milestone
 
