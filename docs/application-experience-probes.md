@@ -49,3 +49,9 @@ Fresh application evidence can refine only `estimated_user_impact`:
 
 Observed user impact remains separate and is still derived from fresh reports or
 symptom evidence, not synthetic checks.
+
+Phase 4.5 surfaces this evidence in the dashboard and Investigation page. The
+renderer shows compact operator-facing states for system DNS, direct primary
+resolver, direct secondary resolver, and HTTPS transaction. Raw timings remain
+secondary or collapsed; browser code does not run probes and does not call
+providers.

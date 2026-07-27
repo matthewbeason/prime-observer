@@ -573,6 +573,11 @@
         <div class="value-inline" id="mobileUserImpactValue">—</div>
         <div class="detail-line" id="mobileUserImpactDetail">—</div>
         </div>
+        <div class="mobile-state-card" id="mobileObservedImpactCard">
+        <h4>Observed User Impact</h4>
+        <div class="value-inline" id="mobileObservedImpactValue">—</div>
+        <div class="detail-line" id="mobileObservedImpactDetail">—</div>
+        </div>
         <div class="mobile-state-card">
         <h4>Affected Scope</h4>
         <div class="value-inline" id="mobileAffectedScopeValue">—</div>
@@ -582,6 +587,11 @@
         <h4>Current Action</h4>
         <div class="value-inline" id="mobileCurrentActionValue">—</div>
         <div class="detail-line" id="mobileCurrentActionDetail">—</div>
+        </div>
+        <div class="mobile-state-card span-2" id="mobileApplicationExperienceCard">
+        <h4>Application Experience</h4>
+        <div class="value-inline" id="mobileApplicationExperienceValue">—</div>
+        <div class="detail-line" id="mobileApplicationExperienceDetail">—</div>
         </div>
         <div class="mobile-state-card span-2" id="mobilePrimaryDnsCard">
         <h4>DNS Activity</h4>
@@ -614,7 +624,12 @@
     <div class="card" id="userImpactCard">
       <h4><span>Estimated User Impact</span><span class="pill" id="userImpactPill">v1</span></h4>
       <div class="value" id="userImpactValue">—</div>
-      <div class="legacy-disclosure" id="userImpactDetail">Symptom and active-path evidence only.</div>
+      <div class="legacy-disclosure" id="userImpactDetail">Inferred from local evidence.</div>
+    </div>
+    <div class="card" id="observedImpactCard">
+      <h4><span>Observed User Impact</span><span class="pill" id="observedImpactPill">reported</span></h4>
+      <div class="value" id="observedImpactValue">—</div>
+      <div class="legacy-disclosure" id="observedImpactDetail">Reported operator or symptom evidence.</div>
     </div>
     <div class="card" id="affectedScopeCard">
       <h4><span>Affected Scope</span><span class="pill" id="affectedScopePill">v1</span></h4>
@@ -680,6 +695,18 @@
         </details>
       </div>
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
+    </div>
+    <div class="card wide-card" id="applicationExperienceCard">
+      <h4><span>Application Experience</span><span class="pill" id="applicationExperiencePill">local</span></h4>
+      <div class="value" style="font-size:20px;" id="applicationExperienceValue">—</div>
+      <div class="status-summary" id="applicationExperienceSummary">Application evidence is unavailable or stale.</div>
+      <div class="metric-stack" style="margin-top:8px;">
+        <div class="metric-pair"><span class="label">System DNS</span><span class="metric-value" id="applicationSystemDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Direct primary resolver</span><span class="metric-value" id="applicationPrimaryDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Direct secondary resolver</span><span class="metric-value" id="applicationSecondaryDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">HTTPS transaction</span><span class="metric-value" id="applicationHttpsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Freshness</span><span class="metric-value" id="applicationExperienceFreshness">—</span></div>
+      </div>
     </div>
     <div class="card wide-card" id="refinedAttributionCard">
       <h4><span>Refined Attribution</span><span class="pill" id="refinedAttributionPill">v1</span></h4>
@@ -1838,6 +1865,11 @@
         possible: "Possible",
         likely: "Likely",
         confirmed: "Confirmed",
+        none_expected: "None expected",
+        none_reported: "None reported",
+        reported_minor: "Minor impact reported",
+        reported_major: "Major impact reported",
+        confirmed_service_failure: "Service failure confirmed",
         low: "Low",
         guarded: "Guarded",
         high: "High",
@@ -1869,10 +1901,66 @@
 
     function healthTone(kind, value){
       const state = String(value || "").toLowerCase();
-      if (["healthy", "not_observed", "unlikely", "low", "both_healthy"].includes(state)) return "ok";
-      if (["elevated", "possible", "guarded", "medium", "reduced", "active_healthy_peer_degraded", "primary_healthy_secondary_degraded", "primary_degraded_secondary_healthy", "active_path_unknown"].includes(state)) return "watch";
-      if (["degraded", "severe", "likely", "confirmed", "high", "critical", "unavailable", "both_degraded", "no_usable_fallback", "active_degraded_fallback_healthy"].includes(state)) return kind === "confidence" && state === "high" ? "ok" : "risk";
+      if (["healthy", "not_observed", "unlikely", "low", "none_expected", "none_reported", "both_healthy"].includes(state)) return "ok";
+      if (["elevated", "possible", "guarded", "medium", "reduced", "reported_minor", "active_healthy_peer_degraded", "primary_healthy_secondary_degraded", "primary_degraded_secondary_healthy", "active_path_unknown"].includes(state)) return "watch";
+      if (["degraded", "severe", "likely", "confirmed", "reported_major", "confirmed_service_failure", "high", "critical", "unavailable", "both_degraded", "no_usable_fallback", "active_degraded_fallback_healthy"].includes(state)) return kind === "confidence" && state === "high" ? "ok" : "risk";
       return "neutral";
+    }
+
+    function transactionStatus(transaction){
+      if (!transaction || typeof transaction !== "object") return { label: "Unavailable", tone: "neutral" };
+      if (transaction.timeout || transaction.success === false) return { label: "Failing", tone: "risk" };
+      const latency = parseFloatSafe(transaction.latency_ms ?? transaction.total_duration_ms, null);
+      const slowThreshold = transaction.role === "system" || transaction.type === "system_dns" || transaction.type === "direct_dns" ? 200 : 1200;
+      if (transaction.success && latency != null && latency > slowThreshold) return { label: "Slow", tone: "watch" };
+      if (transaction.success) return { label: "Healthy", tone: "ok" };
+      return { label: "Unavailable", tone: "neutral" };
+    }
+
+    function transactionLatency(transaction){
+      if (!transaction || typeof transaction !== "object") return "—";
+      const value = transaction.latency_ms ?? transaction.total_duration_ms;
+      return value == null ? "—" : `${fmt1(value)} ms`;
+    }
+
+    function applicationTransaction(application, role){
+      const rows = Array.isArray(application?.dns_transactions) ? application.dns_transactions : [];
+      if (role === "https") return application?.https_transaction || null;
+      return rows.find(item => item.role === role) || null;
+    }
+
+    function renderApplicationExperience(application){
+      const card = document.getElementById("applicationExperienceCard");
+      const current = Boolean(application?.is_current);
+      const failureTotal = parseFloatSafe(application?.failure_counts?.total, 0) || 0;
+      const summary = Array.isArray(application?.evidence) && application.evidence.length
+        ? application.evidence.slice(0, 2).map(cleanOperatorText).join(" ")
+        : "Application evidence is unavailable or stale.";
+      const overallTone = !current ? "neutral" : failureTotal > 1 ? "risk" : failureTotal === 1 ? "watch" : "ok";
+      document.getElementById("applicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Normal") : "Unavailable";
+      document.getElementById("applicationExperienceSummary").textContent = summary;
+      document.getElementById("applicationExperienceFreshness").textContent = current ? "Fresh" : healthLabel(application?.freshness || "missing");
+      document.getElementById("mobileApplicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Normal") : "Unavailable";
+      document.getElementById("mobileApplicationExperienceDetail").textContent = summary;
+      const entries = [
+        ["applicationSystemDnsValue", applicationTransaction(application, "system")],
+        ["applicationPrimaryDnsValue", applicationTransaction(application, "primary")],
+        ["applicationSecondaryDnsValue", applicationTransaction(application, "secondary")],
+        ["applicationHttpsValue", applicationTransaction(application, "https")],
+      ];
+      for (const [id, transaction] of entries){
+        const status = transactionStatus(transaction);
+        document.getElementById(id).textContent = `${status.label} · ${transactionLatency(transaction)}`;
+      }
+      setAccent(card, `accent-${overallTone}`);
+      setPillText("applicationExperiencePill", current ? "Fresh" : "Unavailable", overallTone);
+    }
+
+    function observedImpactDetail(observed, feedback){
+      if (feedback?.is_current && feedback.note) return `Operator note: ${cleanOperatorText(feedback.note)}`;
+      const drivers = Array.isArray(observed?.drivers) ? observed.drivers : [];
+      if (drivers.length) return drivers.slice(0, 2).map(cleanOperatorText).join("; ");
+      return "No reported operator or symptom impact.";
     }
 
     function setPillText(id, label, tone){
@@ -2003,7 +2091,7 @@
     }
 
     function meaningfulUserImpactState(state){
-      return ["low", "possible", "likely", "confirmed"].includes(String(state || "").toLowerCase());
+      return ["none_expected", "low", "possible", "likely", "severe", "confirmed"].includes(String(state || "").toLowerCase());
     }
 
     function technicalScopeText(dimensions){
@@ -2019,10 +2107,10 @@
     function plainFallbackHeadline(dimensions, dependency, refined){
       const degraded = affectedScopeFromDimensions(dimensions, dependency);
       const healthy = healthyScopeFromDimensions(dimensions, dependency);
-      const impactState = dimensions?.user_impact?.state;
+      const impactState = (dimensions?.estimated_user_impact || dimensions?.user_impact || {}).state;
       const impact = meaningfulUserImpactState(impactState)
-        ? `User impact is ${healthLabel(impactState).toLowerCase()}.`
-        : "User impact is not established from current evidence.";
+        ? `Estimated user impact is ${healthLabel(impactState).toLowerCase()}.`
+        : "Estimated user impact is not established from current evidence.";
       const fault = isSubstantiveAttribution(refined)
         ? `Likely fault domain: ${healthLabel(refined.domain).toLowerCase()}.`
         : "Fault domain not yet localized.";
@@ -2079,15 +2167,20 @@
       const operator = dimensions?.deterministic_operator_interpretation || null;
       const dependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
       const refined = networkAttributionPayload?.refined_attribution || dimensions?.attribution || null;
+      const application = dimensions?.application_experience || null;
+      const feedback = dimensions?.operator_impact_feedback || null;
       const matchedReview = matchingAssistantReview(assistantReviewPayload, assistantInputPayload);
       const hasDimensions = Boolean(dimensions);
       setLegacyCompatibilityMode(!hasDimensions);
 
       const scope = cleanOperatorText(matchedReview?.affected_scope || affectedScopeFromDimensions(dimensions, dependency));
       const healthyScope = cleanOperatorText(matchedReview?.healthy_scope || healthyScopeFromDimensions(dimensions, dependency));
-      const impactState = dimensions?.user_impact?.state;
-      const hasMeaningfulImpact = meaningfulUserImpactState(impactState);
-      const impactLabel = hasMeaningfulImpact ? healthLabel(impactState) : "Not established";
+      const estimatedImpact = dimensions?.estimated_user_impact || dimensions?.user_impact || null;
+      const observedImpact = dimensions?.observed_user_impact || null;
+      const estimatedState = estimatedImpact?.state;
+      const observedState = observedImpact?.state;
+      const hasMeaningfulObservedImpact = observedState && observedState !== "unknown";
+      const impactLabel = estimatedState ? healthLabel(estimatedState) : "Not established";
       const currentAction = actionableGuidance(matchedReview?.next_steps || operator?.recommended_deterministic_checks, dependency);
       const hasMeaningfulCurrentAction = isMeaningfulAction(currentAction);
       const attributionSubstantive = isSubstantiveAttribution(refined);
@@ -2096,7 +2189,7 @@
       document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline || (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Legacy artifact rendered safely; multidimensional evidence is not available.");
       document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "compatibility mode");
       document.getElementById("operatorAssessmentAffectedScope").textContent = scope;
-      document.getElementById("operatorAssessmentUserImpact").textContent = hasMeaningfulImpact ? impactLabel : "Not established";
+      document.getElementById("operatorAssessmentUserImpact").textContent = `${impactLabel} estimated${hasMeaningfulObservedImpact ? ` · ${healthLabel(observedState)} observed` : ""}`;
       document.getElementById("operatorAssessmentFaultDomain").textContent = faultDomain;
       document.getElementById("operatorAssessmentCurrentAction").textContent = hasMeaningfulCurrentAction ? currentAction : "No immediate action · Continue monitoring";
 
@@ -2105,12 +2198,18 @@
       const technicalScope = technicalScopeText(dimensions);
       if (technicalScope) document.getElementById("technicalConditionDetail").textContent = technicalScope;
 
-      renderDimensionCard("userImpactCard", "userImpactValue", "userImpactPill", "userImpactDetail", "Impact", dimensions?.user_impact, "impact");
-      document.getElementById("userImpactCard").style.display = hasMeaningfulImpact ? "" : "none";
-      if (!hasMeaningfulImpact){
+      renderDimensionCard("userImpactCard", "userImpactValue", "userImpactPill", "userImpactDetail", "Estimated", estimatedImpact, "impact");
+      document.getElementById("userImpactCard").style.display = estimatedState ? "" : "none";
+      if (!estimatedState){
         document.getElementById("userImpactValue").textContent = "Not established";
-        document.getElementById("userImpactDetail").textContent = "User impact is reflected in Operator Assessment until useful evidence is available.";
+        document.getElementById("userImpactDetail").textContent = "Estimated impact is reflected in Operator Assessment until useful evidence is available.";
       }
+
+      renderDimensionCard("observedImpactCard", "observedImpactValue", "observedImpactPill", "observedImpactDetail", "Observed", observedImpact, "impact");
+      document.getElementById("observedImpactCard").style.display = hasMeaningfulObservedImpact ? "" : "none";
+      document.getElementById("observedImpactDetail").textContent = observedImpactDetail(observedImpact, feedback);
+
+      renderApplicationExperience(application);
 
       document.getElementById("affectedScopeValue").textContent = scope;
       document.getElementById("affectedScopeDetail").textContent = healthyScope;
@@ -2152,6 +2251,12 @@
         : "";
       setAccent(document.getElementById("refinedAttributionCard"), `accent-${refinedTone}`);
       setPillText("refinedAttributionPill", "Refined", refinedTone);
+
+      document.getElementById("mobileUserImpactValue").textContent = impactLabel;
+      document.getElementById("mobileUserImpactDetail").textContent = "Inferred from local evidence.";
+      document.getElementById("mobileObservedImpactCard").style.display = hasMeaningfulObservedImpact ? "" : "none";
+      document.getElementById("mobileObservedImpactValue").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "Unknown";
+      document.getElementById("mobileObservedImpactDetail").textContent = observedImpactDetail(observedImpact, feedback);
     }
 
     function selectCurrentAttributionObservation(payload){

@@ -66,6 +66,9 @@ Current watch period:
   transaction evidence can refine estimated user impact, while stale, malformed,
   or missing evidence is ignored and no dashboard or Investigation redesign is
   included.
+- Phase 4.5 adds command-line local operator feedback for observed impact and
+  surfaces Application Experience evidence in dashboard and Investigation
+  rendering. Estimated and observed impact remain separate.
 
 ## Next Logical Milestone
 

@@ -119,6 +119,7 @@ def normalized_input_payload(input_payload):
     environmental = safe_dict(payload.get("environmental_context"))
     health_dimensions = safe_dict(payload.get("health_dimensions"))
     application_experience = safe_dict(health_dimensions.get("application_experience"))
+    operator_feedback = safe_dict(health_dimensions.get("operator_impact_feedback"))
 
     def normalized_context(value, *, include_provider=False):
         context = safe_dict(value)
@@ -167,6 +168,14 @@ def normalized_input_payload(input_payload):
                 "is_current": application_experience.get("is_current"),
                 "failure_counts": safe_dict(application_experience.get("failure_counts")),
                 "evidence": application_experience.get("evidence") or [],
+            },
+            "operator_impact_feedback": {
+                "status": operator_feedback.get("status"),
+                "is_current": operator_feedback.get("is_current"),
+                "association": operator_feedback.get("association"),
+                "incident_id": operator_feedback.get("incident_id"),
+                "impact_state": operator_feedback.get("impact_state"),
+                "note": operator_feedback.get("note") or "",
             },
             "dependency_groups": [
                 {

@@ -250,6 +250,25 @@ Stage ownership:
 - Generated: yes
 - Should be committed: no
 
+### `viz/operator_impact_feedback.json`
+
+- Producer: `bin/record_operator_impact.py`
+- Consumers: `bin/transform_latest.py` through `bin/health_dimensions.py`;
+  `bin/build_operator_assistant_input.py` through generated investigation
+  health dimensions
+- Purpose: local operator-observed impact feedback for the current investigation
+  incident
+- Required fields: `schema_version`, `model_version`, `incident_id`,
+  `observed_at`, `impact_state`, `note`, `source`, and `freshness`
+- Supported impact states: `none_observed`, `minor_slowness`,
+  `intermittent_failures`, `major_disruption`, `full_outage`, and `unknown`
+- Unavailable behavior: absent, malformed, stale, cleared, or mismatched-incident
+  feedback normalizes to unavailable and does not affect current observed impact
+- Authoritative: yes, for local operator feedback only; no, for telemetry,
+  attribution, technical severity, or estimated impact
+- Generated: local runtime artifact
+- Should be committed: no
+
 ### `viz/investigation.json`
 
 - Producer: `bin/transform_latest.py` via `bin/investigation_model.py` for

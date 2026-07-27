@@ -428,6 +428,11 @@
       return `${value}${suffix}`;
     }
 
+    function parseFloatSafe(value, fallback = null){
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
     function shortTime(value){
       if (!value) return "—";
       const date = new Date(value);
@@ -491,6 +496,11 @@
         possible: "Possible",
         likely: "Likely",
         confirmed: "Confirmed",
+        none_expected: "None expected",
+        none_reported: "None reported",
+        reported_minor: "Minor impact reported",
+        reported_major: "Major impact reported",
+        confirmed_service_failure: "Service failure confirmed",
         low: "Low",
         guarded: "Guarded",
         high: "High",
@@ -523,10 +533,58 @@
 
     function healthTone(kind, value){
       const state = String(value || "").toLowerCase();
-      if (["healthy", "not_observed", "unlikely", "low", "both_healthy"].includes(state)) return "tone-ok";
-      if (["elevated", "possible", "guarded", "medium", "reduced", "active_healthy_peer_degraded", "primary_healthy_secondary_degraded", "primary_degraded_secondary_healthy", "active_path_unknown"].includes(state)) return "tone-watch";
-      if (["degraded", "severe", "likely", "confirmed", "high", "critical", "unavailable", "both_degraded", "no_usable_fallback", "active_degraded_fallback_healthy"].includes(state)) return kind === "confidence" && state === "high" ? "tone-ok" : "tone-risk";
+      if (["healthy", "not_observed", "unlikely", "low", "none_expected", "none_reported", "both_healthy"].includes(state)) return "tone-ok";
+      if (["elevated", "possible", "guarded", "medium", "reported_minor", "reduced", "active_healthy_peer_degraded", "primary_healthy_secondary_degraded", "primary_degraded_secondary_healthy", "active_path_unknown"].includes(state)) return "tone-watch";
+      if (["degraded", "severe", "likely", "confirmed", "reported_major", "confirmed_service_failure", "high", "critical", "unavailable", "both_degraded", "no_usable_fallback", "active_degraded_fallback_healthy"].includes(state)) return kind === "confidence" && state === "high" ? "tone-ok" : "tone-risk";
       return "tone-muted";
+    }
+
+    function transactionStatus(transaction){
+      if (!transaction || typeof transaction !== "object") return { label: "Unavailable", tone: "tone-muted" };
+      if (transaction.timeout || transaction.success === false) return { label: "Failing", tone: "tone-risk" };
+      const latency = parseFloatSafe(transaction.latency_ms ?? transaction.total_duration_ms, null);
+      const slowThreshold = transaction.type === "system_dns" || transaction.type === "direct_dns" ? 200 : 1200;
+      if (transaction.success && latency != null && latency > slowThreshold) return { label: "Slow", tone: "tone-watch" };
+      if (transaction.success) return { label: "Healthy", tone: "tone-ok" };
+      return { label: "Unavailable", tone: "tone-muted" };
+    }
+
+    function transactionLatency(transaction){
+      if (!transaction || typeof transaction !== "object") return "—";
+      const value = transaction.latency_ms ?? transaction.total_duration_ms;
+      return value == null ? "—" : `${fmt(value, " ms")}`;
+    }
+
+    function applicationTransaction(application, role){
+      const rows = Array.isArray(application?.dns_transactions) ? application.dns_transactions : [];
+      if (role === "https") return application?.https_transaction || null;
+      return rows.find(item => item.role === role) || null;
+    }
+
+    function applicationSummary(application){
+      if (!application?.is_current) return "Application evidence is unavailable or stale.";
+      const evidence = Array.isArray(application.evidence) ? application.evidence : [];
+      return evidence.length ? evidence.slice(0, 3).map(cleanOperatorText).join(" ") : "Application checks reported no notable failure.";
+    }
+
+    function applicationDetailDisclosure(application){
+      const rows = [
+        ["System DNS", applicationTransaction(application, "system")],
+        ["Direct primary resolver", applicationTransaction(application, "primary")],
+        ["Direct secondary resolver", applicationTransaction(application, "secondary")],
+        ["HTTPS transaction", applicationTransaction(application, "https")],
+      ];
+      const body = rows.map(([label, transaction]) => {
+        const status = transactionStatus(transaction);
+        return renderSummaryItem(label, `${status.label} · ${transactionLatency(transaction)}`, transaction?.failure_category ? `Failure: ${healthLabel(transaction.failure_category)}` : "");
+      }).join("");
+      return `<details class="disclosure"><summary>Raw application transaction details</summary><div class="disclosure-body summary-list">${body}</div></details>`;
+    }
+
+    function observedImpactDetail(observed, feedback){
+      if (feedback?.is_current && feedback.note) return `Operator note: ${cleanOperatorText(feedback.note)}`;
+      const drivers = Array.isArray(observed?.drivers) ? observed.drivers : [];
+      return drivers.length ? drivers.slice(0, 2).map(cleanOperatorText).join("; ") : "No reported operator or symptom impact.";
     }
 
     function cleanOperatorText(value){
@@ -783,7 +841,10 @@
     function renderMultidimensionalHealth(data){
       const dimensions = data.health_dimensions || {};
       const interpretation = data.deterministic_operator_interpretation || dimensions.deterministic_operator_interpretation || {};
-      const impact = data.impact_assessment || dimensions.user_impact || {};
+      const estimatedImpact = dimensions.estimated_user_impact || data.impact_assessment || dimensions.user_impact || {};
+      const observedImpact = dimensions.observed_user_impact || {};
+      const application = dimensions.application_experience || {};
+      const feedback = dimensions.operator_impact_feedback || {};
       const dependencyGroups = Array.isArray(data.dependency_state) ? data.dependency_state : [];
       const dependency = dependencyGroups[0] || {};
       const attribution = dimensions.attribution || {};
@@ -802,7 +863,9 @@
       document.getElementById("currentStatusCards").innerHTML = [
         renderMetricCard("Lifecycle state", statusLabel(selected.lifecycle_state || state.state || "none"), state.label || state.recommendation || "No sustained incident is present when lifecycle is none.", toneForStatus(selected.lifecycle_state || state.state)),
         renderMetricCard("Technical condition", healthLabel(technical.state), usefulText(interpretation.condition_statement || (technical.drivers || []).join("; ")) || "Technical condition unavailable in this artifact.", healthTone("technical", technical.state)),
-        renderMetricCard("Estimated user impact", healthLabel(impact.state), usefulText(interpretation.impact_statement || (impact.missing_evidence || []).map(healthLabel).join(", ")) || "User impact evidence is not established.", healthTone("impact", impact.state)),
+        renderMetricCard("Estimated impact", healthLabel(estimatedImpact.state), usefulText((estimatedImpact.drivers || []).map(cleanOperatorText).join("; ")) || "Estimated impact is inferred from local evidence.", healthTone("impact", estimatedImpact.state)),
+        renderMetricCard("Observed impact", healthLabel(observedImpact.state), observedImpactDetail(observedImpact, feedback), healthTone("impact", observedImpact.state)),
+        renderMetricCard("Application checks", applicationSummary(application), application?.generated_at ? `Evidence timestamp ${shortTime(application.generated_at)}` : "Application evidence is unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
         renderMetricCard("Current action", action, action === "No immediate action · Continue monitoring" ? "No evidence-backed intervention is required now." : "Use existing evidence before changing configuration.", isMeaningfulAction(action) ? "tone-watch" : "tone-ok"),
       ].join("");
 
@@ -814,7 +877,9 @@
       for (const item of (dimensions.unresolved_evidence || [])) boundaries.push(renderSummaryItem("Unresolved evidence", cleanOperatorText(healthLabel(item)), ""));
       for (const item of (interpretation.limiting_evidence || [])) boundaries.push(renderSummaryItem("Limiting evidence", cleanOperatorText(healthLabel(item)), ""));
       for (const item of (technical.missing_evidence || [])) boundaries.push(renderSummaryItem("Missing evidence", cleanOperatorText(healthLabel(item)), ""));
-      for (const item of (impact.missing_evidence || [])) boundaries.push(renderSummaryItem("Missing impact evidence", cleanOperatorText(healthLabel(item)), ""));
+      for (const item of (estimatedImpact.missing_evidence || [])) boundaries.push(renderSummaryItem("Missing estimated-impact evidence", cleanOperatorText(healthLabel(item)), ""));
+      for (const item of (observedImpact.missing_evidence || [])) boundaries.push(renderSummaryItem("Missing observed-impact evidence", cleanOperatorText(healthLabel(item)), ""));
+      for (const item of (application.limitations || [])) boundaries.push(renderSummaryItem("Application evidence", cleanOperatorText(item), ""));
       document.getElementById("healthBoundaryList").innerHTML = boundaries.length
         ? boundaries.join("")
         : '<div class="empty-note">No unresolved evidence, contradictions, or stale evidence reported.</div>';
@@ -824,7 +889,8 @@
         renderMetricCard("Attribution confidence", healthLabel(dimensions.attribution_confidence || attribution.confidence), attributionConfidenceDetail(attribution), healthTone("confidence", dimensions.attribution_confidence || attribution.confidence)),
         renderMetricCard("Persistence", fmt(data.scope_impact?.sustained_bad_samples), `${fmt(data.scope_impact?.affected_evidence_buckets)} affected buckets`, "tone-accent"),
         renderMetricCard("Corroboration", corroborationLabel(data), corroborationDetail(data), "tone-muted"),
-      ].join("");
+        renderMetricCard("Application freshness", application?.is_current ? "Fresh" : healthLabel(application?.freshness || "missing"), applicationSummary(application), application?.is_current ? "tone-ok" : "tone-muted"),
+      ].join("") + applicationDetailDisclosure(application);
 
       renderAttributionSection(data, attribution, interpretation);
     }
@@ -871,9 +937,10 @@
     function plainIncidentHeadline(data, attribution){
       const lifecycle = statusLabel(data.selected_event?.lifecycle_state || data.operator_brief?.operational_state?.state || "none");
       const affected = usefulText(data.operator_brief?.affected_scope || data.scope_impact?.scope_conclusion || data.scope_impact?.affected_probe_label) || "No sustained affected scope";
-      const impact = healthLabel((data.impact_assessment || data.health_dimensions?.user_impact || {}).state || "unknown");
+      const estimated = healthLabel((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions?.user_impact || {}).state || "unknown");
+      const observed = healthLabel((data.health_dimensions?.observed_user_impact || {}).state || "unknown");
       const domain = isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : "fault domain not yet localized";
-      return `${lifecycle}: ${affected.replace(/[.]+$/, "")}. User impact ${impact.toLowerCase()}; ${domain}.`;
+      return `${lifecycle}: ${affected.replace(/[.]+$/, "")}. Estimated impact ${estimated.toLowerCase()}; observed impact ${observed.toLowerCase()}; ${domain}.`;
     }
 
     function plainIncidentAssessment(data, interpretation, attribution){
@@ -970,7 +1037,8 @@
       add("First anomalous sample", details.first_anomalous_at || episode.event_start || selected.start, "Start of the selected incident evidence.", "tone-warn");
       add("Sustained confirmation", details.confirmed_at, "Persistence threshold was satisfied.", "tone-risk");
       if (data.health_dimensions?.attribution?.domain) milestones.push(renderMetricCard("Attribution update", healthLabel(data.health_dimensions.attribution.domain), "Refined attribution from generated evidence.", "tone-accent"));
-      if ((data.impact_assessment || data.health_dimensions?.user_impact)?.state) milestones.push(renderMetricCard("Impact assessment", healthLabel((data.impact_assessment || data.health_dimensions.user_impact).state), "Estimated or observed user impact.", "tone-watch"));
+      if ((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions?.user_impact)?.state) milestones.push(renderMetricCard("Estimated impact", healthLabel((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions.user_impact).state), "Inferred impact from generated evidence.", "tone-watch"));
+      if (data.health_dimensions?.observed_user_impact?.state && data.health_dimensions.observed_user_impact.state !== "unknown") milestones.push(renderMetricCard("Observed impact", healthLabel(data.health_dimensions.observed_user_impact.state), "Reported operator or symptom evidence.", healthTone("impact", data.health_dimensions.observed_user_impact.state)));
       add("Recovery candidate", details.recovery_candidate_at || episode.recovery_candidate, "First candidate healthy sample after anomaly.", "tone-watch");
       add("Recovery started", details.recovery_started_at, "Healthy persistence started.", "tone-ok");
       add("Recovered", details.recovered_at || episode.recovery_confirmation, "Stable recovery window completed.", "tone-ok");
@@ -984,13 +1052,19 @@
 
     function renderEvidenceArgument(data){
       const argument = data.evidence_argument || {};
+      const dimensions = data.health_dimensions || {};
+      const application = dimensions.application_experience || {};
       const fill = (id, items) => {
         document.getElementById(id).innerHTML = (items || []).length
           ? items.map(item => renderSummaryItem("Evidence", cleanOperatorText(item), "")).join("")
           : '<div class="empty-note">No evidence items available.</div>';
       };
-      fill("supportingEvidenceList", argument.supporting_evidence || data.operator_brief?.supporting_evidence);
-      fill("limitingEvidenceList", argument.limiting_evidence || data.operator_brief?.limiting_evidence);
+      const supporting = [...(argument.supporting_evidence || data.operator_brief?.supporting_evidence || [])];
+      if (application?.is_current) supporting.push(applicationSummary(application));
+      const limiting = [...(argument.limiting_evidence || data.operator_brief?.limiting_evidence || [])];
+      for (const item of (application.limitations || [])) limiting.push(item);
+      fill("supportingEvidenceList", supporting);
+      fill("limitingEvidenceList", limiting);
       const environmental = [...(argument.evidence_against_broader_impact || [])];
       if (data.internet_conditions_context?.available){
         environmental.push("No broad ASN-level anomaly detected; this does not rule out a regional, provider-specific, or anycast path problem.");
@@ -1304,7 +1378,7 @@
         likely_fault_domain: attribution.domain && isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : (brief.likely_fault_domain || "Fault domain is not yet localized."),
         affected_scope: brief.affected_scope || data.scope_impact?.scope_conclusion,
         healthy_scope: brief.unaffected_scope,
-        user_impact: interpretation.impact_statement || healthLabel((data.impact_assessment || dimensions.user_impact || {}).state),
+        user_impact: interpretation.impact_statement || `Estimated ${healthLabel((dimensions.estimated_user_impact || data.impact_assessment || dimensions.user_impact || {}).state)} · observed ${healthLabel((dimensions.observed_user_impact || {}).state)}`,
         immediate_recommendation: firstMeaningfulAction(brief.recommended_actions || interpretation.recommended_deterministic_checks, data.dependency_state?.[0] || {}),
         confidence: dimensions.detection_confidence || brief.confidence,
         uncertainty: (interpretation.limiting_evidence || brief.limiting_evidence || [])[0] || "Confidence is bounded by the deterministic evidence currently available.",
@@ -1337,7 +1411,7 @@
         renderMetricCard("Current status", statusLabel(assessment.current_status || data?.selected_event?.lifecycle_state || data?.operator_brief?.operational_state?.state || "none"), "Incident lifecycle from local evidence", toneForStatus(assessment.current_status || data?.selected_event?.lifecycle_state)),
         renderMetricCard("Affected scope", usefulText(assessment.affected_scope) || "No sustained affected scope", "What appears degraded", "tone-warn"),
         renderMetricCard("Healthy comparison", usefulText(assessment.healthy_scope) || "No healthy comparison reported", "Omitted when no comparison exists", "tone-ok"),
-        renderMetricCard("User impact", usefulText(assessment.user_impact) || "Not established", "Estimated or observed impact when available", "tone-watch"),
+        renderMetricCard("User impact", usefulText(assessment.user_impact) || "Not established", "Estimated and observed impact remain separate", "tone-watch"),
         renderMetricCard("Likely fault domain", usefulText(assessment.likely_fault_domain) || "Fault domain is not yet localized.", "Evidence and limits appear below", "tone-accent"),
         renderMetricCard("Immediate recommendation", usefulText(assessment.immediate_recommendation) || "No immediate action · Continue monitoring", "Concrete next check only", "tone-watch"),
       ].join("");

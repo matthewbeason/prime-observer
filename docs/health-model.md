@@ -401,6 +401,22 @@ alone. Stale, malformed, or missing application evidence is retained only as a
 limitation and does not affect current impact. Observed user impact remains
 separate from synthetic probes.
 
+Optional operator feedback is read from `viz/operator_impact_feedback.json` when
+it exists and matches the current incident ID. It is written by
+`bin/record_operator_impact.py` and affects only `observed_user_impact`:
+
+- `none_observed` -> `none_reported`
+- `minor_slowness` -> `reported_minor`
+- `intermittent_failures` -> `reported_minor`, unless the bounded note contains
+  major/outage/failure wording, then `reported_major`
+- `major_disruption` -> `reported_major`
+- `full_outage` -> `confirmed_service_failure`
+- `unknown` or cleared feedback -> no observed-impact assertion
+
+Mismatched, stale, malformed, or absent feedback is ignored for current impact
+and does not affect estimated impact, technical condition, attribution, or
+telemetry facts.
+
 `viz/index.html` and `viz/investigate.html` render these fields directly from the
 generated artifacts. Browser code may label enum values and choose visual tone,
 but it must not derive new multidimensional health semantics from telemetry.

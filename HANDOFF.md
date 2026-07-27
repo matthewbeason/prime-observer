@@ -26,6 +26,7 @@ Prime Observer currently ships:
 - optional NextDNS summary context
 - optional Cloudflare Radar Internet Conditions context
 - optional local Application Experience probes that feed estimated impact only
+- local operator impact feedback that feeds observed impact only
 
 ## Recent Completed Work
 
@@ -52,6 +53,10 @@ Repository-backed recent milestones:
 - post-`v0.9.0` Phase 4.4 work adds a separate local application-experience
   collector and `viz/application_experience.json`; transform reads the artifact
   without network calls and uses fresh evidence only for estimated user impact
+- post-`v0.9.0` Phase 4.5 work adds `bin/record_operator_impact.py`, local
+  `viz/operator_impact_feedback.json`, split estimated/observed impact
+  presentation, and dashboard/Investigation rendering for Application Experience
+  evidence
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -78,6 +83,8 @@ Current artifact flow:
 - optional fetchers generate DNS and Internet Conditions summaries
 - `bin/fetch_application_experience.py` generates local DNS/HTTPS transaction
   evidence for impact-v2 corroboration
+- `bin/record_operator_impact.py` records bounded local operator feedback for
+  the current investigation incident
 - `viz/index.html` and `viz/investigate.html` consume generated local files
 
 Current projection state:

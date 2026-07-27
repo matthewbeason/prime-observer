@@ -136,6 +136,24 @@ def app_payload(generated_at, *, primary="ok", secondary="ok", system="ok", http
     }
 
 
+def feedback_payload(generated_at, incident_id="event-current", impact="none_observed", note=""):
+    return {
+        "schema_version": 1,
+        "model_version": "prime_observer.operator_impact_feedback.v1",
+        "status": "ok",
+        "incident_id": incident_id,
+        "current_incident_id": "event-current",
+        "observed_at": generated_at.isoformat().replace("+00:00", "Z"),
+        "impact_state": impact,
+        "note": note,
+        "source": "operator",
+        "freshness": "fresh",
+        "is_current": True,
+        "association": "current_incident",
+        "limitations": [],
+    }
+
+
 class HealthDimensionsEvaluatorTest(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
@@ -420,6 +438,92 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
 
         self.assertEqual(result["user_impact"]["state"], "not_observed")
         self.assertEqual(result["application_experience"]["status"], "missing")
+
+    def test_operator_feedback_none_observed_sets_observed_none_only(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        baseline = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8], internet=[25, 25], primary=[260, 280, 290], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+        )
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8], internet=[25, 25], primary=[260, 280, 290], secondary=[35, 35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            operator_impact_feedback=feedback_payload(generated_at, impact="none_observed", note="Streaming remained normal."),
+        )
+
+        self.assertEqual(result["observed_user_impact"]["state"], "none_reported")
+        self.assertEqual(result["technical_condition"], baseline["technical_condition"])
+        self.assertEqual(result["attribution"], baseline["attribution"])
+        self.assertEqual(result["estimated_user_impact"]["state"], baseline["estimated_user_impact"]["state"])
+
+    def test_operator_feedback_maps_supported_impact_states(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        cases = {
+            "minor_slowness": "reported_minor",
+            "intermittent_failures": "reported_minor",
+            "major_disruption": "reported_major",
+            "full_outage": "confirmed_service_failure",
+        }
+        for feedback_state, observed_state in cases.items():
+            with self.subTest(feedback_state=feedback_state):
+                result = self.module.evaluate_health_dimensions(
+                    custom_rows(gateway=[8, 8], internet=[25, 25], primary=[35, 35], secondary=[35, 35]),
+                    generated_at=generated_at,
+                    diagnostic_evidence={"status": "ok", "items": []},
+                    operator_impact_feedback=feedback_payload(generated_at, impact=feedback_state),
+                )
+                self.assertEqual(result["observed_user_impact"]["state"], observed_state)
+
+    def test_operator_feedback_intermittent_major_note_maps_major(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8], internet=[25, 25], primary=[35, 35], secondary=[35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            operator_impact_feedback=feedback_payload(generated_at, impact="intermittent_failures", note="major app failures"),
+        )
+
+        self.assertEqual(result["observed_user_impact"]["state"], "reported_major")
+
+    def test_wrong_stale_malformed_and_cleared_feedback_do_not_apply(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "operator_impact_feedback.json"
+            path.write_text(json.dumps({**feedback_payload(generated_at, incident_id="event-other", impact="full_outage"), "current_incident_id": "event-current"}))
+            wrong = self.module.load_operator_impact_feedback(path, current_incident_id="event-current", generated_at=generated_at)
+            path.write_text(json.dumps(feedback_payload(generated_at - dt.timedelta(days=2), impact="full_outage")))
+            stale = self.module.load_operator_impact_feedback(path, current_incident_id="event-current", generated_at=generated_at)
+            path.write_text("{bad-json")
+            malformed = self.module.load_operator_impact_feedback(path, current_incident_id="event-current", generated_at=generated_at)
+            cleared = {**feedback_payload(generated_at, impact="full_outage"), "cleared": True}
+            path.write_text(json.dumps(cleared))
+            cleared_loaded = self.module.load_operator_impact_feedback(path, current_incident_id="event-current", generated_at=generated_at)
+
+        for payload in (wrong, stale, malformed, cleared_loaded):
+            with self.subTest(status=payload["status"], association=payload.get("association")):
+                result = self.module.evaluate_health_dimensions(
+                    custom_rows(gateway=[8, 8], internet=[25, 25], primary=[35, 35], secondary=[35, 35]),
+                    generated_at=generated_at,
+                    diagnostic_evidence={"status": "ok", "items": []},
+                    operator_impact_feedback=payload,
+                )
+                self.assertEqual(result["observed_user_impact"]["state"], "unknown")
+
+    def test_semantic_health_dimensions_includes_feedback_without_freshness_only_churn(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        result = self.module.evaluate_health_dimensions(
+            custom_rows(gateway=[8, 8], internet=[25, 25], primary=[35, 35], secondary=[35, 35]),
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            operator_impact_feedback=feedback_payload(generated_at, impact="minor_slowness", note="work laptop slow"),
+        )
+        semantic = self.module.semantic_health_dimensions(result)
+
+        self.assertEqual(semantic["operator_impact_feedback"]["impact_state"], "minor_slowness")
+        self.assertEqual(semantic["operator_impact_feedback"]["note"], "work laptop slow")
+        self.assertNotIn("observed_at", semantic["operator_impact_feedback"])
 
 
 if __name__ == "__main__":

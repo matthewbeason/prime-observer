@@ -36,6 +36,26 @@ Phase 4.4 adds optional application-experience evidence from
 collector. Automatic transform reads it if present and uses only fresh evidence
 to refine estimated user impact; the transform does not perform network calls.
 
+Phase 4.5 adds local operator feedback for observed impact. Record feedback with:
+
+```bash
+python3 bin/record_operator_impact.py \
+  --impact none_observed \
+  --note "PS5, streaming, work laptop, and Mac mini remained normal."
+```
+
+Clear current feedback with:
+
+```bash
+python3 bin/record_operator_impact.py --clear
+```
+
+The command writes `viz/operator_impact_feedback.json` atomically. Feedback only
+applies when its `incident_id` matches the current investigation incident, and it
+updates only `observed_user_impact`. Existing completed snapshots are not
+rewritten; newly completed snapshots may include the then-current feedback copied
+through generated health dimensions.
+
 The worker transitions pending work through `generating` to `complete`, or to
 `retry_wait` after a transient failure. It respects `next_retry_at`, stops after
 three worker attempts for one semantic hash, and marks persistent/configuration

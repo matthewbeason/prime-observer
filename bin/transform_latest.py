@@ -23,7 +23,7 @@ from health_model import (
     is_wan_bad,
     lan_elevation,
 )
-from health_dimensions import evaluate_health_dimensions, load_application_experience, load_diagnostic_evidence
+from health_dimensions import evaluate_health_dimensions, load_application_experience, load_diagnostic_evidence, load_operator_impact_feedback
 from observation_domain import (
     OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observations,
@@ -32,6 +32,8 @@ from observation_domain import (
 )
 from investigation_model import (
     build_automatic_investigation,
+    public_event,
+    select_event,
     write_completed_investigation_history,
     write_if_changed as write_investigation_if_changed,
 )
@@ -51,6 +53,7 @@ OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
 DIAGNOSTIC_EVIDENCE_IN = VIZ_DIR / "diagnostic_evidence.json"
 APPLICATION_EXPERIENCE_IN = VIZ_DIR / "application_experience.json"
+OPERATOR_IMPACT_FEEDBACK_IN = VIZ_DIR / "operator_impact_feedback.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -954,6 +957,7 @@ def build_dashboard_health(rows, attribution, generated_at, health_dimensions=No
                 "unresolved_evidence",
                 "diagnostic_evidence",
                 "application_experience",
+                "operator_impact_feedback",
                 "deterministic_operator_interpretation",
             )
         }
@@ -1023,13 +1027,21 @@ def main():
 
     tmp.replace(OUT)
 
+    lan_series_preview, wan_series_preview = to_dashboard_series(rows_out)
+    wan_marked_preview = mark_persistent_wan_bad(wan_series_preview)
+    preview_incidents = [classify_incident(run, lan_series_preview) for run in find_sustained_wan_incidents(wan_marked_preview)]
+    preview_selected = select_event(preview_incidents)
+    current_incident_id = public_event(preview_selected, max((sample["t"] for sample in wan_marked_preview), default=now))["id"] if preview_selected else None
+
     diagnostic_evidence = load_diagnostic_evidence(DIAGNOSTIC_EVIDENCE_IN, generated_at=now)
     application_experience = load_application_experience(APPLICATION_EXPERIENCE_IN, generated_at=now)
+    operator_impact_feedback = load_operator_impact_feedback(OPERATOR_IMPACT_FEEDBACK_IN, current_incident_id=current_incident_id, generated_at=now)
     health_dimensions = evaluate_health_dimensions(
         rows_out,
         generated_at=now,
         diagnostic_evidence=diagnostic_evidence,
         application_experience=application_experience,
+        operator_impact_feedback=operator_impact_feedback,
     )
     attribution = compute_network_attribution(rows_out, now, health_dimensions=health_dimensions)
     write_json_atomic(ATTRIBUTION_OUT, attribution)

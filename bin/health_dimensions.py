@@ -13,6 +13,7 @@ HEALTH_DIMENSIONS_SCHEMA_VERSION = 1
 HEALTH_DIMENSIONS_MODEL_VERSION = "prime_observer.health_dimensions.v1"
 DIAGNOSTIC_EVIDENCE_MODEL_VERSION = "prime_observer.diagnostic_evidence.v1"
 APPLICATION_EXPERIENCE_MODEL_VERSION = "prime_observer.application_experience.v1"
+OPERATOR_IMPACT_FEEDBACK_MODEL_VERSION = "prime_observer.operator_impact_feedback.v1"
 
 TECHNICAL_STATES = {"healthy", "elevated", "degraded", "severe", "unknown"}
 USER_IMPACT_STATES = {"not_observed", "unlikely", "possible", "likely", "confirmed", "unknown"}
@@ -47,6 +48,16 @@ DEPENDENCY_STATES = {
 DIRECT_DNS_HEALTHY_MS = 80.0
 FRESHNESS_SECONDS = 60 * 60
 APPLICATION_EXPERIENCE_FRESHNESS_SECONDS = 5 * 60
+OPERATOR_IMPACT_FEEDBACK_FRESHNESS_SECONDS = 24 * 60 * 60
+OPERATOR_IMPACT_FEEDBACK_STATES = {
+    "none_observed",
+    "minor_slowness",
+    "intermittent_failures",
+    "major_disruption",
+    "full_outage",
+    "unknown",
+}
+MAX_OPERATOR_FEEDBACK_NOTE_CHARS = 500
 
 
 def parse_ts(value: Any) -> dt.datetime | None:
@@ -237,6 +248,91 @@ def load_application_experience(path: Path, *, generated_at: dt.datetime | None 
             "limitations": ["Application experience artifact root is not an object."],
         }
     return normalize_application_experience(payload, generated_at=generated_at)
+
+
+def sanitize_operator_note(value: Any) -> str:
+    return " ".join(str(value or "").split())[:MAX_OPERATOR_FEEDBACK_NOTE_CHARS]
+
+
+def operator_feedback_unavailable(status: str, limitation: str, *, incident_id: str | None = None) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "model_version": OPERATOR_IMPACT_FEEDBACK_MODEL_VERSION,
+        "status": status,
+        "incident_id": incident_id,
+        "observed_at": None,
+        "impact_state": "unknown",
+        "note": "",
+        "source": "operator",
+        "freshness": "missing" if status == "missing" else "unknown",
+        "is_current": False,
+        "association": "none",
+        "limitations": [limitation],
+    }
+
+
+def normalize_operator_impact_feedback(
+    payload: dict[str, Any],
+    *,
+    current_incident_id: str | None,
+    generated_at: dt.datetime | None = None,
+) -> dict[str, Any]:
+    observed_at = parse_ts(payload.get("observed_at"))
+    incident_id = str(payload.get("incident_id") or "").strip()
+    impact_state = str(payload.get("impact_state") or "unknown").strip().lower()
+    limitations = []
+    if impact_state not in OPERATOR_IMPACT_FEEDBACK_STATES:
+        impact_state = "unknown"
+        limitations.append("Operator impact feedback state is invalid.")
+    if payload.get("cleared"):
+        impact_state = "unknown"
+        limitations.append("Operator impact feedback was cleared.")
+    freshness = "unknown"
+    if observed_at and generated_at:
+        age = max(0.0, (generated_at - observed_at).total_seconds())
+        freshness = "fresh" if age <= OPERATOR_IMPACT_FEEDBACK_FRESHNESS_SECONDS else "stale"
+    association = "current_incident" if current_incident_id and incident_id == current_incident_id else "mismatched_incident"
+    if not current_incident_id:
+        association = "no_current_incident"
+    if not incident_id:
+        association = "missing_incident"
+    is_current = freshness == "fresh" and association == "current_incident" and impact_state != "unknown" and not payload.get("cleared")
+    if association != "current_incident":
+        limitations.append("Operator impact feedback does not match the current incident.")
+    if freshness != "fresh":
+        limitations.append("Operator impact feedback is unavailable or stale.")
+    return {
+        "schema_version": payload.get("schema_version", 1),
+        "model_version": payload.get("model_version") or OPERATOR_IMPACT_FEEDBACK_MODEL_VERSION,
+        "status": "ok" if is_current else "unavailable",
+        "incident_id": incident_id or None,
+        "current_incident_id": current_incident_id,
+        "observed_at": iso(observed_at),
+        "impact_state": impact_state,
+        "note": sanitize_operator_note(payload.get("note")),
+        "source": "operator",
+        "freshness": freshness,
+        "is_current": is_current,
+        "association": association,
+        "limitations": list(dict.fromkeys(limitations)),
+    }
+
+
+def load_operator_impact_feedback(
+    path: Path,
+    *,
+    current_incident_id: str | None,
+    generated_at: dt.datetime | None = None,
+) -> dict[str, Any]:
+    if not path.exists():
+        return operator_feedback_unavailable("missing", "Operator impact feedback artifact is absent.", incident_id=current_incident_id)
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return operator_feedback_unavailable("malformed", f"Operator impact feedback artifact is unreadable: {exc}", incident_id=current_incident_id)
+    if not isinstance(payload, dict):
+        return operator_feedback_unavailable("malformed", "Operator impact feedback artifact root is not an object.", incident_id=current_incident_id)
+    return normalize_operator_impact_feedback(payload, current_incident_id=current_incident_id, generated_at=generated_at)
 
 
 def normalize_sample(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -584,7 +680,32 @@ def diagnostic_status(item: dict[str, Any]) -> str:
     return str(item.get("state") or item.get("status") or item.get("result") or "").strip().lower()
 
 
-def observed_user_impact_assessment(*, diagnostics: list[dict[str, Any]]) -> dict[str, Any]:
+def observed_state_from_operator_feedback(feedback: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(feedback, dict) or not feedback.get("is_current"):
+        return None
+    impact_state = feedback.get("impact_state")
+    note = str(feedback.get("note") or "").lower()
+    if impact_state == "none_observed":
+        return {"state": "none_reported", "confidence": "high", "drivers": ["fresh operator feedback reports no observed impact"], "missing_evidence": []}
+    if impact_state == "minor_slowness":
+        return {"state": "reported_minor", "confidence": "high", "drivers": ["fresh operator feedback reports minor slowness"], "missing_evidence": []}
+    if impact_state == "intermittent_failures":
+        major_terms = {"major", "outage", "unusable", "failed", "failure", "cannot connect"}
+        if any(term in note for term in major_terms):
+            return {"state": "reported_major", "confidence": "high", "drivers": ["fresh operator feedback reports intermittent failures with major impact wording"], "missing_evidence": []}
+        return {"state": "reported_minor", "confidence": "high", "drivers": ["fresh operator feedback reports intermittent failures"], "missing_evidence": []}
+    if impact_state == "major_disruption":
+        return {"state": "reported_major", "confidence": "high", "drivers": ["fresh operator feedback reports major disruption"], "missing_evidence": []}
+    if impact_state == "full_outage":
+        return {"state": "confirmed_service_failure", "confidence": "high", "drivers": ["fresh operator feedback reports full outage"], "missing_evidence": []}
+    return None
+
+
+def observed_user_impact_assessment(*, diagnostics: list[dict[str, Any]], operator_feedback: dict[str, Any] | None = None) -> dict[str, Any]:
+    feedback_result = observed_state_from_operator_feedback(operator_feedback or {})
+    if feedback_result:
+        feedback_result["operator_feedback"] = operator_feedback
+        return feedback_result
     current = [item for item in diagnostics if item.get("is_current")]
     reports = [item for item in current if item.get("type") in {"user_report", "application_symptom", "operator_observation"}]
     drivers = []
@@ -931,6 +1052,7 @@ def evaluate_health_dimensions(
     generated_at: dt.datetime,
     diagnostic_evidence: dict[str, Any] | None = None,
     application_experience: dict[str, Any] | None = None,
+    operator_impact_feedback: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     diagnostics = [
         normalize_diagnostic_item(item, generated_at=generated_at)
@@ -1007,7 +1129,7 @@ def evaluate_health_dimensions(
         dependency=dependency,
         diagnostics=diagnostics,
     )
-    observed_impact = observed_user_impact_assessment(diagnostics=diagnostics)
+    observed_impact = observed_user_impact_assessment(diagnostics=diagnostics, operator_feedback=operator_impact_feedback)
     estimated_impact = estimated_user_impact_assessment(
         technical_state=technical["state"],
         gateway=gateway,
@@ -1062,6 +1184,14 @@ def evaluate_health_dimensions(
             "evidence": ["Application evidence is unavailable or stale."],
             "limitations": ["Application experience artifact is absent."],
         },
+        "operator_impact_feedback": operator_impact_feedback if isinstance(operator_impact_feedback, dict) else {
+            "status": "missing",
+            "freshness": "missing",
+            "is_current": False,
+            "impact_state": "unknown",
+            "note": "",
+            "limitations": ["Operator impact feedback artifact is absent."],
+        },
         "unresolved_evidence": unresolved,
     }
     dimensions["deterministic_operator_interpretation"] = deterministic_operator_interpretation(dimensions)
@@ -1073,6 +1203,8 @@ def semantic_health_dimensions(dimensions: dict[str, Any] | None) -> dict[str, A
         return {}
     application_raw = dimensions.get("application_experience")
     application = application_raw if isinstance(application_raw, dict) else {}
+    feedback_raw = dimensions.get("operator_impact_feedback")
+    feedback = feedback_raw if isinstance(feedback_raw, dict) else {}
     return {
         "model_version": dimensions.get("model_version"),
         "technical_condition": (dimensions.get("technical_condition") or {}).get("state"),
@@ -1089,6 +1221,14 @@ def semantic_health_dimensions(dimensions: dict[str, Any] | None) -> dict[str, A
             "is_current": application.get("is_current"),
             "failure_counts": application.get("failure_counts") or {},
             "evidence": application.get("evidence") or [],
+        },
+        "operator_impact_feedback": {
+            "status": feedback.get("status"),
+            "is_current": feedback.get("is_current"),
+            "association": feedback.get("association"),
+            "incident_id": feedback.get("incident_id"),
+            "impact_state": feedback.get("impact_state"),
+            "note": feedback.get("note") or "",
         },
         "dependency_groups": [
             {

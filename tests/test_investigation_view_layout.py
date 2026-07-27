@@ -138,6 +138,23 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";', self.html)
         self.assertNotIn("openrouter.ai/api/v1/chat/completions", self.html)
         self.assertNotIn("crypto.subtle", self.html)
+
+    def test_phase_4_5_renders_split_impact_and_application_evidence(self):
+        for text in (
+            "Estimated impact",
+            "Observed impact",
+            "Application checks",
+            "Application freshness",
+            "Raw application transaction details",
+            "Operator note:",
+            "Estimated and observed impact remain separate",
+            "Application evidence is unavailable or stale.",
+        ):
+            self.assertIn(text, self.html)
+        self.assertIn("applicationSummary(application)", self.html)
+        self.assertIn("applicationDetailDisclosure(application)", self.html)
+        self.assertIn("data.health_dimensions?.estimated_user_impact", self.html)
+        self.assertIn("data.health_dimensions?.observed_user_impact", self.html)
         self.assertNotIn("is_wan_bad", self.html)
 
 

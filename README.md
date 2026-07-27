@@ -315,6 +315,37 @@ bin/build_operator_assistant_input.py
 viz/operator_assistant_input.json
 ```
 
+Operator impact feedback:
+
+```text
+viz/investigation.json
+        |
+        v
+bin/record_operator_impact.py --impact none_observed --note "PS5, streaming, work laptop, and Mac mini remained normal."
+        |
+        v
+viz/operator_impact_feedback.json
+        |
+        v
+bin/transform_latest.py
+```
+
+Clear current feedback with:
+
+```bash
+python3 bin/record_operator_impact.py --clear
+```
+
+List allowed values with:
+
+```bash
+python3 bin/record_operator_impact.py --list-values
+```
+
+Feedback is local-only, bounded, and incident-associated. It affects only
+`observed_user_impact`; it does not lower technical severity, change
+attribution, or overwrite telemetry facts.
+
 Operator Assistant interpretation:
 
 ```text

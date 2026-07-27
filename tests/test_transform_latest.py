@@ -40,6 +40,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
         self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
         self.module.APPLICATION_EXPERIENCE_IN = self.viz_dir / "application_experience.json"
+        self.module.OPERATOR_IMPACT_FEEDBACK_IN = self.viz_dir / "operator_impact_feedback.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -248,6 +249,8 @@ class TransformLatestTest(unittest.TestCase):
 
         self.assertIn("APPLICATION_EXPERIENCE_IN", source)
         self.assertIn("load_application_experience", source)
+        self.assertIn("OPERATOR_IMPACT_FEEDBACK_IN", source)
+        self.assertIn("load_operator_impact_feedback", source)
         self.assertNotIn("socket.", source)
         self.assertNotIn("urlopen", source)
 
