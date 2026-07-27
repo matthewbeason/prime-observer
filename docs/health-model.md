@@ -347,6 +347,10 @@ The evaluator emits:
   `unknown`
 - `user_impact`: `not_observed`, `unlikely`, `possible`, `likely`, `confirmed`,
   or `unknown`
+- `estimated_user_impact`: `none_expected`, `low`, `possible`, `likely`,
+  `severe`, or `unknown`
+- `observed_user_impact`: `none_reported`, `reported_minor`,
+  `reported_major`, `confirmed_service_failure`, or `unknown`
 - `operational_risk`: `low`, `guarded`, `elevated`, `high`, `critical`, or
   `unknown`
 - `detection_confidence`: `low`, `medium`, or `high`
@@ -354,9 +358,12 @@ The evaluator emits:
 
 Technical condition is derived from telemetry, persistence, latency, jitter,
 loss, baseline delta when available, and corroborating direct DNS query evidence
-when present. User impact is a separate dimension; resolver p95 alone must not
-produce high user impact. Operational risk rises when redundancy is reduced,
-active paths degrade, both members degrade, or fallback is unavailable.
+when present. Legacy `user_impact` is preserved for compatibility. The v2 impact
+fields separate estimated impact from observed reports: absence of reports is not
+proof of no impact, high resolver latency alone must not produce likely or severe
+estimated impact, and unknown active resolver path is not proof that fallback is
+unavailable. Operational risk rises when redundancy is reduced, active paths
+degrade, both members degrade, or fallback is unavailable.
 
 Refined attribution domains are deterministic and scoped more narrowly than the
 legacy local/upstream labels when evidence supports it. Domains are:

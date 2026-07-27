@@ -15,6 +15,8 @@ DIAGNOSTIC_EVIDENCE_MODEL_VERSION = "prime_observer.diagnostic_evidence.v1"
 
 TECHNICAL_STATES = {"healthy", "elevated", "degraded", "severe", "unknown"}
 USER_IMPACT_STATES = {"not_observed", "unlikely", "possible", "likely", "confirmed", "unknown"}
+ESTIMATED_USER_IMPACT_STATES = {"none_expected", "low", "possible", "likely", "severe", "unknown"}
+OBSERVED_USER_IMPACT_STATES = {"none_reported", "reported_minor", "reported_major", "confirmed_service_failure", "unknown"}
 OPERATIONAL_RISK_STATES = {"low", "guarded", "elevated", "high", "critical", "unknown"}
 CONFIDENCE_STATES = {"low", "medium", "high"}
 ATTRIBUTION_DOMAINS = {
@@ -477,6 +479,146 @@ def user_impact_assessment(
     return {"state": "unknown", "confidence": "low", "drivers": [], "missing_evidence": missing}
 
 
+def diagnostic_status(item: dict[str, Any]) -> str:
+    return str(item.get("state") or item.get("status") or item.get("result") or "").strip().lower()
+
+
+def observed_user_impact_assessment(*, diagnostics: list[dict[str, Any]]) -> dict[str, Any]:
+    current = [item for item in diagnostics if item.get("is_current")]
+    reports = [item for item in current if item.get("type") in {"user_report", "application_symptom", "operator_observation"}]
+    drivers = []
+    for item in reports:
+        status = diagnostic_status(item)
+        severity = str(item.get("severity") or item.get("impact") or "").strip().lower()
+        if status in {"confirmed_service_failure", "service_failure", "outage", "failed"}:
+            return {"state": "confirmed_service_failure", "confidence": "high", "drivers": ["fresh confirmed service failure evidence"], "missing_evidence": []}
+        if status in {"symptoms_confirmed", "confirmed", "affected"} or severity in {"major", "severe"}:
+            drivers.append("fresh major symptom evidence")
+            return {"state": "reported_major", "confidence": "medium", "drivers": drivers, "missing_evidence": []}
+        if status in {"minor", "reported_minor", "degraded_experience"} or severity == "minor":
+            drivers.append("fresh minor symptom evidence")
+            return {"state": "reported_minor", "confidence": "medium", "drivers": drivers, "missing_evidence": []}
+        if status in {"no_symptoms_reported", "not_observed", "none_reported"}:
+            drivers.append("fresh report states no symptoms")
+            return {"state": "none_reported", "confidence": "medium", "drivers": drivers, "missing_evidence": []}
+    return {"state": "unknown", "confidence": "low", "drivers": [], "missing_evidence": ["user_symptoms"]}
+
+
+def has_repeated_timeout_evidence(diagnostics: list[dict[str, Any]]) -> bool:
+    timeout_items = []
+    for item in diagnostics:
+        if not item.get("is_current"):
+            continue
+        status = diagnostic_status(item)
+        if "timeout" in status or "timeout" in str(item.get("type") or "").lower():
+            timeout_items.append(item)
+            continue
+        values = item.get("timeouts") or item.get("timeout_count") or item.get("failed_transactions")
+        count = parse_float(values, 0.0) or 0.0
+        if count > 0:
+            timeout_items.append(item)
+    return len(timeout_items) >= 1
+
+
+def estimated_user_impact_assessment(
+    *,
+    technical_state: str,
+    gateway: dict[str, Any],
+    internet: dict[str, Any],
+    resolver: dict[str, Any],
+    dependency: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+    samples: list[dict[str, Any]],
+    observed: dict[str, Any],
+) -> dict[str, Any]:
+    drivers = []
+    missing = []
+    current_types = diagnostic_types(diagnostics)
+    observed_state = observed.get("state")
+
+    if observed_state == "confirmed_service_failure":
+        return {"state": "severe", "confidence": "high", "drivers": ["confirmed service failure"], "missing_evidence": []}
+    if observed_state == "reported_major":
+        return {"state": "likely", "confidence": "medium", "drivers": ["major user symptoms were reported"], "missing_evidence": []}
+    if observed_state == "reported_minor":
+        drivers.append("minor user symptoms were reported")
+
+    repeated_timeouts = has_repeated_timeout_evidence(diagnostics)
+    lossy_samples = [sample for sample in samples if (sample.get("loss") or 0.0) > WAN_BAD["loss"]]
+    gateway_bad = gateway.get("state") in {"degraded", "severe"}
+    internet_bad = internet.get("state") in {"degraded", "severe"}
+    resolver_bad = resolver.get("state") in {"degraded", "severe"}
+    dep_state = dependency.get("state")
+
+    if repeated_timeouts:
+        drivers.append("fresh timeout or failed-transaction evidence")
+    if lossy_samples:
+        drivers.append("packet loss exceeded degradation threshold")
+    if gateway_bad:
+        drivers.append("gateway degradation affects the local path")
+    if internet_bad and resolver_bad:
+        drivers.append("degradation spans unrelated internet and resolver targets")
+    elif internet_bad:
+        drivers.append("general internet probes degraded")
+    elif resolver_bad:
+        drivers.append("resolver probes degraded")
+
+    if dep_state == "active_healthy_peer_degraded":
+        drivers.append("active resolver path is healthy while peer is degraded")
+    elif dep_state == "active_degraded_fallback_healthy":
+        drivers.append("active resolver path is degraded but monitored fallback is healthy")
+    elif dep_state == "active_path_unknown":
+        missing.append("active_dependency_path")
+    elif dep_state in {"both_degraded", "no_usable_fallback"}:
+        drivers.append("both monitored resolver paths are degraded or no usable fallback is known")
+
+    if "direct_dns_query_measurement" in current_types:
+        drivers.append("direct DNS query evidence is available")
+
+    if gateway_bad and (repeated_timeouts or lossy_samples):
+        state = "severe"
+        confidence = "high"
+    elif repeated_timeouts or (internet_bad and resolver_bad and lossy_samples):
+        state = "likely"
+        confidence = "high"
+    elif gateway_bad or internet_bad:
+        state = "likely" if lossy_samples else "possible"
+        confidence = "medium"
+    elif dep_state in {"both_degraded", "no_usable_fallback"}:
+        state = "possible" if not (repeated_timeouts or lossy_samples) else "likely"
+        confidence = "medium"
+    elif dep_state == "active_degraded_fallback_healthy":
+        state = "possible"
+        confidence = "medium"
+    elif dep_state == "active_healthy_peer_degraded":
+        state = "low"
+        confidence = "medium"
+    elif resolver_bad and dep_state == "active_path_unknown":
+        state = "low"
+        confidence = "low"
+    elif technical_state in {"healthy", "elevated"}:
+        state = "none_expected"
+        confidence = "medium"
+    elif technical_state == "unknown":
+        state = "unknown"
+        confidence = "low"
+    else:
+        state = "possible"
+        confidence = "low"
+
+    if observed_state == "none_reported":
+        drivers.append("no symptoms were reported, but absence of reports is not proof of no impact")
+    elif observed_state == "unknown":
+        missing.append("user_symptoms")
+
+    return {
+        "state": state,
+        "confidence": confidence,
+        "drivers": list(dict.fromkeys(drivers)),
+        "missing_evidence": list(dict.fromkeys(missing)),
+    }
+
+
 def operational_risk_assessment(*, technical_state: str, dependency: dict[str, Any], samples: list[dict[str, Any]]) -> dict[str, Any]:
     sustained = len([sample for sample in samples if sample.get("is_bad")])
     dep_state = dependency.get("state")
@@ -588,6 +730,8 @@ def attribution_assessment(
 def deterministic_operator_interpretation(dimensions: dict[str, Any]) -> dict[str, Any]:
     technical = dimensions.get("technical_condition", {})
     impact = dimensions.get("user_impact", {})
+    estimated = dimensions.get("estimated_user_impact", {})
+    observed = dimensions.get("observed_user_impact", {})
     risk = dimensions.get("operational_risk", {})
     attribution = dimensions.get("attribution", {})
     dependencies = dimensions.get("dependency_groups", [])
@@ -597,7 +741,8 @@ def deterministic_operator_interpretation(dimensions: dict[str, Any]) -> dict[st
     return {
         "headline": f"{technical.get('state', 'unknown').title()} technical condition with {risk.get('state', 'unknown')} operational risk.",
         "condition_statement": f"Technical condition is {technical.get('state', 'unknown')} based on deterministic telemetry.",
-        "impact_statement": f"User impact is {impact.get('state', 'unknown')} from available symptom, active-path, and fallback evidence.",
+        "impact_statement": f"Legacy user impact is {impact.get('state', 'unknown')}; estimated user impact is {estimated.get('state', 'unknown')} and observed user impact is {observed.get('state', 'unknown')}.",
+        "impact_reasoning": "A severe technical condition can coexist with low estimated impact when degradation is isolated to an inactive or redundant resolver path and no failures or symptoms are observed.",
         "risk_statement": f"Operational risk is {risk.get('state', 'unknown')} with redundancy {dep.get('redundancy_status', 'unknown')}.",
         "attribution_statement": f"Refined attribution domain is {attribution.get('domain', 'unknown')} with {attribution.get('confidence', 'low')} confidence.",
         "evidence_drivers": drivers[:8],
@@ -691,6 +836,17 @@ def evaluate_health_dimensions(
         dependency=dependency,
         diagnostics=diagnostics,
     )
+    observed_impact = observed_user_impact_assessment(diagnostics=diagnostics)
+    estimated_impact = estimated_user_impact_assessment(
+        technical_state=technical["state"],
+        gateway=gateway,
+        internet=internet,
+        resolver=resolver,
+        dependency=dependency,
+        diagnostics=diagnostics,
+        samples=marked + lan_samples,
+        observed=observed_impact,
+    )
     risk = operational_risk_assessment(technical_state=technical["state"], dependency=dependency, samples=marked)
     attribution = attribution_assessment(
         technical_state=technical["state"],
@@ -714,6 +870,8 @@ def evaluate_health_dimensions(
         "generated_at": iso(generated_at),
         "technical_condition": technical,
         "user_impact": impact,
+        "estimated_user_impact": estimated_impact,
+        "observed_user_impact": observed_impact,
         "operational_risk": risk,
         "detection_confidence": technical.get("confidence", "low"),
         "attribution_confidence": attribution.get("confidence", "low"),
@@ -738,6 +896,8 @@ def semantic_health_dimensions(dimensions: dict[str, Any] | None) -> dict[str, A
         "model_version": dimensions.get("model_version"),
         "technical_condition": (dimensions.get("technical_condition") or {}).get("state"),
         "user_impact": (dimensions.get("user_impact") or {}).get("state"),
+        "estimated_user_impact": (dimensions.get("estimated_user_impact") or {}).get("state"),
+        "observed_user_impact": (dimensions.get("observed_user_impact") or {}).get("state"),
         "operational_risk": (dimensions.get("operational_risk") or {}).get("state"),
         "detection_confidence": dimensions.get("detection_confidence"),
         "attribution_domain": (dimensions.get("attribution") or {}).get("domain"),

@@ -154,6 +154,8 @@ def normalized_input_payload(input_payload):
         "health_dimensions": {
             "technical_condition": safe_dict(health_dimensions.get("technical_condition")).get("state"),
             "user_impact": safe_dict(health_dimensions.get("user_impact")).get("state"),
+            "estimated_user_impact": safe_dict(health_dimensions.get("estimated_user_impact")).get("state"),
+            "observed_user_impact": safe_dict(health_dimensions.get("observed_user_impact")).get("state"),
             "operational_risk": safe_dict(health_dimensions.get("operational_risk")).get("state"),
             "detection_confidence": health_dimensions.get("detection_confidence"),
             "attribution_domain": safe_dict(health_dimensions.get("attribution")).get("domain"),

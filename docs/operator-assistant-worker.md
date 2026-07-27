@@ -85,7 +85,10 @@ The worker uses the same configuration as the explicit output producer:
 
 At minimum, configure `OPENROUTER_API_KEY`. Optional values include
 `OPENROUTER_MODEL`, `OPENROUTER_TIMEOUT_SECONDS`, and
-`OPENROUTER_MAX_TOKENS`. Never put secrets in the LaunchAgent plist.
+`OPENROUTER_MAX_TOKENS`. If `OPENROUTER_MODEL` is missing, the producer uses the
+explicit default `google/gemini-3.5-flash`. Provider auto-routing identifiers are
+rejected so routine synthesis cannot silently route to another model. Never put
+secrets in the LaunchAgent plist.
 
 ## Manual Operation
 

@@ -22,6 +22,7 @@ OPERATOR_CHARTER = BASE / "docs" / "operator-charter.md"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 USER_AGENT = "PrimeObserver/0.9.0"
 DEFAULT_MODEL = "google/gemini-3.5-flash"
+DISALLOWED_ROUTING_MODEL = "".join(["openrouter/", "auto"])
 DEFAULT_TIMEOUT_SECONDS = 45
 DEFAULT_MAX_TOKENS = 3000
 MAX_ATTEMPTS_PER_HASH = 3
@@ -92,6 +93,13 @@ def config_value(key, file_values, default=""):
     return str(value).strip()
 
 
+def explicit_openrouter_model(value):
+    model = str(value or "").strip() or DEFAULT_MODEL
+    if model.lower() == DISALLOWED_ROUTING_MODEL:
+        raise ValueError("OPENROUTER_MODEL must be an explicit model identifier; provider auto-routing is not allowed.")
+    return model
+
+
 def load_config():
     file_values = parse_env_file(ENV_FILE)
     timeout_raw = config_value(
@@ -125,7 +133,7 @@ def load_config():
 
     return {
         "OPENROUTER_API_KEY": config_value("OPENROUTER_API_KEY", file_values),
-        "OPENROUTER_MODEL": configured_model or DEFAULT_MODEL,
+        "OPENROUTER_MODEL": explicit_openrouter_model(configured_model),
         "OPENROUTER_TIMEOUT_SECONDS": max(1.0, timeout),
         "OPENROUTER_MAX_TOKENS": max(200, min(max_tokens, 4000)),
         "OPENROUTER_RETRY_SLEEP_SECONDS": 0,
@@ -618,7 +626,19 @@ def duplicate_generation_result(source_file, input_payload, input_hash, requeste
 
 
 def build_output_result(force=False, lock_owned=False):
-    config = load_config()
+    try:
+        config = load_config()
+    except ValueError as exc:
+        input_payload, source_file, _error = load_input()
+        input_hash = safe_dict(input_payload).get("input_hash")
+        return failure_result(
+            source_file,
+            safe_dict(input_payload),
+            str(exc),
+            input_hash=input_hash,
+            requested_model=None,
+            error_category="provider_unconfigured",
+        )
     print_configuration_diagnostics(config)
     print(f"Requested OpenRouter model: {config['OPENROUTER_MODEL']}")
     print("Requesting Operator Assistant review only when no valid current output exists.")

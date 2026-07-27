@@ -6,6 +6,8 @@ artifact fields. Phase 3 renders those emitted fields in the dashboard and
 Investigation UI without moving health interpretation into browser JavaScript.
 Phase 4.2 reorganizes the Investigation renderer as an Incident Record over the
 same emitted fields; it does not change evaluator semantics or artifact schemas.
+Phase 4.3 adds Python-owned impact-v2 fields that preserve legacy `user_impact`
+while separating estimated user impact from observed user reports.
 
 The Phase 2 and Phase 3 implementation does not remove legacy noticeability,
 does not call OpenRouter from browser code, does not add a database, and does not
@@ -39,7 +41,10 @@ Observed local telemetry and diagnostics:
 Expected interpretation for calibration:
 
 - technical condition: `severe`
-- user impact: `low` or `not_observed`
+- legacy user impact: `not_observed`
+- estimated user impact: `low`
+- observed user impact: `none_reported` when explicit no-symptom evidence is
+  present, otherwise `unknown`
 - operational risk: `elevated`
 - detection confidence: `high`
 - attribution domain: `resolver_provider_path`
@@ -479,8 +484,9 @@ Computed state guidance:
 - Active path degraded with fallback healthy means user impact is possible and
   operational risk is high until failover is verified.
 - Both members degraded means no usable fallback and high operational risk.
-- Active path unknown must not assume low user impact; it should request operator
-  input.
+- Active path unknown must not assume unavailable fallback or likely user impact;
+  it should request operator input and generally remain low for one degraded
+  resolver absent failures.
 
 ## Optional Diagnostic Evidence Schema
 

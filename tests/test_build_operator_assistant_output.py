@@ -371,6 +371,27 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
         self.assertEqual(config["OPENROUTER_MODEL"], "google/gemini-3.5-flash")
         self.assertEqual(config["OPENROUTER_MAX_TOKENS"], 4000)
 
+    def test_provider_auto_routing_model_is_rejected_from_real_config(self):
+        self.module.load_config = self.original_load_config
+        self.module.ENV_FILE.write_text("OPENROUTER_MODEL=" + "".join(["openrouter/", "auto"]) + "\n")
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                self.module.load_config()
+
+    def test_provider_auto_routing_model_records_state_without_request(self):
+        self.module.load_config = self.original_load_config
+        self.module.ENV_FILE.write_text("OPENROUTER_MODEL=" + "".join(["openrouter/", "auto"]) + "\n")
+        self.write_input()
+        self.module.post_chat_completion = mock.Mock(side_effect=AssertionError("provider should not be called"))
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = self.module.build_output_result()
+
+        self.assertFalse(result["should_write"])
+        self.assertEqual(result["state_payload"]["last_error_category"], "provider_unconfigured")
+        self.module.post_chat_completion.assert_not_called()
+
     def test_configuration_diagnostics_do_not_log_api_key_value(self):
         config = {
             "OPENROUTER_API_KEY": "super-secret-key",

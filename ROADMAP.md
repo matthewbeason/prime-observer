@@ -59,6 +59,9 @@ Current watch period:
 - Phase 4.1 simplified the dashboard hierarchy. Phase 4.2 redesigns the
   Investigation page as an Incident Record over existing artifact fields, with no
   evaluator or schema changes.
+- Phase 4.3 pins Operator Assistant synthesis to an explicit OpenRouter model by
+  default and adds Python-owned impact-v2 fields that separate estimated user
+  impact from observed reports while preserving legacy compatibility fields.
 
 ## Next Logical Milestone
 

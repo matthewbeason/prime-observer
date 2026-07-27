@@ -18,6 +18,8 @@ Prime Observer currently ships:
   operator-facing narrative when output is valid for the evidence package
 - Python-owned multidimensional health evaluation with additive artifact fields
   rendered in the dashboard and Investigation UI
+- impact-v2 fields that preserve legacy `user_impact` while separating
+  estimated user impact from observed reports
 - asynchronous pending-work consumption through a separate local worker and
   tracked 60-second LaunchAgent
 - manual requested-window investigation generation and viewing
@@ -42,6 +44,10 @@ Repository-backed recent milestones:
 - post-`v0.9.0` Investigation IA work: Phase 4.2 redesigns
   `viz/investigate.html` as an Incident Record over existing artifacts, keeping
   evaluator semantics and schemas unchanged
+- post-`v0.9.0` Phase 4.3 work: Operator Assistant model selection is explicitly
+  pinned to `google/gemini-3.5-flash` by default, provider auto-routing is
+  rejected, and additive impact-v2 fields distinguish estimated and observed
+  user impact
 
 Recent commits before `v0.9.0` show this sequence:
 
