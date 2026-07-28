@@ -264,10 +264,43 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         older = self.module.build_package(investigation, "viz/investigation.json")
         investigation["generated_at"] = "2026-07-06T23:30:00+00:00"
         investigation["dns_context"]["generated_at"] = "2026-07-06T23:29:00Z"
+        investigation["internet_conditions_context"]["generated_at"] = "2026-07-06T23:29:01Z"
         investigation["dns_context"]["minutes_from_event_midpoint"] = 42.0
+        investigation["internet_conditions_context"]["minutes_from_event_midpoint"] = 42.0
         newer = self.module.build_package(investigation, "viz/investigation.json")
 
         self.assertEqual(older["input_hash"], newer["input_hash"])
+
+    def test_internet_conditions_signal_summaries_are_bounded_semantic_input(self):
+        investigation = self.investigation_payload()
+        investigation["internet_conditions_context"].update({
+            "summary": "No Cox traffic anomaly or Cox-involved route leak detected in the last 7d. Broad US outage context also normal.",
+            "signal_results": {
+                "as_traffic_anomalies": {"available": True, "status": "normal", "item_count": 0, "summary": "No Cox traffic anomalies detected.", "latest_signal_at": None},
+                "bgp_route_leaks_asn": {"available": True, "status": "normal", "item_count": 0, "summary": "No Cox-involved BGP route leaks detected.", "latest_signal_at": None},
+            },
+            "degradation": {"partial": False, "unavailable_signals": []},
+        })
+
+        output = self.module.build_package(investigation, "viz/investigation.json")
+        internet = output["environmental_context"]["internet_conditions"]
+
+        self.assertEqual(internet["signal_results"]["as_traffic_anomalies"]["summary"], "No Cox traffic anomalies detected.")
+        self.assertNotIn("latest_signal_at", internet["signal_results"]["as_traffic_anomalies"])
+        self.assertFalse(internet["degradation"]["partial"])
+
+    def test_internet_conditions_signal_change_changes_input_hash(self):
+        investigation = self.investigation_payload()
+        investigation["internet_conditions_context"]["signal_results"] = {
+            "bgp_route_leaks_asn": {"available": True, "status": "normal", "item_count": 0, "summary": "No Cox-involved BGP route leaks detected."}
+        }
+        first = self.module.build_package(investigation, "viz/investigation.json")
+        investigation["internet_conditions_context"]["signal_results"]["bgp_route_leaks_asn"]["status"] = "disruption"
+        investigation["internet_conditions_context"]["signal_results"]["bgp_route_leaks_asn"]["item_count"] = 1
+        investigation["internet_conditions_context"]["signal_results"]["bgp_route_leaks_asn"]["summary"] = "Ongoing Cox-involved BGP route leak detected."
+        second = self.module.build_package(investigation, "viz/investigation.json")
+
+        self.assertNotEqual(first["input_hash"], second["input_hash"])
 
     def test_schema_2_prefers_event_windows_and_freshness(self):
         payload = self.investigation_payload()

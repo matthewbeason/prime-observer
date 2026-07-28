@@ -117,7 +117,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "Both monitored resolver paths remain reachable",
             "Fault domain is not yet localized.",
             "No immediate action · Continue monitoring",
-            "No broad ASN-level anomaly detected; this does not rule out a regional, provider-specific, or anycast path problem.",
+            "Internet Conditions context is supporting evidence only.",
             "Review completed incidents and compare their evidence, impact, and recovery.",
         ):
             self.assertIn(text, self.html)
@@ -155,6 +155,9 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("data.health_dimensions?.estimated_user_impact", self.html)
         self.assertIn("data.health_dimensions?.observed_user_impact", self.html)
         self.assertNotIn("is_wan_bad", self.html)
+        self.assertNotIn("No broad ASN-level anomaly detected", self.html)
+        self.assertIn("context.signal_results", self.html)
+        self.assertIn("routing event", self.html)
 
     def test_investigation_top_summary_avoids_duplicate_primary_conclusions(self):
         top = self.html[self.html.index('id="assistantReviewSection"'):self.html.index('id="timelineSection"')]

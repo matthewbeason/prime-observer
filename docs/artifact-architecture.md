@@ -197,11 +197,18 @@ Stage ownership:
 - Required fields: `schema_version`, `generated_at`, `provider`, `status`,
   `summary`, `scope`, `signals_checked`, `items`
 - Optional fields: `query_mode`, `query_target_label`, `query_target_id`,
-  `provider_display_name`, `fallback_used`, item-level `reference`;
-  `scope.region` may be `null`; `items` may be empty for `normal` or
-  `unavailable`
+  `provider_display_name`, `fallback_used`, `model_version`, `checked_window`,
+  `signal_results`, `degradation`, `limitations`, and item-level `reference` or
+  route-leak event metadata; `scope.region` may be `null`; `items` may be empty
+  for `normal` or `unavailable`
+- Internet Conditions v2 keeps Cloudflare Radar as the implemented provider and,
+  in configured ASN mode, independently records AS traffic anomalies,
+  ASN-involved BGP route leaks, broad US outages, and broad US traffic anomalies.
+  Each signal result records availability, status, item count, summary, latest
+  signal time, and secret-free query metadata.
 - Unavailable behavior: the producer writes an explicit `unavailable` artifact
-  instead of failing the dashboard
+  instead of failing the dashboard. Partial provider failures preserve successful
+  signal results and list unavailable lanes under `degradation`.
 - Authoritative: yes, for the current local Internet Conditions summary
 - Generated: yes
 - Should be committed: no

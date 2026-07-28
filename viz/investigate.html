@@ -1080,7 +1080,7 @@
       fill("limitingEvidenceList", limiting);
       const environmental = [...(argument.evidence_against_broader_impact || [])];
       if (data.internet_conditions_context?.available){
-        environmental.push("No broad ASN-level anomaly detected; this does not rule out a regional, provider-specific, or anycast path problem.");
+        environmental.push(cleanOperatorText(data.internet_conditions_context.summary || "Internet Conditions context is supporting evidence only."));
       }
       if (data.power_infrastructure_context?.available){
         environmental.push(cleanOperatorText(data.power_infrastructure_context.summary || "Power infrastructure context is supporting evidence only."));
@@ -1246,8 +1246,17 @@
 
       const items = (context.items || []).map(item => {
         const started = item.started ? ` <span class="small">(${shortTime(item.started)})</span>` : "";
-        return `<div class="provider-item">${fmt(item.signal)} · ${fmt(item.region)}: ${fmt(item.description)}${started}</div>`;
+        const signal = item.signal === "bgp_route_leak" ? "routing event" : fmt(item.signal);
+        return `<div class="provider-item">${signal} · ${fmt(item.region)}: ${fmt(item.description)}${started}</div>`;
       }).join("");
+      const signalResults = Object.values(context.signal_results || {}).map(result => {
+        const state = result.available === false ? "unavailable" : statusLabel(result.status);
+        const latest = result.latest_signal_at ? ` · latest ${shortTime(result.latest_signal_at)}` : "";
+        return `<div class="provider-item">${fmt(result.label || result.key)}: ${state} · ${fmt(result.item_count)} item(s)${latest}<div class="small">${fmt(result.summary)}</div></div>`;
+      }).join("");
+      const degradation = context.degradation || {};
+      const partial = degradation.partial ? `Partial provider result: ${(degradation.unavailable_signals || []).join(", ") || "one or more signals unavailable"}` : "All configured checks completed.";
+      const limitations = (context.limitations || []).map(item => `<div class="provider-item">${fmt(item)}</div>`).join("");
 
       environmentalSection.style.display = "block";
       section.style.display = "block";
@@ -1265,9 +1274,12 @@
           ${renderSummaryItem("Scope", fmt(context.scope?.label), `Query mode ${fmt(context.query_mode)} · target ${fmt(context.query_target_label || context.provider_display_name || context.query_target_id)}`)}
           ${renderSummaryItem("Target ID", fmt(context.query_target_id), `Fallback used: ${context.fallback_used ? "yes" : "no"}`)}
           ${renderSummaryItem("Signals checked", (context.signals_checked || []).join(", ") || "—", fmt(context.summary))}
+          ${renderSummaryItem("Provider completeness", degradation.partial ? "Partial" : "Complete", partial)}
         </div>
         <p class="section-note supporting" style="margin-top:12px;">${fmt(context.note)}</p>
+        ${signalResults ? `<div class="provider-items">${signalResults}</div>` : ""}
         ${items ? `<div class="provider-items">${items}</div>` : ""}
+        ${limitations ? `<div class="provider-items">${limitations}</div>` : ""}
       `;
       return true;
     }

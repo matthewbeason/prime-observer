@@ -683,6 +683,50 @@ def internet_conditions_context(event_midpoint_utc):
     scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
     signals_checked = payload.get("signals_checked") if isinstance(payload.get("signals_checked"), list) else []
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    signal_results = payload.get("signal_results") if isinstance(payload.get("signal_results"), dict) else {}
+    degradation = payload.get("degradation") if isinstance(payload.get("degradation"), dict) else {}
+    limitations = payload.get("limitations") if isinstance(payload.get("limitations"), list) else []
+
+    def copy_internet_item(item):
+        copied = {
+            "signal": item.get("signal"),
+            "region": item.get("region"),
+            "started": item.get("started"),
+            "ended": item.get("ended"),
+            "description": item.get("description"),
+            "reference": item.get("reference"),
+        }
+        for key in (
+            "entity_type",
+            "event_status",
+            "uuid",
+            "event_id",
+            "finished",
+            "leak_asn",
+            "countries",
+            "peer_count",
+            "prefix_count",
+            "origin_count",
+            "leak_count",
+        ):
+            if key in item:
+                copied[key] = item.get(key)
+        return copied
+
+    def copy_signal_result(value):
+        result_items = value.get("items") if isinstance(value.get("items"), list) else []
+        query = value.get("query") if isinstance(value.get("query"), dict) else {}
+        return {
+            "key": value.get("key"),
+            "label": value.get("label"),
+            "available": bool(value.get("available")),
+            "status": value.get("status"),
+            "item_count": value.get("item_count"),
+            "summary": value.get("summary"),
+            "latest_signal_at": value.get("latest_signal_at"),
+            "query": {str(key): query.get(key) for key in query.keys()},
+            "items": [copy_internet_item(item) for item in result_items[:3] if isinstance(item, dict)],
+        }
     status = payload.get("status")
 
     return {
@@ -697,23 +741,25 @@ def internet_conditions_context(event_midpoint_utc):
         "query_target_id": payload.get("query_target_id"),
         "provider_display_name": payload.get("provider_display_name"),
         "fallback_used": bool(payload.get("fallback_used")),
+        "model_version": payload.get("model_version"),
+        "checked_window": payload.get("checked_window") if isinstance(payload.get("checked_window"), dict) else {},
+        "degradation": {
+            "partial": bool(degradation.get("partial")),
+            "unavailable_signals": [str(item) for item in degradation.get("unavailable_signals", [])[:8]] if isinstance(degradation.get("unavailable_signals"), list) else [],
+        },
+        "limitations": [str(item) for item in limitations[:5]],
+        "signal_results": {
+            str(key): copy_signal_result(value)
+            for key, value in signal_results.items()
+            if isinstance(value, dict)
+        },
         "scope": {
             "country": scope.get("country"),
             "region": scope.get("region"),
             "label": scope.get("label"),
         },
         "signals_checked": [str(item) for item in signals_checked[:5]],
-        "items": [
-            {
-                "signal": item.get("signal"),
-                "region": item.get("region"),
-                "started": item.get("started"),
-                "description": item.get("description"),
-                "reference": item.get("reference"),
-            }
-            for item in items[:3]
-            if isinstance(item, dict)
-        ],
+        "items": [copy_internet_item(item) for item in items[:3] if isinstance(item, dict)],
         "minutes_from_event_midpoint": (
             rounded(abs((generated_at - event_midpoint_utc).total_seconds()) / 60.0)
             if generated_at is not None

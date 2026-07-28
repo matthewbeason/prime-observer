@@ -21,6 +21,8 @@ class DashboardInternetConditionsTest(unittest.TestCase):
         self.assertIn('id="internetConditionsItems"', html)
         self.assertIn('id="internetConditionsTarget"', html)
         self.assertIn('id="internetConditionsFallback"', html)
+        self.assertIn('id="internetConditionsSignalsChecked"', html)
+        self.assertIn('id="internetConditionsSignalResults"', html)
         self.assertIn('id="mobileInternetConditionsCard"', html)
         self.assertIn('id="mobileInternetConditionsDisclosure"', html)
         self.assertIn('id="mobileInternetConditionsDisclosureSummary"', html)
@@ -29,6 +31,8 @@ class DashboardInternetConditionsTest(unittest.TestCase):
         self.assertIn('id="mobileInternetConditionsItems"', html)
         self.assertIn('id="mobileInternetConditionsTarget"', html)
         self.assertIn('id="mobileInternetConditionsFallback"', html)
+        self.assertIn('id="mobileInternetConditionsSignalsChecked"', html)
+        self.assertIn('id="mobileInternetConditionsSignalResults"', html)
         self.assertNotIn("api.cloudflare.com", html)
         self.assertNotIn("Authorization: Bearer", html)
         self.assertNotIn("CLOUDFLARE_API_TOKEN", html)
@@ -61,9 +65,20 @@ class DashboardInternetConditionsTest(unittest.TestCase):
     def test_dashboard_uses_provider_label_for_primary_status_without_raw_asn(self):
         html = (ROOT / "viz" / "index.html").read_text()
 
-        self.assertIn('return `${providerName} normal`;', html)
-        self.assertIn('return `${providerName} anomaly reported`;', html)
+        self.assertIn('return `${providerName} external context normal`;', html)
+        self.assertIn('return `${providerName} external anomaly reported`;', html)
+        self.assertIn('return `${providerName} routing event reported`;', html)
+        self.assertIn('No reported impact', html)
         self.assertNotIn('document.getElementById("internetConditionsValue").textContent = targetLabel;', html)
+
+    def test_dashboard_renders_v2_signal_results_and_partial_states(self):
+        html = (ROOT / "viz" / "index.html").read_text()
+
+        self.assertIn('data.signal_results && typeof data.signal_results === "object"', html)
+        self.assertIn('renderInternetConditionSignals("internetConditionsSignalResultsWrap", "internetConditionsSignalResults", signalResults);', html)
+        self.assertIn('renderInternetConditionSignals("mobileInternetConditionsSignalResultsWrap", "mobileInternetConditionsSignalResults", signalResults);', html)
+        self.assertIn('item.signal === "bgp_route_leak" ? "Routing event"', html)
+        self.assertIn('label = `${label} (partial)`;', html)
 
     def test_investigation_view_remains_independent(self):
         html = (ROOT / "viz" / "investigate.html").read_text()

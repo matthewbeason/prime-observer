@@ -724,11 +724,12 @@ Usage notes:
 - Do not put Cloudflare tokens in browser code or generated artifacts.
 - `PRIME_OBSERVER_INTERNET_ASN` and `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` are optional. Prime Observer does not require them.
 - If both optional ASN settings are omitted, Internet Conditions stays in the current US-scoped mode.
-- `PRIME_OBSERVER_INTERNET_ASN` enables explicit ASN-scoped traffic anomaly checks only. Prime Observer does not attempt automatic public-IP or ISP discovery.
+- `PRIME_OBSERVER_INTERNET_ASN` enables explicit Cloudflare Radar ASN context. In ASN mode Prime Observer checks AS traffic anomalies, AS-involved BGP route leaks, broad US outages, and broad US traffic anomalies as independent signal lanes. Prime Observer does not attempt automatic public-IP or ISP discovery.
 - `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` is optional but recommended when ASN mode is used so operator-facing diagnostics can show a label such as `Cox` instead of a generic network label.
-- If the configured ASN query fails, `bin/fetch_cloudflare_radar.py` falls back to the existing US-scoped Internet Conditions behavior and marks the artifact with fallback metadata.
+- If one Cloudflare signal lane fails, `bin/fetch_cloudflare_radar.py` preserves the successful signal results and marks the artifact as partial. If every required Cloudflare check fails, it writes an `unavailable` artifact.
 - If the token is missing, `bin/fetch_cloudflare_radar.py` writes an `unavailable` `viz/internet_conditions.json` artifact and exits successfully.
 - The scheduled macOS refresh path also works with the repo-local `.env.cloudflare` file because `bin/fetch_cloudflare_radar.py` loads it directly. Do not put the token in a plist or shell profile just for Prime Observer.
+- RIPE Atlas is not implemented in Internet Conditions v2.
 
 Historical investigations may also copy a factual `internet_conditions_context`
 from this generated file when it is available. That context is the closest

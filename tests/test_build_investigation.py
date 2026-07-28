@@ -310,6 +310,81 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(context["minutes_from_event_midpoint"], 4.0)
         self.assertIn("not historical proof or attribution", context["note"])
 
+    def test_internet_conditions_context_copies_v2_additive_fields(self):
+        self.write_rows([
+            self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),
+        ])
+        self.write_internet_conditions(
+            model_version="internet_conditions_v2",
+            status="disruption",
+            summary="Cloudflare Radar Internet condition reported for Cox.",
+            query_mode="asn",
+            query_target_label="Cox",
+            query_target_id="AS22773",
+            provider_display_name="Cox",
+            signals_checked=["AS traffic anomalies", "BGP route leaks involving configured AS", "US outages", "US traffic anomalies"],
+            checked_window={"date_range": "7d", "recent_window_hours": 24},
+            degradation={"partial": True, "unavailable_signals": ["us_traffic_anomalies"]},
+            limitations=["Cloudflare Radar normal results do not prove a measured local ISP path is healthy."],
+            signal_results={
+                "bgp_route_leaks_asn": {
+                    "key": "bgp_route_leaks_asn",
+                    "label": "Cox-involved BGP route leaks",
+                    "available": True,
+                    "status": "disruption",
+                    "item_count": 1,
+                    "summary": "Ongoing cox-involved bgp route leaks detected.",
+                    "latest_signal_at": "2026-06-08T11:50:00Z",
+                    "query": {"involvedAsn": 22773, "dateRange": "7d"},
+                    "items": [
+                        {
+                            "signal": "bgp_route_leak",
+                            "region": "US",
+                            "started": "2026-06-08T11:50:00Z",
+                            "description": "Cloudflare Radar BGP route leak event 42 involving leaking AS64500",
+                            "event_id": 42,
+                            "finished": False,
+                            "leak_asn": 64500,
+                            "countries": ["US"],
+                            "prefix_count": 3,
+                            "secret": "ignored",
+                        }
+                    ],
+                }
+            },
+            items=[
+                {
+                    "signal": "bgp_route_leak",
+                    "region": "US",
+                    "started": "2026-06-08T11:50:00Z",
+                    "description": "Cloudflare Radar BGP route leak event 42 involving leaking AS64500",
+                    "event_id": 42,
+                    "finished": False,
+                    "leak_asn": 64500,
+                    "countries": ["US"],
+                    "prefix_count": 3,
+                    "secret": "ignored",
+                }
+            ],
+        )
+
+        payload = self.module.build_investigation(
+            "2026-06-08T12:00:00+00:00",
+            "2026-06-08T12:00:00+00:00",
+            0,
+        )
+
+        context = payload["internet_conditions_context"]
+        self.assertEqual(context["model_version"], "internet_conditions_v2")
+        self.assertEqual(context["checked_window"]["date_range"], "7d")
+        self.assertTrue(context["degradation"]["partial"])
+        self.assertEqual(context["degradation"]["unavailable_signals"], ["us_traffic_anomalies"])
+        self.assertIn("bgp_route_leaks_asn", context["signal_results"])
+        self.assertEqual(context["signal_results"]["bgp_route_leaks_asn"]["query"], {"involvedAsn": 22773, "dateRange": "7d"})
+        self.assertEqual(context["items"][0]["event_id"], 42)
+        self.assertFalse(context["items"][0]["finished"])
+        self.assertNotIn("secret", context["items"][0])
+
     def test_internet_conditions_context_copies_asn_query_metadata(self):
         self.write_rows([
             self.telemetry_row("2026-06-08T12:00:00+00:00", "1.1.1.1", 20),

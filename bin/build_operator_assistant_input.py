@@ -128,6 +128,23 @@ def normalized_input_payload(input_payload):
             "status": context.get("status"),
             "summary": context.get("summary"),
         }
+        signal_results = safe_dict(context.get("signal_results"))
+        if signal_results:
+            normalized["signal_results"] = {
+                str(key): {
+                    "available": bool(safe_dict(value).get("available")),
+                    "status": safe_dict(value).get("status"),
+                    "item_count": safe_dict(value).get("item_count"),
+                    "summary": safe_dict(value).get("summary"),
+                }
+                for key, value in signal_results.items()
+            }
+        degradation = safe_dict(context.get("degradation"))
+        if degradation:
+            normalized["degradation"] = {
+                "partial": bool(degradation.get("partial")),
+                "unavailable_signals": degradation.get("unavailable_signals") or [],
+            }
         if include_provider:
             normalized["provider_display_name"] = context.get("provider_display_name")
             normalized["fallback_used"] = bool(context.get("fallback_used"))
@@ -391,6 +408,23 @@ def compact_environment_context(context, *, provider_display_name=False):
     if provider_display_name:
         payload["provider_display_name"] = context.get("provider_display_name") or context.get("provider")
         payload["fallback_used"] = bool(context.get("fallback_used"))
+    signal_results = safe_dict(context.get("signal_results"))
+    if signal_results:
+        payload["signal_results"] = {
+            str(key): {
+                "available": bool(safe_dict(value).get("available")),
+                "status": safe_dict(value).get("status"),
+                "item_count": safe_dict(value).get("item_count"),
+                "summary": safe_dict(value).get("summary"),
+            }
+            for key, value in signal_results.items()
+        }
+    degradation = safe_dict(context.get("degradation"))
+    if degradation:
+        payload["degradation"] = {
+            "partial": bool(degradation.get("partial")),
+            "unavailable_signals": degradation.get("unavailable_signals") or [],
+        }
     return payload
 
 

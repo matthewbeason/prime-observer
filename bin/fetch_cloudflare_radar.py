@@ -18,6 +18,7 @@ ENV_FILE = BASE / ".env.cloudflare"
 API_BASE = "https://api.cloudflare.com/client/v4"
 OUTAGES_API_PATH = "/radar/annotations/outages"
 TRAFFIC_ANOMALIES_API_PATH = "/radar/traffic_anomalies"
+BGP_ROUTE_LEAKS_API_PATH = "/radar/bgp/leaks/events"
 USER_AGENT = "PrimeObserver/0.8.2"
 DEFAULT_DATE_RANGE = "7d"
 DEFAULT_TIMEOUT_SECONDS = 8
@@ -30,9 +31,20 @@ COUNTRY_SCOPE = {
     "region": None,
     "label": "United States context",
 }
-COUNTRY_SIGNALS_CHECKED = ["Outages", "Traffic anomalies"]
-ASN_SIGNALS_CHECKED = ["Traffic anomalies"]
+MODEL_VERSION = "internet_conditions_v2"
+COUNTRY_SIGNALS_CHECKED = ["US outages", "US traffic anomalies"]
+ASN_SIGNALS_CHECKED = [
+    "AS traffic anomalies",
+    "BGP route leaks involving configured AS",
+    "US outages",
+    "US traffic anomalies",
+]
 COUNTRY_PROVIDER_DISPLAY_NAME = "US Radar"
+LIMITATIONS = [
+    "Cloudflare Radar normal results do not prove a measured local ISP path is healthy.",
+    "Internet Conditions is supporting Environmental Context only and does not affect local health, attribution, or impact scoring.",
+]
+FETCH_ERRORS = (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError)
 
 
 def utc_now():
@@ -219,6 +231,7 @@ def asn_scope_label(query_meta):
 def base_payload(status, summary, query_meta, scope, signals_checked):
     payload = {
         "schema_version": 2,
+        "model_version": MODEL_VERSION,
         "generated_at": iso_utc(utc_now()),
         "provider": "cloudflare_radar",
         "status": status,
@@ -226,6 +239,13 @@ def base_payload(status, summary, query_meta, scope, signals_checked):
         "scope": dict(scope),
         "signals_checked": list(signals_checked),
         "items": [],
+        "checked_window": {},
+        "signal_results": {},
+        "degradation": {
+            "partial": False,
+            "unavailable_signals": [],
+        },
+        "limitations": list(LIMITATIONS),
     }
     payload.update(
         {
@@ -310,6 +330,22 @@ def fetch_traffic_anomalies_by_asn(api_token, date_range, timeout, limit, asn):
     )
 
 
+def fetch_bgp_route_leaks(api_token, date_range, timeout, limit, *, asn=None, country=None):
+    query = {
+        "dateRange": date_range,
+        "format": "json",
+        "page": 1,
+        "per_page": limit,
+        "sortBy": "TIME",
+        "sortOrder": "DESC",
+    }
+    if asn:
+        query["involvedAsn"] = int(asn)
+    if country:
+        query["involvedCountry"] = country
+    return fetch_json(api_token, BGP_ROUTE_LEAKS_API_PATH, query, timeout)
+
+
 def response_annotations(payload):
     if not isinstance(payload, dict) or payload.get("success") is not True:
         return []
@@ -330,12 +366,30 @@ def response_traffic_anomalies(payload):
     return anomalies if isinstance(anomalies, list) else []
 
 
+def response_route_leaks(payload):
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return []
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return []
+    events = result.get("events")
+    return events if isinstance(events, list) else []
+
+
 def is_ongoing(annotation):
+    if annotation.get("signal") == "bgp_route_leak":
+        return annotation.get("finished") is False
     return parse_ts(annotation.get("endDate")) is None
 
 
 def is_recent(annotation, now):
     cutoff = now - dt.timedelta(hours=RECENT_WINDOW_HOURS)
+    if annotation.get("signal") == "bgp_route_leak":
+        for key in ("detected_ts", "max_ts", "min_ts"):
+            ts = parse_ts(annotation.get(key))
+            if ts and ts >= cutoff:
+                return True
+        return False
     start = parse_ts(annotation.get("startDate"))
     end = parse_ts(annotation.get("endDate"))
     if start and start >= cutoff:
@@ -432,11 +486,13 @@ def anomaly_description(anomaly):
 
 def normalize_item(annotation):
     started = parse_ts(annotation.get("startDate"))
+    ended = parse_ts(annotation.get("endDate"))
     reference = str(annotation.get("linkedUrl") or "").strip()
     return {
         "signal": "outage",
         "region": region_label(annotation),
         "started": iso_utc(started) if started else None,
+        "ended": iso_utc(ended) if ended else None,
         "description": description_label(annotation),
         "reference": reference,
     }
@@ -444,22 +500,106 @@ def normalize_item(annotation):
 
 def normalize_anomaly(anomaly):
     started = parse_ts(anomaly.get("startDate"))
+    ended = parse_ts(anomaly.get("endDate"))
     return {
         "signal": "traffic_anomaly",
         "region": anomaly_region_label(anomaly),
         "started": iso_utc(started) if started else None,
+        "ended": iso_utc(ended) if ended else None,
         "description": anomaly_description(anomaly),
         "reference": "",
+        "entity_type": str(anomaly.get("type") or "").strip().upper() or None,
+        "event_status": str(anomaly.get("status") or "").strip().lower() or None,
+        "uuid": str(anomaly.get("uuid") or "").strip() or None,
+    }
+
+
+def normalize_route_leak(event):
+    detected = parse_ts(event.get("detected_ts")) or parse_ts(event.get("max_ts")) or parse_ts(event.get("min_ts"))
+    countries = event.get("countries") if isinstance(event.get("countries"), list) else []
+    region = ", ".join(str(item).strip() for item in countries if str(item).strip()) or "Unknown region"
+    event_id = event.get("id")
+    leak_asn = event.get("leak_asn")
+    description = "Cloudflare Radar BGP route leak event"
+    if event_id is not None:
+        description += f" {event_id}"
+    if leak_asn is not None:
+        description += f" involving leaking AS{leak_asn}"
+    return {
+        "signal": "bgp_route_leak",
+        "region": region,
+        "started": iso_utc(detected) if detected else None,
+        "ended": None if event.get("finished") is False else iso_utc(parse_ts(event.get("max_ts")) or detected) if detected else None,
+        "description": description,
+        "reference": "",
+        "event_id": event_id,
+        "finished": event.get("finished"),
+        "leak_asn": leak_asn,
+        "countries": countries[:5],
+        "peer_count": event.get("peer_count"),
+        "prefix_count": event.get("prefix_count"),
+        "origin_count": event.get("origin_count"),
+        "leak_count": event.get("leak_count"),
     }
 
 
 def item_sort_key(item):
     started = parse_ts(item.get("started"))
-    signal_priority = 1 if item.get("signal") == "outage" else 0
+    signal_priority = {"outage": 2, "bgp_route_leak": 1, "traffic_anomaly": 0}.get(item.get("signal"), 0)
     return (
         signal_priority,
         started or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
         item.get("region") or "",
+    )
+
+
+def latest_signal_at(items):
+    timestamps = [parse_ts(item.get("started")) for item in items]
+    timestamps = [item for item in timestamps if item is not None]
+    return iso_utc(max(timestamps)) if timestamps else None
+
+
+def status_from_items(items):
+    if not items:
+        return "normal"
+    if any(item.get("ended") is None or item.get("finished") is False for item in items):
+        return "disruption"
+    return "advisory"
+
+
+def combine_status(statuses):
+    if "disruption" in statuses:
+        return "disruption"
+    if "advisory" in statuses:
+        return "advisory"
+    return "normal"
+
+
+def signal_result(key, label, status, items, query, summary, *, available=True, error=None):
+    return {
+        "key": key,
+        "label": label,
+        "available": bool(available),
+        "status": status,
+        "item_count": len(items),
+        "items": items[:MAX_ITEMS],
+        "summary": summary,
+        "latest_signal_at": latest_signal_at(items),
+        "query": query,
+        "error": error,
+    }
+
+
+def unavailable_signal_result(key, label, query, exc):
+    return signal_result(
+        key,
+        label,
+        "unavailable",
+        [],
+        query,
+        f"{label} unavailable.",
+        available=False,
+        error=exc.__class__.__name__,
     )
 
 
@@ -482,138 +622,192 @@ def summarize_country(status, items):
 def summarize_asn(status, items, provider_display_name):
     label = str(provider_display_name or "Configured network").strip()
     if status == "normal":
-        return f"No Cloudflare Radar traffic anomalies detected for {label}."
+        return f"No {label} traffic anomaly or {label}-involved route leak detected in the last {DEFAULT_DATE_RANGE}. Broad US outage context also normal."
 
     if status == "advisory":
-        return f"Recent Cloudflare Radar traffic anomaly detected for {label}."
-    return f"Cloudflare Radar traffic anomaly detected for {label}."
+        return f"Recent Cloudflare Radar Internet condition reported for {label}."
+    return f"Cloudflare Radar Internet condition reported for {label}."
+
+
+def checked_window(config):
+    return {
+        "date_range": config["CLOUDFLARE_RADAR_DATE_RANGE"],
+        "recent_window_hours": RECENT_WINDOW_HOURS,
+    }
+
+
+def recent_route_leaks(events, now):
+    recent = []
+    cutoff = now - dt.timedelta(hours=RECENT_WINDOW_HOURS)
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("finished") is False:
+            recent.append(event)
+            continue
+        timestamps = [parse_ts(event.get(key)) for key in ("detected_ts", "max_ts", "min_ts")]
+        if any(ts and ts >= cutoff for ts in timestamps):
+            recent.append(event)
+    recent.sort(
+        key=lambda item: parse_ts(item.get("detected_ts")) or parse_ts(item.get("max_ts")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+        reverse=True,
+    )
+    return recent
+
+
+def fetch_signal(key, label, query, fetcher, normal_summary, normalizer, now, *, raw_items):
+    try:
+        raw = raw_items(fetcher())
+        if key == "bgp_route_leaks_asn":
+            relevant = recent_route_leaks(raw, now)
+        else:
+            relevant = [item for item in raw if is_ongoing(item) or is_recent(item, now)]
+            relevant.sort(
+                key=lambda item: parse_ts(item.get("startDate")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+                reverse=True,
+            )
+        items = [normalizer(item) for item in relevant]
+        status = status_from_items(items)
+        if status == "normal":
+            summary = normal_summary
+        elif status == "advisory":
+            summary = f"Recent {label.lower()} detected."
+        else:
+            summary = f"Ongoing {label.lower()} detected."
+        return signal_result(key, label, status, items, query, summary)
+    except FETCH_ERRORS as exc:
+        return unavailable_signal_result(key, label, query, exc)
+
+
+def broad_us_signal_results(config, now, outages_fetcher=None, traffic_fetcher=None):
+    outages_fetcher = outages_fetcher or fetch_outages
+    traffic_fetcher = traffic_fetcher or fetch_traffic_anomalies
+    token = config["CLOUDFLARE_API_TOKEN"]
+    date_range = config["CLOUDFLARE_RADAR_DATE_RANGE"]
+    timeout = config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"]
+    limit = config["CLOUDFLARE_RADAR_LIMIT"]
+    return {
+        "us_outages": fetch_signal(
+            "us_outages",
+            "US outages",
+            {"dateRange": date_range, "location": COUNTRY_LOCATION, "limit": limit},
+            lambda: outages_fetcher(token, date_range, timeout, limit),
+            "No United States Internet outages detected.",
+            normalize_item,
+            now,
+            raw_items=response_annotations,
+        ),
+        "us_traffic_anomalies": fetch_signal(
+            "us_traffic_anomalies",
+            "US traffic anomalies",
+            {"dateRange": date_range, "location": COUNTRY_LOCATION, "type": "LOCATION", "limit": limit},
+            lambda: traffic_fetcher(token, date_range, timeout, limit),
+            "No United States traffic anomalies detected.",
+            normalize_anomaly,
+            now,
+            raw_items=response_traffic_anomalies,
+        ),
+    }
+
+
+def build_v2_payload(config, query_meta, scope, signal_results, signals_checked):
+    available_results = [item for item in signal_results.values() if item.get("available")]
+    unavailable = [key for key, item in signal_results.items() if not item.get("available")]
+    if not available_results:
+        payload = base_payload("unavailable", "Unable to retrieve current Internet conditions.", query_meta, scope, signals_checked)
+        payload["checked_window"] = checked_window(config)
+        payload["signal_results"] = signal_results
+        payload["degradation"] = {"partial": bool(unavailable), "unavailable_signals": unavailable}
+        return payload
+
+    items = []
+    for result in available_results:
+        items.extend(result.get("items", []))
+    items.sort(key=item_sort_key, reverse=True)
+    status = combine_status([item.get("status") for item in available_results])
+
+    if query_meta["query_mode"] == "asn":
+        summary = summarize_asn(status, items, query_meta["provider_display_name"])
+        if status == "normal":
+            label = query_meta["provider_display_name"]
+            summary = f"No {label} traffic anomaly or {label}-involved route leak detected in the last {config['CLOUDFLARE_RADAR_DATE_RANGE']}. Broad US outage context also normal."
+    else:
+        summary = summarize_country(status, items)
+
+    if unavailable and status == "normal":
+        if query_meta["query_mode"] == "asn":
+            label = query_meta["provider_display_name"]
+            summary = f"No {label} traffic anomaly or {label}-involved route leak detected among completed Cloudflare checks in the last {config['CLOUDFLARE_RADAR_DATE_RANGE']}. Some Internet Conditions checks were unavailable."
+        else:
+            summary = f"No Internet disruption detected among completed Cloudflare checks in the last {config['CLOUDFLARE_RADAR_DATE_RANGE']}. Some Internet Conditions checks were unavailable."
+
+    payload = base_payload(status, summary, query_meta, scope, signals_checked)
+    payload["checked_window"] = checked_window(config)
+    payload["signal_results"] = signal_results
+    payload["degradation"] = {"partial": bool(unavailable), "unavailable_signals": unavailable}
+    payload["items"] = items[:MAX_ITEMS]
+    return payload
 
 
 def build_country_payload(config, query_meta, now=None, outages_fetcher=None, traffic_fetcher=None):
     now = now or utc_now()
-    outages_fetcher = outages_fetcher or fetch_outages
-    traffic_fetcher = traffic_fetcher or fetch_traffic_anomalies
-
-    annotations = response_annotations(
-        outages_fetcher(
-            config["CLOUDFLARE_API_TOKEN"],
-            config["CLOUDFLARE_RADAR_DATE_RANGE"],
-            config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"],
-            config["CLOUDFLARE_RADAR_LIMIT"],
-        )
-    )
-    anomalies = response_traffic_anomalies(
-        traffic_fetcher(
-            config["CLOUDFLARE_API_TOKEN"],
-            config["CLOUDFLARE_RADAR_DATE_RANGE"],
-            config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"],
-            config["CLOUDFLARE_RADAR_LIMIT"],
-        )
-    )
-
-    relevant_annotations = [item for item in annotations if is_ongoing(item) or is_recent(item, now)]
-    relevant_annotations.sort(
-        key=lambda item: (
-            parse_ts(item.get("startDate")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
-            region_label(item),
-        ),
-        reverse=True,
-    )
-    relevant_anomalies = [item for item in anomalies if is_ongoing(item) or is_recent(item, now)]
-    relevant_anomalies.sort(
-        key=lambda item: (
-            parse_ts(item.get("startDate")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
-            anomaly_region_label(item),
-        ),
-        reverse=True,
-    )
-
-    items = [normalize_item(item) for item in relevant_annotations]
-    items.extend(normalize_anomaly(item) for item in relevant_anomalies)
-    items.sort(key=item_sort_key, reverse=True)
-    items = items[:MAX_ITEMS]
-    status = "normal"
-    if items:
-        status = "disruption" if any(is_ongoing(item) for item in relevant_annotations + relevant_anomalies) else "advisory"
-
-    payload = base_payload(
-        status,
-        summarize_country(status, items),
+    return build_v2_payload(
+        config,
         query_meta,
         COUNTRY_SCOPE,
+        broad_us_signal_results(config, now, outages_fetcher=outages_fetcher, traffic_fetcher=traffic_fetcher),
         COUNTRY_SIGNALS_CHECKED,
     )
-    payload["items"] = items
-    return payload
 
 
-def build_asn_payload(config, query_meta, now=None, traffic_fetcher=None):
+def build_asn_payload(config, query_meta, now=None, traffic_fetcher=None, route_leaks_fetcher=None, outages_fetcher=None, country_traffic_fetcher=None):
     now = now or utc_now()
     traffic_fetcher = traffic_fetcher or fetch_traffic_anomalies_by_asn
-
-    anomalies = response_traffic_anomalies(
-        traffic_fetcher(
-            config["CLOUDFLARE_API_TOKEN"],
-            config["CLOUDFLARE_RADAR_DATE_RANGE"],
-            config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"],
-            config["CLOUDFLARE_RADAR_LIMIT"],
-            config["PRIME_OBSERVER_INTERNET_ASN"],
-        )
-    )
-
-    relevant_anomalies = [item for item in anomalies if is_ongoing(item) or is_recent(item, now)]
-    relevant_anomalies.sort(
-        key=lambda item: (
-            parse_ts(item.get("startDate")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
-            anomaly_region_label(item),
+    route_leaks_fetcher = route_leaks_fetcher or fetch_bgp_route_leaks
+    token = config["CLOUDFLARE_API_TOKEN"]
+    date_range = config["CLOUDFLARE_RADAR_DATE_RANGE"]
+    timeout = config["CLOUDFLARE_RADAR_TIMEOUT_SECONDS"]
+    limit = config["CLOUDFLARE_RADAR_LIMIT"]
+    asn = config["PRIME_OBSERVER_INTERNET_ASN"]
+    label = query_meta["provider_display_name"]
+    results = {
+        "as_traffic_anomalies": fetch_signal(
+            "as_traffic_anomalies",
+            f"{label} traffic anomalies",
+            {"asn": int(asn), "dateRange": date_range, "type": "AS", "limit": limit},
+            lambda: traffic_fetcher(token, date_range, timeout, limit, asn),
+            f"No {label} traffic anomalies detected.",
+            normalize_anomaly,
+            now,
+            raw_items=response_traffic_anomalies,
         ),
-        reverse=True,
-    )
-
-    items = [normalize_anomaly(item) for item in relevant_anomalies]
-    items.sort(key=item_sort_key, reverse=True)
-    items = items[:MAX_ITEMS]
-    status = "normal"
-    if items:
-        status = "disruption" if any(is_ongoing(item) for item in relevant_anomalies) else "advisory"
-
-    payload = base_payload(
-        status,
-        summarize_asn(status, items, query_meta["provider_display_name"]),
-        query_meta,
-        asn_scope_label(query_meta),
-        ASN_SIGNALS_CHECKED,
-    )
-    payload["items"] = items
-    return payload
+        "bgp_route_leaks_asn": fetch_signal(
+            "bgp_route_leaks_asn",
+            f"{label}-involved BGP route leaks",
+            {"involvedAsn": int(asn), "dateRange": date_range, "limit": limit},
+            lambda: route_leaks_fetcher(token, date_range, timeout, limit, asn=asn),
+            f"No {label}-involved BGP route leaks detected.",
+            normalize_route_leak,
+            now,
+            raw_items=response_route_leaks,
+        ),
+    }
+    results.update(broad_us_signal_results(config, now, outages_fetcher=outages_fetcher, traffic_fetcher=country_traffic_fetcher))
+    return build_v2_payload(config, query_meta, asn_scope_label(query_meta), results, ASN_SIGNALS_CHECKED)
 
 
-def build_payload(config, now=None, outages_fetcher=None, traffic_fetcher=None, asn_traffic_fetcher=None):
+def build_payload(config, now=None, outages_fetcher=None, traffic_fetcher=None, asn_traffic_fetcher=None, route_leaks_fetcher=None):
     query_meta = requested_query_metadata(config)
     if query_meta["query_mode"] == "asn":
-        try:
-            return build_asn_payload(
-                config,
-                query_meta,
-                now=now,
-                traffic_fetcher=asn_traffic_fetcher,
-            )
-        except (
-            urllib.error.HTTPError,
-            urllib.error.URLError,
-            TimeoutError,
-            json.JSONDecodeError,
-        ):
-            fallback_meta = dict(query_meta)
-            fallback_meta["fallback_used"] = True
-            fallback_meta["provider_display_name"] = COUNTRY_PROVIDER_DISPLAY_NAME
-            return build_country_payload(
-                config,
-                fallback_meta,
-                now=now,
-                outages_fetcher=outages_fetcher,
-                traffic_fetcher=traffic_fetcher,
-            )
+        return build_asn_payload(
+            config,
+            query_meta,
+            now=now,
+            traffic_fetcher=asn_traffic_fetcher,
+            route_leaks_fetcher=route_leaks_fetcher,
+            outages_fetcher=outages_fetcher,
+            country_traffic_fetcher=traffic_fetcher,
+        )
 
     return build_country_payload(
         config,
@@ -627,13 +821,18 @@ def build_payload(config, now=None, outages_fetcher=None, traffic_fetcher=None, 
 def unavailable_payload(query_meta=None):
     query_meta = query_meta or requested_query_metadata({})
     scope = asn_scope_label(query_meta) if query_meta["query_mode"] == "asn" else COUNTRY_SCOPE
-    return base_payload(
+    payload = base_payload(
         "unavailable",
         "Unable to retrieve current Internet conditions.",
         query_meta,
         scope,
         ASN_SIGNALS_CHECKED if query_meta["query_mode"] == "asn" else COUNTRY_SIGNALS_CHECKED,
     )
+    payload["checked_window"] = {
+        "date_range": DEFAULT_DATE_RANGE,
+        "recent_window_hours": RECENT_WINDOW_HOURS,
+    }
+    return payload
 
 
 def main():

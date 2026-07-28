@@ -121,13 +121,18 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["scope"]["country"], "US")
         self.assertIsNone(payload["scope"]["region"])
         self.assertEqual(payload["scope"]["label"], "United States context")
-        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["signals_checked"], ["US outages", "US traffic anomalies"])
         self.assertEqual(payload["query_mode"], "country")
         self.assertEqual(payload["query_target_label"], "United States")
         self.assertEqual(payload["query_target_id"], "US")
         self.assertEqual(payload["provider_display_name"], "US Radar")
         self.assertFalse(payload["fallback_used"])
         self.assertEqual(payload["summary"], "United States Internet outage reported in Arizona and 2 more location(s).")
+        self.assertEqual(payload["model_version"], "internet_conditions_v2")
+        self.assertEqual(payload["checked_window"], {"date_range": "7d", "recent_window_hours": 24})
+        self.assertIn("us_outages", payload["signal_results"])
+        self.assertIn("us_traffic_anomalies", payload["signal_results"])
+        self.assertFalse(payload["degradation"]["partial"])
         self.assertEqual(len(payload["items"]), 3)
         self.assertEqual(payload["items"][0]["region"], "Arizona")
         self.assertEqual(payload["items"][0]["signal"], "outage")
@@ -173,7 +178,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["status"], "normal")
         self.assertEqual(payload["summary"], "No United States Internet outages or traffic anomalies detected.")
         self.assertEqual(payload["scope"]["label"], "United States context")
-        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["signals_checked"], ["US outages", "US traffic anomalies"])
         self.assertEqual(payload["query_mode"], "country")
         self.assertEqual(payload["provider_display_name"], "US Radar")
         self.assertEqual(payload["items"], [])
@@ -239,8 +244,8 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         payload = self.module.build_payload(
             config,
             now=now,
-            outages_fetcher=lambda *_: self.fail("outage fetch should not run for ASN mode"),
-            traffic_fetcher=lambda *_: self.fail("country anomaly fetch should not run for ASN mode"),
+            outages_fetcher=lambda *_: {"success": True, "result": {"annotations": []}},
+            traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
             asn_traffic_fetcher=lambda api_token, date_range, timeout, limit, asn: {
                 "success": True,
                 "result": {
@@ -256,6 +261,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                     ]
                 },
             },
+            route_leaks_fetcher=lambda *_, **__: {"success": True, "result": {"events": []}},
         )
 
         self.assertEqual(payload["status"], "disruption")
@@ -264,13 +270,17 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["query_target_id"], "AS22773")
         self.assertEqual(payload["provider_display_name"], "Cox")
         self.assertFalse(payload["fallback_used"])
-        self.assertEqual(payload["signals_checked"], ["Traffic anomalies"])
+        self.assertEqual(payload["signals_checked"], ["AS traffic anomalies", "BGP route leaks involving configured AS", "US outages", "US traffic anomalies"])
         self.assertEqual(payload["scope"]["label"], "Cox network context")
-        self.assertEqual(payload["summary"], "Cloudflare Radar traffic anomaly detected for Cox.")
+        self.assertEqual(payload["summary"], "Cloudflare Radar Internet condition reported for Cox.")
+        self.assertIn("as_traffic_anomalies", payload["signal_results"])
+        self.assertIn("bgp_route_leaks_asn", payload["signal_results"])
+        self.assertIn("us_outages", payload["signal_results"])
+        self.assertIn("us_traffic_anomalies", payload["signal_results"])
         self.assertEqual(payload["items"][0]["region"], "Cox Communications")
         self.assertEqual(payload["items"][0]["description"], "Verified traffic anomaly detected for Cox Communications")
 
-    def test_build_payload_falls_back_to_country_when_asn_query_fails(self):
+    def test_build_payload_preserves_broad_us_context_when_asn_query_fails(self):
         now = self.module.parse_ts("2026-06-29T18:00:00Z")
         config = self.config()
         config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
@@ -288,17 +298,106 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                 "result": {"trafficAnomalies": []},
             },
             asn_traffic_fetcher=lambda *_: (_ for _ in ()).throw(urllib.error.URLError("asn down")),
+            route_leaks_fetcher=lambda *_, **__: {"success": True, "result": {"events": []}},
         )
 
         self.assertEqual(payload["status"], "normal")
         self.assertEqual(payload["query_mode"], "asn")
         self.assertEqual(payload["query_target_label"], "Cox")
         self.assertEqual(payload["query_target_id"], "AS22773")
-        self.assertEqual(payload["provider_display_name"], "US Radar")
-        self.assertTrue(payload["fallback_used"])
-        self.assertEqual(payload["scope"]["label"], "United States context")
-        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
-        self.assertEqual(payload["summary"], "No United States Internet outages or traffic anomalies detected.")
+        self.assertEqual(payload["provider_display_name"], "Cox")
+        self.assertFalse(payload["fallback_used"])
+        self.assertEqual(payload["scope"]["label"], "Cox network context")
+        self.assertTrue(payload["degradation"]["partial"])
+        self.assertEqual(payload["degradation"]["unavailable_signals"], ["as_traffic_anomalies"])
+        self.assertEqual(payload["signal_results"]["as_traffic_anomalies"]["status"], "unavailable")
+        self.assertEqual(payload["signal_results"]["us_outages"]["status"], "normal")
+        self.assertIn("Some Internet Conditions checks were unavailable", payload["summary"])
+
+    def test_asn_normal_result_includes_all_checked_lanes_with_explicit_summary(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        payload = self.module.build_payload(
+            config,
+            now=now,
+            outages_fetcher=lambda *_: {"success": True, "result": {"annotations": []}},
+            traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
+            asn_traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
+            route_leaks_fetcher=lambda *_, **__: {"success": True, "result": {"events": []}},
+        )
+
+        self.assertEqual(payload["status"], "normal")
+        self.assertEqual(payload["model_version"], "internet_conditions_v2")
+        self.assertEqual(set(payload["signal_results"]), {"as_traffic_anomalies", "bgp_route_leaks_asn", "us_outages", "us_traffic_anomalies"})
+        self.assertEqual(payload["summary"], "No Cox traffic anomaly or Cox-involved route leak detected in the last 7d. Broad US outage context also normal.")
+        self.assertIn("Cloudflare Radar normal results do not prove", payload["limitations"][0])
+
+    def test_ongoing_route_leak_yields_disruption(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        payload = self.module.build_payload(
+            config,
+            now=now,
+            outages_fetcher=lambda *_: {"success": True, "result": {"annotations": []}},
+            traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
+            asn_traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
+            route_leaks_fetcher=lambda *_, **__: {
+                "success": True,
+                "result": {"events": [{"id": 42, "detected_ts": "2026-06-29T17:45:00Z", "finished": False, "leak_asn": 64500, "countries": ["US"], "peer_count": 2, "prefix_count": 3, "origin_count": 1, "leak_count": 4}]},
+            },
+        )
+
+        self.assertEqual(payload["status"], "disruption")
+        self.assertEqual(payload["items"][0]["signal"], "bgp_route_leak")
+        self.assertEqual(payload["items"][0]["event_id"], 42)
+        self.assertFalse(payload["items"][0]["finished"])
+
+    def test_recent_ended_route_leak_yields_advisory(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+
+        payload = self.module.build_payload(
+            config,
+            now=now,
+            outages_fetcher=lambda *_: {"success": True, "result": {"annotations": []}},
+            traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
+            asn_traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
+            route_leaks_fetcher=lambda *_, **__: {
+                "success": True,
+                "result": {"events": [{"id": 43, "detected_ts": "2026-06-29T17:30:00Z", "max_ts": "2026-06-29T17:40:00Z", "finished": True, "leak_asn": 64501, "countries": ["US"]}]},
+            },
+        )
+
+        self.assertEqual(payload["status"], "advisory")
+        self.assertEqual(payload["signal_results"]["bgp_route_leaks_asn"]["status"], "advisory")
+
+    def test_all_signal_failures_return_unavailable_with_partial_metadata(self):
+        now = self.module.parse_ts("2026-06-29T18:00:00Z")
+        config = self.config()
+        config["PRIME_OBSERVER_INTERNET_ASN"] = "22773"
+        config["PRIME_OBSERVER_INTERNET_PROVIDER_LABEL"] = "Cox"
+        fail = lambda *_, **__: (_ for _ in ()).throw(urllib.error.URLError("down"))
+
+        payload = self.module.build_payload(
+            config,
+            now=now,
+            outages_fetcher=fail,
+            traffic_fetcher=fail,
+            asn_traffic_fetcher=fail,
+            route_leaks_fetcher=fail,
+        )
+
+        self.assertEqual(payload["status"], "unavailable")
+        self.assertTrue(payload["degradation"]["partial"])
+        self.assertEqual(set(payload["degradation"]["unavailable_signals"]), {"as_traffic_anomalies", "bgp_route_leaks_asn", "us_outages", "us_traffic_anomalies"})
 
     def test_missing_token_writes_unavailable_summary(self):
         config = self.config()
@@ -313,7 +412,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
         self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["scope"]["label"], "United States context")
-        self.assertEqual(payload["signals_checked"], ["Outages", "Traffic anomalies"])
+        self.assertEqual(payload["signals_checked"], ["US outages", "US traffic anomalies"])
         self.assertEqual(payload["query_mode"], "country")
         self.assertEqual(payload["provider_display_name"], "US Radar")
         self.assertEqual(payload["items"], [])

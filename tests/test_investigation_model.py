@@ -147,6 +147,64 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertIsNotNone(event["recovered_at"])
         self.assertEqual(payload["artifact_state"]["label"], "Completed investigation")
 
+    def test_automatic_investigation_copies_internet_conditions_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_viz_dir = self.module.VIZ_DIR
+            self.module.VIZ_DIR = Path(tmp) / "viz"
+            self.module.VIZ_DIR.mkdir()
+            try:
+                (self.module.VIZ_DIR / "internet_conditions.json").write_text(json.dumps({
+                    "schema_version": 2,
+                    "model_version": "internet_conditions_v2",
+                    "generated_at": self.base.isoformat().replace("+00:00", "Z"),
+                    "provider": "cloudflare_radar",
+                    "status": "normal",
+                    "summary": "No Cox traffic anomaly or Cox-involved route leak detected in the last 7d. Broad US outage context also normal.",
+                    "query_mode": "asn",
+                    "query_target_label": "Cox",
+                    "query_target_id": "AS22773",
+                    "provider_display_name": "Cox",
+                    "fallback_used": False,
+                    "checked_window": {"date_range": "7d", "recent_window_hours": 24},
+                    "degradation": {"partial": False, "unavailable_signals": []},
+                    "limitations": ["Cloudflare Radar normal results do not prove a measured local ISP path is healthy."],
+                    "scope": {"country": None, "region": None, "label": "Cox network context"},
+                    "signals_checked": ["AS traffic anomalies", "BGP route leaks involving configured AS", "US outages", "US traffic anomalies"],
+                    "signal_results": {
+                        "as_traffic_anomalies": {
+                            "key": "as_traffic_anomalies",
+                            "label": "Cox traffic anomalies",
+                            "available": True,
+                            "status": "normal",
+                            "item_count": 0,
+                            "summary": "No Cox traffic anomalies detected.",
+                            "latest_signal_at": None,
+                            "query": {"asn": 22773, "dateRange": "7d", "type": "AS"},
+                            "items": [],
+                        },
+                    },
+                    "items": [],
+                }))
+
+                payload = self.build([
+                    self.row(0, p95=180, raw=True),
+                    self.row(1, p95=181, raw=True, sustained=True),
+                    self.row(2),
+                    self.row(3),
+                    self.row(10),
+                    self.row(17),
+                ])
+
+                context = payload["internet_conditions_context"]
+                self.assertTrue(context["available"])
+                self.assertEqual(context["provider"], "cloudflare_radar")
+                self.assertEqual(context["model_version"], "internet_conditions_v2")
+                self.assertEqual(context["summary"], "No Cox traffic anomaly or Cox-involved route leak detected in the last 7d. Broad US outage context also normal.")
+                self.assertIn("as_traffic_anomalies", context["signal_results"])
+                self.assertNotIn("internet_conditions_context", self.module.event_semantic_payload(payload))
+            finally:
+                self.module.VIZ_DIR = old_viz_dir
+
     def test_renewed_anomaly_cancels_recovery_and_continues_event(self):
         payload = self.build([
             self.row(0, p95=180, raw=True),

@@ -24,6 +24,7 @@ from health_dimensions import semantic_health_dimensions
 BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
+INTERNET_CONDITIONS = VIZ_DIR / "internet_conditions.json"
 INVESTIGATIONS_DIR = VIZ_DIR / "investigations"
 INVESTIGATION_CATALOG_OUT = VIZ_DIR / "investigation_catalog.json"
 INVESTIGATION_GENERATOR = {
@@ -60,6 +61,134 @@ def rounded(value, digits=1):
     if value is None:
         return None
     return round(value, digits)
+
+
+def source_path(path):
+    try:
+        return str(path.relative_to(BASE))
+    except ValueError:
+        return str(path)
+
+
+def midpoint(start, end):
+    if start is None or end is None:
+        return None
+    return start + ((end - start) / 2)
+
+
+def internet_conditions_context(event_midpoint_utc):
+    path = VIZ_DIR / "internet_conditions.json"
+    if not path.exists():
+        return None
+
+    source_file = source_path(path)
+    note = "Internet Conditions reflects the closest available Environmental Context snapshot generated locally; it is not historical proof or attribution."
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {
+            "available": False,
+            "source_file": source_file,
+            "reason": "Internet Conditions artifact was unreadable",
+            "note": note,
+        }
+
+    if not isinstance(payload, dict):
+        return {
+            "available": False,
+            "source_file": source_file,
+            "reason": "Internet Conditions artifact was invalid",
+            "note": note,
+        }
+
+    def copy_item(item):
+        copied = {
+            "signal": item.get("signal"),
+            "region": item.get("region"),
+            "started": item.get("started"),
+            "ended": item.get("ended"),
+            "description": item.get("description"),
+            "reference": item.get("reference"),
+        }
+        for key in (
+            "entity_type",
+            "event_status",
+            "uuid",
+            "event_id",
+            "finished",
+            "leak_asn",
+            "countries",
+            "peer_count",
+            "prefix_count",
+            "origin_count",
+            "leak_count",
+        ):
+            if key in item:
+                copied[key] = item.get(key)
+        return copied
+
+    def copy_signal_result(value):
+        result_items = value.get("items") if isinstance(value.get("items"), list) else []
+        query = value.get("query") if isinstance(value.get("query"), dict) else {}
+        return {
+            "key": value.get("key"),
+            "label": value.get("label"),
+            "available": bool(value.get("available")),
+            "status": value.get("status"),
+            "item_count": value.get("item_count"),
+            "summary": value.get("summary"),
+            "latest_signal_at": value.get("latest_signal_at"),
+            "query": {str(key): query.get(key) for key in query.keys()},
+            "items": [copy_item(item) for item in result_items[:3] if isinstance(item, dict)],
+        }
+
+    generated_at = parse_ts(payload.get("generated_at"))
+    scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+    signals_checked = payload.get("signals_checked") if isinstance(payload.get("signals_checked"), list) else []
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    signal_results = payload.get("signal_results") if isinstance(payload.get("signal_results"), dict) else {}
+    degradation = payload.get("degradation") if isinstance(payload.get("degradation"), dict) else {}
+    limitations = payload.get("limitations") if isinstance(payload.get("limitations"), list) else []
+    status = payload.get("status")
+
+    return {
+        "available": status not in {"unavailable", None},
+        "source_file": source_file,
+        "provider": payload.get("provider"),
+        "generated_at": payload.get("generated_at"),
+        "status": status,
+        "summary": payload.get("summary"),
+        "query_mode": payload.get("query_mode"),
+        "query_target_label": payload.get("query_target_label"),
+        "query_target_id": payload.get("query_target_id"),
+        "provider_display_name": payload.get("provider_display_name"),
+        "fallback_used": bool(payload.get("fallback_used")),
+        "model_version": payload.get("model_version"),
+        "checked_window": payload.get("checked_window") if isinstance(payload.get("checked_window"), dict) else {},
+        "degradation": {
+            "partial": bool(degradation.get("partial")),
+            "unavailable_signals": [str(item) for item in degradation.get("unavailable_signals", [])[:8]] if isinstance(degradation.get("unavailable_signals"), list) else [],
+        },
+        "limitations": [str(item) for item in limitations[:5]],
+        "signal_results": {
+            str(key): copy_signal_result(value)
+            for key, value in signal_results.items()
+            if isinstance(value, dict)
+        },
+        "scope": {
+            "country": scope.get("country"),
+            "region": scope.get("region"),
+            "label": scope.get("label"),
+        },
+        "signals_checked": [str(item) for item in signals_checked[:5]],
+        "items": [copy_item(item) for item in items[:3] if isinstance(item, dict)],
+        "minutes_from_event_midpoint": (
+            rounded(abs((generated_at - event_midpoint_utc).total_seconds()) / 60.0)
+            if generated_at is not None and event_midpoint_utc is not None
+            else None
+        ),
+        "note": note,
+    }
 
 
 def safe_float(value, default=0.0):
@@ -1011,6 +1140,8 @@ def build_automatic_investigation(
     brief = operator_brief(selected, windows, periods, recovery, attribution)
     event_start = periods["during"].get("start")
     event_end = periods["during"].get("end")
+    event_midpoint = midpoint(parse_ts(event_start), parse_ts(event_end)) or telemetry_latest_at
+    internet_context = internet_conditions_context(event_midpoint)
     payload = {
         "artifact_type": "completed_investigation_snapshot" if historical and selected else "current_investigation",
         "schema_version": 2,
@@ -1084,7 +1215,11 @@ def build_automatic_investigation(
         "event_neighborhoods": [],
         "timeline_samples": compact_samples(samples),
         "dns_context": {"available": False, "status": "unavailable", "reason": "Automatic investigation does not refresh optional DNS context."},
-        "sources": {"telemetry_files": [], "observations": "viz/observations.json"},
+        "sources": {
+            "telemetry_files": [],
+            "observations": "viz/observations.json",
+            "internet_conditions": source_path(VIZ_DIR / "internet_conditions.json"),
+        },
         "provenance": {
             "producer": "bin/investigation_model.py",
             "transform_attribution_generated_at": (attribution or {}).get("generated_at") if isinstance(attribution, dict) else None,
@@ -1099,6 +1234,8 @@ def build_automatic_investigation(
         payload["snapshot_written_at"] = iso(snapshot_written_at or generated_at)
     if not selected:
         payload["message"] = "No sustained network incident is present in the available evidence."
+    if internet_context is not None:
+        payload["internet_conditions_context"] = internet_context
     payload["provenance"]["event_semantic_hash"] = event_semantic_hash(payload)
     payload["provenance"]["semantic_hash"] = payload["provenance"]["event_semantic_hash"]
     return payload
