@@ -30,16 +30,16 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_primary_page_uses_operator_language(self):
         for text in (
-            "Operator Assessment",
-            "Current Status",
-            "Affected and healthy scope details",
-            "Resolver evidence",
-            "Attribution evidence",
-            "Incident Timeline",
-            "Evidence Quality",
-            "Supporting And Limiting Evidence",
-            "Investigation History",
-            "Raw Forensic Evidence",
+            "Summary",
+            "Current status",
+            "What is affected details",
+            "DNS resolver path details",
+            "Likely issue details",
+            "Timeline",
+            "Confidence and limits",
+            "Why we think this",
+            "Investigation history",
+            "Technical details",
         ):
             self.assertIn(text, self.html)
         self.assertNotIn("Artifact state", self.html)
@@ -72,7 +72,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn('gateway_probe: "Gateway"', self.html)
 
     def test_raw_detail_stays_secondary_in_disclosures(self):
-        self.assertIn("Assessment provenance", self.html)
+        self.assertIn("Source", self.html)
         self.assertIn("Observation references", self.html)
         self.assertIn("Health and thresholds", self.html)
         self.assertIn("Raw WAN buckets", self.html)
@@ -115,7 +115,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "Active resolver not established",
             "No healthy monitored resolver path",
             "Both monitored resolver paths remain reachable",
-            "Fault domain is not yet localized.",
+            "Likely issue is not yet localized.",
             "No immediate action · Continue monitoring",
             "Internet Conditions context is supporting evidence only.",
             "Review completed incidents and compare their evidence, impact, and recovery.",
@@ -140,14 +140,14 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_phase_4_5_renders_split_impact_and_application_evidence(self):
         for text in (
-            "Estimated impact",
-            "Observed impact",
-            "Estimated / Observed Impact",
-            "Application Experience",
+            "User-facing impact",
+            "Reported symptoms",
+            "User-facing impact",
+            "DNS and web checks",
             "Raw application transaction details",
             "Operator note:",
-            "Estimated / Observed Impact",
-            "Application evidence is unavailable or stale.",
+            "User-facing impact",
+            "DNS and web check evidence is unavailable or stale.",
         ):
             self.assertIn(text, self.html)
         self.assertIn("applicationSummary(application)", self.html)
@@ -162,11 +162,11 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_investigation_top_summary_avoids_duplicate_primary_conclusions(self):
         top = self.html[self.html.index('id="assistantReviewSection"'):self.html.index('id="timelineSection"')]
 
-        self.assertIn("Current incident summary", top)
-        self.assertIn('renderMetricCard("Estimated / Observed Impact"', self.html)
-        self.assertIn('renderMetricCard("Affected Scope"', self.html)
-        self.assertIn('renderMetricCard("Likely Cause"', self.html)
-        self.assertIn('renderMetricCard("Application Experience"', self.html)
+        self.assertIn("Current situation", top)
+        self.assertIn('renderMetricCard("User-facing impact"', self.html)
+        self.assertIn('renderMetricCard("What is affected"', self.html)
+        self.assertIn('renderMetricCard("Likely issue"', self.html)
+        self.assertIn('renderMetricCard("DNS and web checks"', self.html)
         self.assertNotIn("Compare resolver paths", self.html)
         self.assertNotIn("Immediate recommendation", top)
         self.assertNotIn('id="operatorQuickFacts"', self.html)

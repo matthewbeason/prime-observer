@@ -195,7 +195,7 @@
     <header class="page-header">
       <div>
         <h1 id="investigationHeading" tabindex="-1">Prime Observer Investigation</h1>
-        <div class="subtitle">Operator-first diagnosis, recommended actions, scope, timeline, and supporting evidence from local artifacts.</div>
+        <div class="subtitle">Plain-language diagnosis, action, affected services, timeline, and technical details from local evidence.</div>
       </div>
       <span id="modePill" class="pill">Current Investigation</span>
     </header>
@@ -206,7 +206,7 @@
     <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Operator Assessment</div>
+          <div class="section-kicker">Summary</div>
           <h2 id="assistantReviewHeadline">Assessing evidence...</h2>
           <p id="assistantReviewAssessment" class="assistant-assessment" style="display:none;"></p>
         </div>
@@ -217,9 +217,9 @@
     <section id="currentStatusSection" class="section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Current Status</div>
-          <h2>Current incident summary</h2>
-          <p class="section-note supporting">Lifecycle, impact, affected scope, supported cause, and application evidence from generated local artifacts.</p>
+          <div class="section-kicker">Current status</div>
+          <h2>Current situation</h2>
+          <p class="section-note supporting">Current state, user-facing impact, affected checks, likely issue, and DNS/web check results from local evidence.</p>
         </div>
         <div id="currentStatusPills" class="pill-group"></div>
       </div>
@@ -228,11 +228,11 @@
 
     <section id="summarySection" class="section">
       <details class="disclosure">
-      <summary>Affected and healthy scope details <span class="small">Collapsed supporting evidence</span></summary>
+      <summary>What is affected details <span class="small">Collapsed supporting evidence</span></summary>
       <div class="disclosure-body">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Affected And Healthy Scope</div>
+          <div class="section-kicker">Affected and healthy checks</div>
           <h2>What is affected and what is healthy?</h2>
           <p id="attributionScopeSummary" class="section-note supporting"></p>
         </div>
@@ -255,13 +255,13 @@
 
     <section id="dependencySection" class="section">
       <details class="disclosure">
-      <summary>Resolver evidence <span class="small">Path state and fallback details</span></summary>
+      <summary>DNS resolver path details <span class="small">Path state and fallback details</span></summary>
       <div class="disclosure-body">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Concrete Dependency</div>
-          <h2>Resolver evidence</h2>
-          <p class="section-note supporting">Resolver-path condition, active resolver evidence, and fallback state without assuming unknown active-path evidence means no fallback.</p>
+          <div class="section-kicker">DNS resolver path</div>
+          <h2>DNS resolver path details</h2>
+          <p class="section-note supporting">Resolver path condition, active resolver evidence, and fallback state without assuming an unknown active path means no fallback.</p>
         </div>
       </div>
       <div id="dependencyStateList" class="card-grid"></div>
@@ -271,12 +271,12 @@
 
     <section id="attributionSection" class="section">
       <details class="disclosure">
-      <summary>Attribution evidence <span class="small">Confidence, limits, and unresolved alternatives</span></summary>
+      <summary>Likely issue details <span class="small">Confidence, limits, and unresolved alternatives</span></summary>
       <div class="disclosure-body">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Likely Fault Domain</div>
-          <h2>What most likely failed?</h2>
+          <div class="section-kicker">Likely issue</div>
+          <h2>What is the likely issue?</h2>
           <p id="attributionNarrative" class="section-note supporting"></p>
         </div>
       </div>
@@ -292,16 +292,16 @@
     <section id="recommendedActionsSection" class="section">
       <div class="section-header">
         <div>
-          <div class="section-kicker">Recommended Next Checks</div>
-          <h2>What should the operator do next?</h2>
-          <p class="section-note supporting">Only concrete checks supported by the current incident evidence are shown.</p>
+          <div class="section-kicker">What to do next</div>
+          <h2>Human intervention required</h2>
+          <p class="section-note supporting">Shown only when current evidence supports a specific physical or privileged action.</p>
         </div>
       </div>
       <div id="assistantReviewNextSteps" class="stack"></div>
     </section>
 
     <section id="timelineSection" class="section">
-      <div class="section-kicker">Incident Timeline</div>
+      <div class="section-kicker">Timeline</div>
       <h2>How did the incident evolve?</h2>
       <p class="section-note">Milestones use existing lifecycle evidence only. Representative p95 remains separate from maximum excursion.</p>
       <div id="timelineMilestones" class="card-grid" style="margin-bottom:14px;"></div>
@@ -311,8 +311,8 @@
     </section>
 
     <section id="evidenceQualitySection" class="section">
-      <details class="disclosure" open>
-        <summary>Evidence Quality <span class="small">Confidence, persistence, corroboration, contradictions, and stale or missing evidence</span></summary>
+      <details class="disclosure">
+        <summary>Confidence and limits <span class="small">Confidence, persistence, corroboration, contradictions, and stale or missing evidence</span></summary>
         <div class="disclosure-body">
           <div id="evidenceQualityCards" class="card-grid"></div>
           <div id="healthBoundaryList" class="summary-list" style="margin-top:14px;"></div>
@@ -321,7 +321,7 @@
     </section>
 
     <section id="coreEvidenceSection" class="section">
-      <div class="section-kicker">Supporting And Limiting Evidence</div>
+      <div class="section-kicker">Why we think this</div>
       <h2>What supports or limits the conclusion?</h2>
       <div class="panel-grid">
         <div class="card"><h3>Supporting evidence</h3><div id="supportingEvidenceList" class="summary-list"></div></div>
@@ -334,7 +334,7 @@
     <section id="historySection" class="section">
       <div class="history-toolbar">
         <div>
-          <div class="section-kicker">Investigation History</div>
+      <div class="section-kicker">Investigation history</div>
           <h2>Completed incidents</h2>
           <p class="section-note">Review completed incidents and compare their evidence, impact, and recovery.</p>
         </div>
@@ -344,7 +344,7 @@
     </section>
 
     <section id="rawDetailSection" class="section">
-      <div class="section-kicker">Raw Forensic Evidence</div>
+      <div class="section-kicker">Technical details</div>
       <h2>Details for deeper inspection</h2>
       <details class="disclosure" style="margin-top:14px;">
         <summary>Raw WAN buckets <span class="small">Stable buckets remain collapsed by default</span></summary>
@@ -354,7 +354,7 @@
         </div>
       </details>
       <details class="disclosure" style="margin-top:14px;">
-        <summary>Assessment provenance <span class="small">Evidence package and model details</span></summary>
+        <summary>Source <span class="small">Evidence package and model details</span></summary>
         <div class="disclosure-body">
           <div id="assistantReviewProvenance" class="chip-row"></div>
           <div id="assistantReviewLimitations" class="assistant-list"></div>
@@ -362,11 +362,11 @@
       </details>
       <div id="rawApplicationDetails" style="margin-top:14px;"></div>
       <details class="disclosure">
-        <summary>Observation references <span class="small">Raw deterministic observations</span></summary>
+        <summary>Observation references <span class="small">Raw local observations</span></summary>
         <div class="disclosure-body"><div id="observationReferenceList" class="summary-list"></div></div>
       </details>
       <details class="disclosure">
-        <summary>Health and thresholds <span class="small">Raw deterministic counts</span></summary>
+        <summary>Health and thresholds <span class="small">Raw local counts</span></summary>
         <div class="disclosure-body"><div id="healthEvidenceList" class="summary-list"></div></div>
       </details>
       <div class="card context-block" style="margin-top:14px;">
@@ -377,7 +377,7 @@
 
     <section id="environmentalContextSection" class="section" style="display:none;">
       <details class="disclosure">
-        <summary>Provider context details <span class="small">Cloudflare Radar and APS provenance copied from local artifacts</span></summary>
+        <summary>Provider context details <span class="small">Cloudflare Radar and APS source details copied from local evidence</span></summary>
         <div class="disclosure-body context-grid">
         <div id="internetConditionsSection" class="card context-block" style="display:none;">
           <h3>Internet Conditions</h3>
@@ -392,10 +392,10 @@
     </section>
 
     <section id="forensicTablesSection" class="section">
-      <div class="section-kicker">Forensic Tables</div>
+      <div class="section-kicker">Raw data</div>
       <h2>Raw tables</h2>
-      <details class="disclosure" open>
-        <summary>Investigation Events <span class="small">Deterministic event metadata and navigation</span></summary>
+      <details class="disclosure">
+        <summary>Investigation Events <span class="small">Event metadata and navigation</span></summary>
         <div class="disclosure-body wide table-medium">
           <table id="eventTable"></table>
         </div>
@@ -505,7 +505,7 @@
         healthy: "Healthy",
         elevated: "Elevated",
         degraded: "Degraded",
-        severe: "Severe",
+        severe: "Unstable",
         not_observed: "Not observed",
         unlikely: "Unlikely",
         possible: "Possible",
@@ -520,13 +520,13 @@
         guarded: "Guarded",
         high: "High",
         critical: "Critical",
-        resolver_provider_path: "Resolver provider/path",
-        resolver_endpoint_or_pop: "Resolver endpoint/PoP",
-        local_gateway: "Local gateway",
-        local_lan_or_wifi: "Local LAN/Wi-Fi",
-        broad_isp_path: "Broad ISP path",
-        upstream_transit_route: "Upstream transit route",
-        broad_internet_condition: "Broad internet condition",
+        resolver_provider_path: "DNS provider path",
+        resolver_endpoint_or_pop: "DNS resolver endpoint",
+        local_gateway: "Router",
+        local_lan_or_wifi: "Local Wi-Fi or LAN",
+        broad_isp_path: "ISP or upstream path",
+        upstream_transit_route: "ISP or upstream path",
+        broad_internet_condition: "Broader internet condition",
         power_environmental: "Power/environmental",
         mixed: "Mixed",
         active_healthy_peer_degraded: "Active healthy path, peer degraded",
@@ -577,9 +577,9 @@
     }
 
     function applicationSummary(application){
-      if (!application?.is_current) return "Application evidence is unavailable or stale.";
+      if (!application?.is_current) return "DNS and web check evidence is unavailable or stale.";
       const evidence = Array.isArray(application.evidence) ? application.evidence : [];
-      return evidence.length ? evidence.slice(0, 3).map(cleanOperatorText).join(" ") : "Application checks reported no notable failure.";
+      return evidence.length ? evidence.slice(0, 3).map(cleanOperatorText).join(" ") : "DNS and web checks are working.";
     }
 
     function applicationDetailDisclosure(application){
@@ -598,8 +598,20 @@
 
     function observedImpactDetail(observed, feedback){
       if (feedback?.is_current && feedback.note) return `Operator note: ${cleanOperatorText(feedback.note)}`;
+      const state = String(observed?.state || "").toLowerCase();
+      if (state === "none_reported") return "No symptoms have been reported.";
+      if (["reported_minor", "reported_major", "confirmed_service_failure"].includes(state)) return healthLabel(state);
       const drivers = Array.isArray(observed?.drivers) ? observed.drivers : [];
-      return drivers.length ? drivers.slice(0, 2).map(cleanOperatorText).join("; ") : "No reported operator or symptom impact.";
+      return drivers.length ? drivers.slice(0, 2).map(cleanOperatorText).join("; ") : "Reported symptoms are unknown.";
+    }
+
+    function userImpactSummary(estimatedImpact, observedImpact, application, feedback){
+      const observedState = String(observedImpact?.state || "").toLowerCase();
+      if (["reported_minor", "reported_major", "confirmed_service_failure"].includes(observedState)) return healthLabel(observedState);
+      const detection = application?.is_current && (application.failure_counts?.total || 0) === 0
+        ? "No user-facing failure detected by current checks"
+        : `Estimated ${healthLabel(estimatedImpact?.state)}`;
+      return `${detection} · ${observedImpactDetail(observedImpact, feedback)}`;
     }
 
     function cleanOperatorText(value){
@@ -617,6 +629,37 @@
         .replaceAll("Transit Or Isp Boundary", "transit or ISP boundary not localized")
         .replaceAll(userSymptomField, "reported user symptoms")
         .replaceAll("artifact", "local evidence")
+        .replaceAll("Broad ISP path", "ISP or upstream path")
+        .replaceAll("broad_isp_path", "ISP or upstream path")
+        .replaceAll("deterministic evidence", "local evidence")
+        .replaceAll("Deterministic evidence", "Local evidence")
+        .replaceAll("deterministic", "local")
+        .replaceAll("Deterministic", "Local")
+        .replaceAll("refined attribution", "likely issue")
+        .replaceAll("Refined attribution", "Likely issue")
+        .replaceAll("dependency state", "DNS resolver path state")
+        .replaceAll("Concrete Dependency", "DNS resolver path")
+        .replaceAll("compatibility fallback", "legacy mode")
+        .replaceAll("Compatibility fallback", "Legacy mode")
+        .replaceAll("multidimensional", "local")
+        .replaceAll("Multidimensional", "Local")
+        .replaceAll("fault domain", "likely issue")
+        .replaceAll("Fault domain", "Likely issue")
+        .replaceAll("Technical condition", "Network condition")
+        .replaceAll("technical condition", "network condition")
+        .replaceAll("Application checks", "DNS and web checks")
+        .replaceAll("application checks", "DNS and web checks")
+        .replaceAll("Resolver probes degradation", "DNS and web check instability")
+        .replaceAll("resolver probes degradation", "DNS and web check instability")
+        .replaceAll("Internet probes degradation", "Internet check instability")
+        .replaceAll("internet probes degradation", "Internet check instability")
+        .replaceAll("degradation is recovering", "instability is recovering")
+        .replaceAll("degradation is active", "instability is active")
+        .replaceAll(" severe", " unstable")
+        .replaceAll("Severe", "Unstable")
+        .replaceAll("Gateway", "Router")
+        .replaceAll("gateway", "router")
+        .replaceAll("sustained-degradation thresholds", "sustained instability thresholds")
         .replace(/\s+/g, " ")
         .trim();
     }
@@ -635,8 +678,8 @@
       if (text.includes("power")) return "Check local power equipment";
       if (text.includes("cable") || text.includes("cabling")) return "Check cabling";
       if (text.includes("restart") || text.includes("reboot")) return "Restart local equipment";
-      if (text.includes("gateway") && (text.includes("check") || text.includes("restart") || text.includes("reboot"))) return "Check local gateway";
-      if (text.includes("configuration") || text.includes("config change")) return "Review consequential configuration change";
+      if ((text.includes("router") || text.includes("gateway")) && (text.includes("check") || text.includes("restart") || text.includes("reboot"))) return "Check local router";
+      if ((text.includes("configuration") || text.includes("config change")) && (text.includes("router") || text.includes("dns") || text.includes("access point") || text.includes("firewall") || text.includes("hardware"))) return "Review recent router or DNS configuration change";
       if (text.includes("monitor") || text.includes("observe") || text.includes("continue")) return "Continue monitoring";
       return "No immediate action";
     }
@@ -809,7 +852,7 @@
       const episode = data.episode_summary || {};
       const legacy = data.schema_version !== 2;
       const pills = [
-        `<span class="pill pill-strong ${legacy ? "tone-watch" : toneForStatus(data.status)}">${legacy ? "Compatibility fallback" : fmt(artifact.label || statusLabel(data.status))}</span>`,
+        `<span class="pill pill-strong ${legacy ? "tone-watch" : toneForStatus(data.status)}">${legacy ? "Legacy mode" : fmt(artifact.label || statusLabel(data.status))}</span>`,
         `<span class="pill">Telemetry: ${shortTime(freshness.telemetry_latest_at)}</span>`,
         `<span class="pill">Evidence: ${shortTime(freshness.evidence_latest_at)}</span>`,
         `<span class="pill">Updated: ${shortTime(data.generated_at)}</span>`,
@@ -817,13 +860,13 @@
 
       document.getElementById("summaryPills").innerHTML = pills.join("");
       document.getElementById("attributionScopeSummary").textContent = legacy
-        ? "Legacy schema 1 artifact: requested-window evidence is shown without automatic incident semantics."
+        ? "Legacy evidence: requested-window evidence is shown without automatic incident semantics."
         : (usefulText(scope.scope_conclusion || data.operator_brief?.affected_scope || data.message) || "No sustained incident is present in the current evidence.");
       document.getElementById("summaryCards").innerHTML = [
         renderMetricCard("Affected target groups", scope.affected_probe_label || (selected?.target_class ? humanizeProbeGroup(selected.target_class) : "No sustained incident"), (scope.affected_endpoints || []).join(", ") || "No affected endpoint list", selected ? "tone-warn" : "tone-ok"),
-        renderMetricCard("Gateway condition", gatewayCondition(data), "Local mesh gateway evidence only; not overall Internet health.", healthTone("technical", gatewayConditionState(data))),
+        renderMetricCard("Router condition", gatewayCondition(data), "Router evidence only; not overall Internet health.", healthTone("technical", gatewayConditionState(data))),
         renderMetricCard("Internet condition", targetGroupCondition(data, "internet_probe"), "General Internet probe group.", healthTone("technical", targetGroupConditionState(data, "internet_probe"))),
-        renderMetricCard("Resolver-path condition", targetGroupCondition(data, "resolver_probe"), "DNS resolver probe group.", healthTone("technical", targetGroupConditionState(data, "resolver_probe"))),
+        renderMetricCard("DNS resolver path condition", targetGroupCondition(data, "resolver_probe"), "DNS resolver probe group.", healthTone("technical", targetGroupConditionState(data, "resolver_probe"))),
       ].join("");
 
       document.getElementById("summaryObservationList").innerHTML = [
@@ -870,20 +913,20 @@
       const actionNeeded = isMeaningfulAction(action);
       const causeSupported = isSubstantiveAttribution(attribution);
       const scopeText = usefulText(data.operator_brief?.affected_scope || data.scope_impact?.scope_conclusion || data.scope_impact?.affected_probe_label) || "No sustained affected scope";
-      const impactText = `Estimated ${healthLabel(estimatedImpact.state)} · observed ${healthLabel(observedImpact.state)}`;
-      const statusDetail = usefulText(interpretation.condition_statement || (technical.drivers || []).join("; ")) || "Technical condition unavailable in this artifact.";
+      const impactText = userImpactSummary(estimatedImpact, observedImpact, application, feedback);
+      const statusDetail = usefulText(interpretation.condition_statement || (technical.drivers || []).join("; ")) || "Network condition is unavailable in this local evidence.";
       const cards = [
         renderMetricCard("Current status", statusLabel(selected.lifecycle_state || state.state || "none"), statusDetail, toneForStatus(selected.lifecycle_state || state.state)),
-        renderMetricCard("Estimated / Observed Impact", impactText, observedImpactDetail(observedImpact, feedback), healthTone("impact", estimatedImpact.state)),
-        renderMetricCard("Affected Scope", scopeText, usefulText(data.operator_brief?.unaffected_scope) || "Healthy comparisons are in supporting evidence.", selected?.target_class ? "tone-warn" : "tone-ok"),
-        renderMetricCard("Likely Cause", causeSupported ? healthLabel(attribution.domain) : "Not localized", causeSupported ? attributionConfidenceDetail(attribution) : "Shown only when supported by local evidence.", causeSupported ? "tone-accent" : "tone-muted"),
-        renderMetricCard("Application Experience", applicationSummary(application), application?.generated_at ? `Evidence timestamp ${shortTime(application.generated_at)}` : "Application evidence is unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
+        renderMetricCard("User-facing impact", impactText, application?.is_current && (application.failure_counts?.total || 0) === 0 ? "DNS and web checks are working." : observedImpactDetail(observedImpact, feedback), healthTone("impact", estimatedImpact.state)),
+        renderMetricCard("What is affected", scopeText, usefulText(data.operator_brief?.unaffected_scope) || "Healthy comparisons are in supporting evidence.", selected?.target_class ? "tone-warn" : "tone-ok"),
+        renderMetricCard("Likely issue", causeSupported ? healthLabel(attribution.domain) : "Not localized", causeSupported ? attributionConfidenceDetail(attribution) : "Shown only when supported by local evidence.", causeSupported ? "tone-accent" : "tone-muted"),
+        renderMetricCard("DNS and web checks", applicationSummary(application), application?.generated_at ? `Evidence timestamp ${shortTime(application.generated_at)}` : "DNS and web check evidence is unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
       ];
-      if (actionNeeded) cards.push(renderMetricCard("Operator Intervention", action, "Shown only for human or physical intervention.", "tone-watch"));
+      if (actionNeeded) cards.push(renderMetricCard("Human intervention", action, "Shown only for physical or privileged action.", "tone-watch"));
 
       document.getElementById("currentStatusPills").innerHTML = [
         renderChip("Lifecycle", statusLabel(selected.lifecycle_state || state.state || "none"), toneForStatus(selected.lifecycle_state || state.state)),
-        renderChip("Evidence", hasDimensions ? "Multidimensional" : "Compatibility fallback", hasDimensions ? "tone-accent" : "tone-watch"),
+        renderChip("Source", hasDimensions ? "Local evidence" : "Legacy mode", hasDimensions ? "tone-accent" : "tone-watch"),
       ].join("");
 
       document.getElementById("currentStatusCards").innerHTML = cards.join("");
@@ -957,8 +1000,8 @@
       const lifecycle = statusLabel(data.selected_event?.lifecycle_state || data.operator_brief?.operational_state?.state || "none");
       const condition = healthLabel((data.health_dimensions?.technical_condition || {}).state || "unknown").toLowerCase();
       const app = data.health_dimensions?.application_experience || {};
-      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return `${lifecycle}: ${condition} technical condition; current application checks did not reproduce a user-facing failure.`;
-      return `${lifecycle}: ${condition} technical condition from local evidence.`;
+      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return `${lifecycle}: internet connection is ${condition}. DNS and web checks are working.`;
+      return `${lifecycle}: internet connection is ${condition} based on local evidence.`;
     }
 
     function plainIncidentAssessment(data, interpretation, attribution){
@@ -966,18 +1009,18 @@
       const limits = (interpretation.limiting_evidence || []).length
         ? `Limits: ${interpretation.limiting_evidence.slice(0, 2).map(item => cleanOperatorText(healthLabel(item))).join(", ")}.`
         : "";
-      return `Technical condition is ${condition}. ${limits}`.replace(/\s+/g, " ").trim();
+      return `Network condition is ${condition}. ${limits}`.replace(/\s+/g, " ").trim();
     }
 
     function renderAttributionSection(data, attribution, interpretation){
       const substantive = isSubstantiveAttribution(attribution);
-      const domain = substantive ? healthLabel(attribution.domain) : "Fault domain is not yet localized.";
+      const domain = substantive ? healthLabel(attribution.domain) : "Likely issue is not yet localized.";
       const support = attribution.supporting_evidence || attribution.evidence_for || interpretation.evidence_drivers || [];
       const limits = attribution.evidence_against || interpretation.limiting_evidence || [];
       const unresolved = attribution.unresolved_evidence || data.health_dimensions?.unresolved_evidence || [];
       document.getElementById("attributionNarrative").textContent = substantive
         ? `${domain} is most likely based on current evidence. ${usefulText(interpretation.attribution_statement) || "Evidence and limitations are listed below."}`
-        : "Fault domain is not yet localized.";
+        : "Likely issue is not yet localized.";
       const fill = (id, items, empty) => {
         document.getElementById(id).innerHTML = (items || []).length
           ? items.map(item => renderSummaryItem("Evidence", cleanOperatorText(healthLabel(item)), "")).join("")
@@ -1049,9 +1092,9 @@
       };
       add("First anomalous sample", details.first_anomalous_at || episode.event_start || selected.start, "Start of the selected incident evidence.", "tone-warn");
       add("Sustained confirmation", details.confirmed_at, "Persistence threshold was satisfied.", "tone-risk");
-      if (data.health_dimensions?.attribution?.domain) milestones.push(renderMetricCard("Attribution update", healthLabel(data.health_dimensions.attribution.domain), "Refined attribution from generated evidence.", "tone-accent"));
-      if ((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions?.user_impact)?.state) milestones.push(renderMetricCard("Estimated impact", healthLabel((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions.user_impact).state), "Inferred impact from generated evidence.", "tone-watch"));
-      if (data.health_dimensions?.observed_user_impact?.state && data.health_dimensions.observed_user_impact.state !== "unknown") milestones.push(renderMetricCard("Observed impact", healthLabel(data.health_dimensions.observed_user_impact.state), "Reported operator or symptom evidence.", healthTone("impact", data.health_dimensions.observed_user_impact.state)));
+      if (data.health_dimensions?.attribution?.domain) milestones.push(renderMetricCard("Likely issue update", healthLabel(data.health_dimensions.attribution.domain), "Likely issue from local evidence.", "tone-accent"));
+      if ((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions?.user_impact)?.state) milestones.push(renderMetricCard("User-facing impact", healthLabel((data.health_dimensions?.estimated_user_impact || data.impact_assessment || data.health_dimensions.user_impact).state), "Inferred impact from local evidence.", "tone-watch"));
+      if (data.health_dimensions?.observed_user_impact?.state && data.health_dimensions.observed_user_impact.state !== "unknown") milestones.push(renderMetricCard("Reported symptoms", healthLabel(data.health_dimensions.observed_user_impact.state), "Reported operator or symptom evidence.", healthTone("impact", data.health_dimensions.observed_user_impact.state)));
       add("Recovery candidate", details.recovery_candidate_at || episode.recovery_candidate, "First candidate healthy sample after anomaly.", "tone-watch");
       add("Recovery started", details.recovery_started_at, "Healthy persistence started.", "tone-ok");
       add("Recovered", details.recovered_at || episode.recovery_confirmation, "Stable recovery window completed.", "tone-ok");
@@ -1400,18 +1443,18 @@
         headline: brief.headline || headline || data.title || "Investigation assessment",
         assessment: assessment || brief.summary || data.message || "Generated assessment from local evidence.",
         current_status: data.selected_event?.lifecycle_state || brief.operational_state?.state,
-        likely_fault_domain: attribution.domain && isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : (brief.likely_fault_domain || "Fault domain is not yet localized."),
+        likely_fault_domain: attribution.domain && isSubstantiveAttribution(attribution) ? healthLabel(attribution.domain) : (brief.likely_fault_domain || "Likely issue is not yet localized."),
         affected_scope: brief.affected_scope || data.scope_impact?.scope_conclusion,
         healthy_scope: brief.unaffected_scope,
         user_impact: interpretation.impact_statement || `Estimated ${healthLabel((dimensions.estimated_user_impact || data.impact_assessment || dimensions.user_impact || {}).state)} · observed ${healthLabel((dimensions.observed_user_impact || {}).state)}`,
         immediate_recommendation: firstMeaningfulAction(brief.recommended_actions || interpretation.recommended_deterministic_checks, data.dependency_state?.[0] || {}),
         confidence: dimensions.detection_confidence || brief.confidence,
-        uncertainty: (interpretation.limiting_evidence || brief.limiting_evidence || [])[0] || "Confidence is bounded by the deterministic evidence currently available.",
+        uncertainty: (interpretation.limiting_evidence || brief.limiting_evidence || [])[0] || "Confidence is bounded by the local evidence currently available.",
         next_steps: (brief.recommended_actions || []).length
           ? brief.recommended_actions
           : (interpretation.recommended_deterministic_checks || []).map(item => ({
               action: item,
-              reason: "Deterministic Phase 3 health interpretation listed this as a safe follow-up check.",
+              reason: "Local health interpretation listed this as a safe follow-up check.",
               expected_observation: "Additional operator evidence narrows the affected path, impact, or attribution boundary.",
               assessment_change: "Updates the next generated health-dimensions artifact if the evidence changes."
             })),
@@ -1427,12 +1470,12 @@
       section.classList.add("visible");
       const matched = matchingAssistantReview(review, assistantInput);
       const assessment = matched || deterministicAssessment(data || {});
-      document.getElementById("assistantReviewHeadline").textContent = assessment.headline || "Operator assessment";
+      document.getElementById("assistantReviewHeadline").textContent = cleanOperatorText(assessment.headline || "Investigation summary");
       document.getElementById("assistantReviewAssessment").textContent = "";
       const pills = [];
-      pills.push(renderChip("Provenance", matched ? "current synthesis" : "local evidence", matched ? "tone-accent" : "tone-ok"));
+      pills.push(renderChip("Source", matched ? "current synthesis" : "local evidence", matched ? "tone-accent" : "tone-ok"));
       document.getElementById("assistantReviewPills").innerHTML = pills.join("");
-      const provenance = [renderChip("Analysis source", matched ? "Current synthesis from evidence package" : "Local deterministic evidence", matched ? "tone-accent" : "tone-ok")];
+      const provenance = [renderChip("Source", matched ? "Current local synthesis" : "Local evidence", matched ? "tone-accent" : "tone-ok")];
       if (matched?.requested_model){
         provenance.push(renderChip("Model", fmt(matched.requested_model), "tone-accent"));
       }

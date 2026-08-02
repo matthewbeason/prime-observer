@@ -235,6 +235,76 @@ console.log(JSON.stringify({{nextSteps: document.getElementById("assistantReview
         self.assertEqual(rendered["nextSteps"], "")
         self.assertNotIn("COMPARE_RESOLVER_AND_INTERNET", rendered["nextSteps"])
 
+    def test_concrete_intervention_is_rendered_when_required(self):
+        review = {
+            "status": "ok",
+            "input_hash": "a" * 64,
+            "headline": "Router needs attention",
+            "assessment": "Operator assessment",
+            "confidence": "medium",
+            "next_steps": [{"label": "Restart the router", "reason": "Router check is supported."}],
+        }
+        body = f"""
+renderAssistantReview({json.dumps(review)}, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+console.log(JSON.stringify({{display: document.getElementById("recommendedActionsSection").style.display || "visible", nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["display"], "visible")
+        self.assertIn("Restart local equipment", rendered["nextSteps"])
+
+    def test_no_intervention_section_for_prime_observer_work(self):
+        body = f"""
+renderAssistantReview(null, null, {json.dumps(self.investigation_payload())});
+console.log(JSON.stringify({{display: document.getElementById("recommendedActionsSection").style.display, nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["display"], "none")
+        self.assertEqual(rendered["nextSteps"], "")
+
+    def test_operator_impact_copy_distinguishes_missing_and_reported_feedback(self):
+        base = self.investigation_payload()
+        base["health_dimensions"] = {
+            "estimated_user_impact": {"state": "possible"},
+            "observed_user_impact": {"state": "unknown"},
+            "application_experience": {"is_current": True, "failure_counts": {"total": 0}, "evidence": []},
+        }
+        none_reported = json.loads(json.dumps(base))
+        none_reported["health_dimensions"]["observed_user_impact"] = {"state": "none_reported"}
+        reported = json.loads(json.dumps(base))
+        reported["health_dimensions"]["observed_user_impact"] = {"state": "reported_major"}
+        body = f"""
+const missing = userImpactSummary({{state: "possible"}}, {json.dumps(base["health_dimensions"]["observed_user_impact"])}, {json.dumps(base["health_dimensions"]["application_experience"])}, null);
+const none = userImpactSummary({{state: "possible"}}, {json.dumps(none_reported["health_dimensions"]["observed_user_impact"])}, {json.dumps(base["health_dimensions"]["application_experience"])}, null);
+const disruption = userImpactSummary({{state: "possible"}}, {json.dumps(reported["health_dimensions"]["observed_user_impact"])}, {json.dumps(base["health_dimensions"]["application_experience"])}, null);
+console.log(JSON.stringify({{missing, none, disruption}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("No user-facing failure detected by current checks", rendered["missing"])
+        self.assertIn("Reported symptoms are unknown", rendered["missing"])
+        self.assertIn("No symptoms have been reported", rendered["none"])
+        self.assertIn("Major impact reported", rendered["disruption"])
+
+    def test_operator_display_mappings_hide_model_terms(self):
+        body = """
+console.log(JSON.stringify({
+  broadIsp: healthLabel("broad_isp_path"),
+  severe: healthLabel("severe"),
+  clean: cleanOperatorText("Technical condition uses refined attribution for broad_isp_path and deterministic evidence."),
+  app: applicationSummary({is_current: true, failure_counts: {total: 0}, evidence: []}),
+}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["broadIsp"], "ISP or upstream path")
+        self.assertEqual(rendered["severe"], "Unstable")
+        self.assertIn("Network condition", rendered["clean"])
+        self.assertIn("likely issue", rendered["clean"])
+        self.assertIn("local evidence", rendered["clean"])
+        self.assertEqual(rendered["app"], "DNS and web checks are working.")
+
     def test_material_limitations_are_secondary_disclosures(self):
         review = {
             "status": "ok",

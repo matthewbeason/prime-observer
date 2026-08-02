@@ -522,11 +522,11 @@
   <div class="header">
     <div class="titleblock">
       <h1>Prime Observer</h1>
-      <div class="subtitle" id="subtitle">Network Observability &amp; Experience Engine</div>
+      <div class="subtitle" id="subtitle">Home network status</div>
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
-      <a class="badge" id="historicalEvidenceBadge" href="./investigate.html">Historical Evidence</a>
+      <a class="badge" id="historicalEvidenceBadge" href="./investigate.html">Investigation history</a>
       <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.9.0</strong></span>
     </div>
   </div>
@@ -543,45 +543,45 @@
 
   <div class="row dashboard-overview phase3-row operator-assessment-row" style="margin-bottom:16px;">
     <div class="card operator-card" id="operatorAssessmentCard">
-      <h4><span>Operator Assessment</span><span class="subtle" id="operatorAssessmentProvenance">local artifact</span></h4>
-      <div class="operator-summary" id="operatorAssessmentHeadline">Awaiting operator assessment artifact.</div>
+      <h4><span>Current summary</span><span class="subtle" id="operatorAssessmentProvenance">local evidence</span></h4>
+      <div class="operator-summary" id="operatorAssessmentHeadline">Awaiting current summary.</div>
     </div>
   </div>
 
   <div class="viz-panel primary mobile-only">
     <div class="panel-kicker">Current Network State</div>
       <div class="mobile-state-grid">
-        <div class="mobile-state-card">
-        <h4><span>Gateway Path</span> <span class="pill neutral" id="mobileConnectionBadge">—</span></h4>
-        <div class="value-inline" id="mobileConnectionP95">—</div>
-        <div class="detail-line"><b>Mesh gateway:</b> <span class="mono" id="mobileGwLabel">—</span></div>
-        <div class="detail-line"><b>Updated:</b> <span id="mobileLastTs">—</span></div>
-        </div>
-        <div class="mobile-state-card">
-        <h4>Technical Condition</h4>
-        <div class="value-inline" id="mobileTechnicalConditionValue">—</div>
-        <div class="detail-line" id="mobileTechnicalConditionDetail">—</div>
-        </div>
         <div class="mobile-state-card" id="mobileUserImpactCard">
-        <h4>Estimated User Impact</h4>
+        <h4>User-facing impact</h4>
         <div class="value-inline" id="mobileUserImpactValue">—</div>
         <div class="detail-line" id="mobileUserImpactDetail">—</div>
-        <div class="detail-line"><b>Observed:</b> <span id="mobileObservedImpactInline">Unknown</span></div>
+        <div class="detail-line"><b>Symptoms:</b> <span id="mobileObservedImpactInline">Unknown</span></div>
         </div>
         <div class="mobile-state-card">
-        <h4>Affected Scope</h4>
+        <h4>What is affected</h4>
         <div class="value-inline" id="mobileAffectedScopeValue">—</div>
         <div class="detail-line" id="mobileAffectedScopeDetail">—</div>
         </div>
         <div class="mobile-state-card span-2" id="mobileLikelyCauseCard">
-        <h4>Likely Cause</h4>
+        <h4>Likely issue</h4>
         <div class="value-inline" id="mobileLikelyCauseValue">—</div>
         <div class="detail-line" id="mobileLikelyCauseDetail">Only shown when supported by local evidence.</div>
         </div>
         <div class="mobile-state-card span-2" id="mobileApplicationExperienceCard">
-        <h4>Application Experience</h4>
+        <h4>DNS and web checks</h4>
         <div class="value-inline" id="mobileApplicationExperienceValue">—</div>
         <div class="detail-line" id="mobileApplicationExperienceDetail">—</div>
+        </div>
+        <div class="mobile-state-card span-2">
+        <h4>Network condition</h4>
+        <div class="value-inline" id="mobileTechnicalConditionValue">—</div>
+        <div class="detail-line" id="mobileTechnicalConditionDetail">—</div>
+        </div>
+        <div class="mobile-state-card span-2">
+        <h4><span>Router path</span> <span class="pill neutral" id="mobileConnectionBadge">—</span></h4>
+        <div class="value-inline" id="mobileConnectionP95">—</div>
+        <div class="detail-line"><b>Router:</b> <span class="mono" id="mobileGwLabel">—</span></div>
+        <div class="detail-line"><b>Updated:</b> <span id="mobileLastTs">—</span></div>
         </div>
         <div class="mobile-state-card span-2" id="mobilePrimaryDnsCard">
         <h4>DNS Activity</h4>
@@ -606,43 +606,26 @@
     </div>
 
   <div class="row dashboard-overview primary-operator-row">
-    <div class="card" id="technicalConditionCard">
-      <h4><span>Technical Condition</span><span class="pill" id="technicalConditionPill">v1</span></h4>
-      <div class="value" id="technicalConditionValue">—</div>
-      <div class="legacy-disclosure" id="technicalConditionDetail">Local artifact health dimension.</div>
-    </div>
     <div class="card" id="userImpactCard">
-      <h4><span>Estimated User Impact</span><span class="pill" id="userImpactPill">v1</span></h4>
+      <h4><span>User-facing impact</span><span class="pill" id="userImpactPill">—</span></h4>
       <div class="value" id="userImpactValue">—</div>
       <div class="legacy-disclosure" id="userImpactDetail">Inferred from local evidence.</div>
-      <div class="legacy-disclosure"><b>Observed:</b> <span id="observedImpactInline">Unknown</span></div>
+      <div class="legacy-disclosure"><b>Symptoms:</b> <span id="observedImpactInline">Unknown</span></div>
     </div>
     <div class="card" id="affectedScopeCard">
-      <h4><span>Affected Scope</span><span class="pill" id="affectedScopePill">v1</span></h4>
+      <h4><span>What is affected</span><span class="pill" id="affectedScopePill">—</span></h4>
       <div class="value" id="affectedScopeValue">—</div>
       <div class="legacy-disclosure" id="affectedScopeDetail">Scope from emitted local evidence.</div>
     </div>
     <div class="card" id="likelyCauseCard">
-      <h4><span>Likely Cause</span><span class="pill" id="likelyCausePill">evidence</span></h4>
+      <h4><span>Likely issue</span><span class="pill" id="likelyCausePill">evidence</span></h4>
       <div class="value" id="likelyCauseValue">—</div>
       <div class="legacy-disclosure" id="likelyCauseDetail">Only shown when sufficiently supported.</div>
     </div>
-  </div>
-
-  <div class="row dashboard-overview local-evidence-row" style="margin-top:16px;">
-    <div class="card compact">
-      <h4><span>Gateway Path</span><span class="pill neutral" id="connectionBadge">—</span></h4>
-      <div class="value" id="connectionP95">—</div>
-      <div class="compact-subvalue" id="phase">Mesh gateway reachability</div>
-      <div class="metric-stack" style="margin-top:10px;">
-        <div class="metric-pair"><span class="label">Mesh gateway</span><span class="metric-value mono" id="gwLabel">—</span></div>
-        <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="lastTs">—</span></div>
-      </div>
-    </div>
     <div class="card wide-card" id="applicationExperienceCard">
-      <h4><span>Application Experience</span><span class="pill" id="applicationExperiencePill">local</span></h4>
+      <h4><span>DNS and web checks</span><span class="pill" id="applicationExperiencePill">—</span></h4>
       <div class="value" style="font-size:20px;" id="applicationExperienceValue">—</div>
-      <div class="status-summary" id="applicationExperienceSummary">Application evidence is unavailable or stale.</div>
+      <div class="status-summary" id="applicationExperienceSummary">DNS and web check evidence is unavailable or stale.</div>
       <div class="metric-stack" style="margin-top:8px;">
         <div class="metric-pair"><span class="label">System DNS</span><span class="metric-value" id="applicationSystemDnsValue">—</span></div>
         <div class="metric-pair"><span class="label">Direct primary resolver</span><span class="metric-value" id="applicationPrimaryDnsValue">—</span></div>
@@ -653,8 +636,25 @@
     </div>
   </div>
 
+  <div class="row dashboard-overview local-evidence-row" style="margin-top:16px;">
+    <div class="card compact">
+      <h4><span>Router path</span><span class="pill neutral" id="connectionBadge">—</span></h4>
+      <div class="value" id="connectionP95">—</div>
+      <div class="compact-subvalue" id="phase">Router reachability</div>
+      <div class="metric-stack" style="margin-top:10px;">
+        <div class="metric-pair"><span class="label">Router</span><span class="metric-value mono" id="gwLabel">—</span></div>
+        <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="lastTs">—</span></div>
+      </div>
+    </div>
+    <div class="card" id="technicalConditionCard">
+      <h4><span>Network condition</span><span class="pill" id="technicalConditionPill">—</span></h4>
+      <div class="value" id="technicalConditionValue">—</div>
+      <div class="legacy-disclosure" id="technicalConditionDetail">Local network evidence.</div>
+    </div>
+  </div>
+
   <details class="supporting-context" id="supportingContextDetails">
-    <summary>Supporting Context</summary>
+    <summary>Details</summary>
     <div class="row dashboard-overview dashboard-detail-row" style="margin-top:16px;">
       <div class="card accent-ok wide-card" id="dnsCard">
       <h4><span>DNS Activity</span><span class="hmeta"><span class="subtle" id="dnsStale"></span><span class="pill info" id="dnsProviderBadge">NextDNS</span></span></h4>
@@ -689,7 +689,7 @@
       <div class="small" id="dnsUnavailable" style="display:none;">NextDNS summary not available. Network telemetry is unaffected.</div>
     </div>
       <div class="card wide-card" id="dependencyStateCard">
-      <h4><span>Resolver Evidence</span><span class="pill" id="dependencyStatePill">v1</span></h4>
+      <h4><span>DNS resolver path details</span><span class="pill" id="dependencyStatePill">—</span></h4>
       <div class="value" style="font-size:20px;" id="dependencyStateValue">—</div>
       <div class="metric-stack" style="margin-top:8px;">
         <div class="metric-pair"><span class="label">Primary</span><span class="metric-value" id="dependencyPrimaryValue">—</span></div>
@@ -700,16 +700,16 @@
       <div class="chip-row" id="dependencyMembersChips"></div>
     </div>
       <div class="card wide-card" id="refinedAttributionCard">
-      <h4><span>Attribution Evidence</span><span class="pill" id="refinedAttributionPill">v1</span></h4>
+      <h4><span>Why this looks upstream</span><span class="pill" id="refinedAttributionPill">—</span></h4>
       <div class="value" style="font-size:20px;" id="refinedAttributionValue">—</div>
-      <div class="legacy-disclosure" id="refinedAttributionDetail">Uses multidimensional attribution when present.</div>
+      <div class="legacy-disclosure" id="refinedAttributionDetail">Uses local evidence when present.</div>
       <div class="legacy-disclosure" id="refinedAttributionUncertainty">Uncertainty unavailable.</div>
-      <div class="metric-pair" style="margin-top:8px;"><span class="label">Attribution confidence</span><span class="metric-value" id="refinedAttributionConfidence">—</span></div>
+      <div class="metric-pair" style="margin-top:8px;"><span class="label">Cause confidence</span><span class="metric-value" id="refinedAttributionConfidence">—</span></div>
     </div>
       <div class="card" style="min-width:240px;" id="evidenceQualityCard">
-        <h4><span>Evidence Quality</span><span class="pill" id="detectionConfidencePill">v1</span></h4>
-        <div class="status-summary">Detection confidence: <span id="detectionConfidenceValue">—</span></div>
-        <div class="legacy-disclosure" id="detectionConfidenceDetail">Confidence emitted by local artifacts.</div>
+        <h4><span>Confidence</span><span class="pill" id="detectionConfidencePill">—</span></h4>
+        <div class="status-summary">Confidence: <span id="detectionConfidenceValue">—</span></div>
+        <div class="legacy-disclosure" id="detectionConfidenceDetail">Confidence from local evidence.</div>
       </div>
 
       <div class="card" style="min-width:240px;" id="internetConditionsCard">
@@ -767,7 +767,7 @@
   </details>
 
   <details class="supporting-context" id="legacyCompatibilityDetails" style="display:none;">
-    <summary>Legacy Compatibility</summary>
+    <summary>Legacy details</summary>
     <div class="row dashboard-overview" style="margin-top:16px;">
       <div class="card" style="min-width:240px;" id="noticeCard">
         <h4><span>Legacy Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
@@ -790,9 +790,9 @@
 
   <div class="row dashboard-overview" style="margin-top:16px;">
     <div class="card health-card">
-      <h4><span>WAN Health Summary</span><span class="small">last 24h</span></h4>
+      <h4><span>24-hour network history</span><span class="small">last 24h</span></h4>
       <div class="small" style="margin-bottom:8px;">
-        Current WAN experience across monitored internet and resolver target groups. Use this to track latency, jitter, loss, and sustained degradation over time.
+        Current network checks across monitored internet and resolver target groups. Use this to track latency, jitter, loss, and sustained instability over time.
       </div>
       <div id="compareWrap"></div>
     </div>
@@ -800,9 +800,9 @@
 
   <div class="section-stack">
     <div class="viz-panel primary">
-      <div class="panel-kicker">Primary Evidence View</div>
+      <div class="panel-kicker">Primary evidence view</div>
       <div class="section-title">
-        <h3 id="heatmapHeading">WAN “bad moments” heatmap</h3>
+        <h3 id="heatmapHeading">Internet instability timeline</h3>
         <div class="legend" id="heatmapLegend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts</div>
       </div>
       <div class="heatmap-scroll">
@@ -812,7 +812,7 @@
     </div>
 
     <div class="viz-panel primary" id="selectedBucketPanel" aria-live="polite" aria-atomic="true">
-      <div class="panel-kicker">Selected Interval Evidence</div>
+      <div class="panel-kicker">Selected time window</div>
       <div class="section-title">
         <h3 id="selectedBucketHeadline">Select a heatmap bucket</h3>
         <div class="legend" id="selectedBucketLegend">Tap or click a WAN heatmap bucket to review that same 15-minute interval across the evidence chips and all three charts.</div>
@@ -846,7 +846,7 @@
       </div>
       <div class="panel-actions">
         <span id="selectedBucketActionCopy">Need event-level tables or nearby context?</span>
-        <a id="selectedBucketInvestigationLink" class="button-link" href="./investigate.html">Historical Evidence</a>
+        <a id="selectedBucketInvestigationLink" class="button-link" href="./investigate.html">Investigation history</a>
         <button type="button" class="button-link" id="clearSelectionButton" hidden>Clear selection</button>
       </div>
     </div>
@@ -880,7 +880,7 @@
     </div>
 
     <details class="mobile-secondary-details mobile-only">
-      <summary>Supporting Context</summary>
+      <summary>Details</summary>
       <div class="mobile-secondary-body">
         <div class="mobile-secondary-card" id="mobileDnsCard">
           <h4>DNS Activity</h4>
@@ -950,8 +950,8 @@
           </details>
         </div>
         <div class="mobile-secondary-card">
-          <h4>WAN Health Summary</h4>
-          <div class="small" style="margin-bottom:8px;">Current WAN experience across monitored internet and resolver target groups.</div>
+          <h4>24-hour network history</h4>
+          <div class="small" style="margin-bottom:8px;">Current network checks across monitored internet and resolver target groups.</div>
           <div id="mobileCompareWrap"></div>
         </div>
       </div>
@@ -1006,14 +1006,14 @@
     }
 
     function pathLabel(phase){
-      if (phase === "FIBER") return "Current gateway path";
-      if (phase === "TMOBILE") return "Alternate gateway path";
-      return "Gateway path";
+      if (phase === "FIBER") return "Current router path";
+      if (phase === "TMOBILE") return "Alternate router path";
+      return "Router path";
     }
 
     function pathTagLabel(phase){
       if (phase === "FIBER" || phase === "TMOBILE") return pathLabel(phase);
-      return `Gateway path (${phase || "UNKNOWN"})`;
+      return `Router path (${phase || "UNKNOWN"})`;
     }
 
     function makeBurstTrigger(limit, windowMs, action){
@@ -1504,18 +1504,18 @@
       const panelLink = document.getElementById("selectedBucketInvestigationLink");
       if (badge){
         badge.href = href;
-        badge.textContent = bucket ? "Historical Evidence (Selected)" : "Historical Evidence";
-        badge.setAttribute("aria-label", bucket ? "Open Historical Evidence for the selected interval" : "Open Historical Evidence");
+        badge.textContent = bucket ? "Investigation history (selected)" : "Investigation history";
+        badge.setAttribute("aria-label", bucket ? "Open investigation history for the selected interval" : "Open investigation history");
       }
       if (panelLink){
         panelLink.href = href;
-        panelLink.textContent = bucket ? "Open Historical Evidence for this interval" : "Historical Evidence";
-        panelLink.setAttribute("aria-label", bucket ? "Open Historical Evidence for this interval" : "Open Historical Evidence");
+        panelLink.textContent = bucket ? "Open investigation history for this interval" : "Investigation history";
+        panelLink.setAttribute("aria-label", bucket ? "Open investigation history for this interval" : "Open investigation history");
       }
       const actionCopy = document.getElementById("selectedBucketActionCopy");
       if (actionCopy){
         actionCopy.textContent = bucket
-          ? "Carry this exact 15-minute interval into Historical Evidence."
+          ? "Carry this exact 15-minute interval into investigation history."
           : "Need event-level tables or nearby context?";
       }
       const clearButton = document.getElementById("clearSelectionButton");
@@ -1874,7 +1874,7 @@
         healthy: "Healthy",
         elevated: "Elevated",
         degraded: "Degraded",
-        severe: "Severe",
+        severe: "Unstable",
         not_observed: "Not observed",
         unlikely: "Unlikely",
         possible: "Possible",
@@ -1898,13 +1898,13 @@
         both_degraded: "Both degraded",
         no_usable_fallback: "No usable fallback",
         insufficient_evidence: "Insufficient evidence",
-        resolver_provider_path: "Resolver provider/path",
-        resolver_endpoint_or_pop: "Resolver endpoint/PoP",
-        local_gateway: "Local gateway",
-        local_lan_or_wifi: "Local LAN/Wi-Fi",
-        broad_isp_path: "Broad ISP path",
-        upstream_transit_route: "Upstream transit route",
-        broad_internet_condition: "Broad internet condition",
+        resolver_provider_path: "DNS provider path",
+        resolver_endpoint_or_pop: "DNS resolver endpoint",
+        local_gateway: "Router",
+        local_lan_or_wifi: "Local Wi-Fi or LAN",
+        broad_isp_path: "ISP or upstream path",
+        upstream_transit_route: "ISP or upstream path",
+        broad_internet_condition: "Broader internet condition",
         power_environmental: "Power/environmental",
         mixed: "Mixed",
         reduced: "Reduced",
@@ -1950,12 +1950,12 @@
       const failureTotal = parseFloatSafe(application?.failure_counts?.total, 0) || 0;
       const summary = Array.isArray(application?.evidence) && application.evidence.length
         ? application.evidence.slice(0, 2).map(cleanOperatorText).join(" ")
-        : "Application evidence is unavailable or stale.";
+        : "DNS and web check evidence is unavailable or stale.";
       const overallTone = !current ? "neutral" : failureTotal > 1 ? "risk" : failureTotal === 1 ? "watch" : "ok";
-      document.getElementById("applicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Normal") : "Unavailable";
+      document.getElementById("applicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Working") : "Unavailable";
       document.getElementById("applicationExperienceSummary").textContent = summary;
       document.getElementById("applicationExperienceFreshness").textContent = current ? "Fresh" : healthLabel(application?.freshness || "missing");
-      document.getElementById("mobileApplicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Normal") : "Unavailable";
+      document.getElementById("mobileApplicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Working") : "Unavailable";
       document.getElementById("mobileApplicationExperienceDetail").textContent = summary;
       const entries = [
         ["applicationSystemDnsValue", applicationTransaction(application, "system")],
@@ -1973,9 +1973,19 @@
 
     function observedImpactDetail(observed, feedback){
       if (feedback?.is_current && feedback.note) return `Operator note: ${cleanOperatorText(feedback.note)}`;
+      const state = String(observed?.state || "").toLowerCase();
+      if (state === "none_reported") return "No symptoms have been reported.";
+      if (["reported_minor", "reported_major", "confirmed_service_failure"].includes(state)) return healthLabel(state);
       const drivers = Array.isArray(observed?.drivers) ? observed.drivers : [];
       if (drivers.length) return drivers.slice(0, 2).map(cleanOperatorText).join("; ");
-      return "No reported operator or symptom impact.";
+      return "Reported symptoms are unknown.";
+    }
+
+    function userImpactValue(estimatedImpact, observedImpact, application){
+      const observedState = String(observedImpact?.state || "").toLowerCase();
+      if (["reported_minor", "reported_major", "confirmed_service_failure"].includes(observedState)) return healthLabel(observedState);
+      if (application?.is_current && (application.failure_counts?.total || 0) === 0) return "No failure detected";
+      return estimatedImpact?.state ? healthLabel(estimatedImpact.state) : "Not established";
     }
 
     function setPillText(id, label, tone){
@@ -2019,7 +2029,23 @@
         .replaceAll(`active ${"dependency"} ${"member"}`, "active resolver")
         .replaceAll(`${"dependency"} ${"member"}`, "resolver path")
         .replaceAll(userSymptomField, "reported user symptoms")
-        .replaceAll("artifact", "local evidence");
+        .replaceAll("artifact", "local evidence")
+        .replaceAll("Broad ISP path", "ISP or upstream path")
+        .replaceAll("broad_isp_path", "ISP or upstream path")
+        .replaceAll("Local mesh gateway", "Router")
+        .replaceAll("local mesh gateway", "router")
+        .replaceAll("Mesh gateway", "Router")
+        .replaceAll("mesh gateway", "router")
+        .replaceAll("Technical condition", "Network condition")
+        .replaceAll("technical condition", "network condition")
+        .replaceAll("Application checks", "DNS and web checks")
+        .replaceAll("application checks", "DNS and web checks")
+        .replaceAll("Resolver probes degradation", "DNS and web check instability")
+        .replaceAll("resolver probes degradation", "DNS and web check instability")
+        .replaceAll("Internet probes degradation", "Internet check instability")
+        .replaceAll("internet probes degradation", "Internet check instability")
+        .replaceAll("degradation is recovering", "instability is recovering")
+        .replaceAll("degradation is active", "instability is active");
       return normalized.replace(/\s+/g, " ").trim();
     }
 
@@ -2058,8 +2084,8 @@
       if (text.includes("power")) return "Check local power equipment";
       if (text.includes("cable") || text.includes("cabling")) return "Check cabling";
       if (text.includes("restart") || text.includes("reboot")) return "Restart local equipment";
-      if (text.includes("gateway") && (text.includes("check") || text.includes("restart") || text.includes("reboot"))) return "Check local gateway";
-      if (text.includes("configuration") || text.includes("config change")) return "Review consequential configuration change";
+      if ((text.includes("router") || text.includes("gateway")) && (text.includes("check") || text.includes("restart") || text.includes("reboot"))) return "Check local router";
+      if ((text.includes("configuration") || text.includes("config change")) && (text.includes("router") || text.includes("dns") || text.includes("access point") || text.includes("firewall") || text.includes("hardware"))) return "Review recent router or DNS configuration change";
       return "No immediate action";
     }
 
@@ -2070,7 +2096,7 @@
     function affectedScopeFromDimensions(dimensions, dependency){
       const groups = dimensions?.technical_condition?.target_groups || {};
       const affected = [];
-      if (["elevated", "degraded", "severe"].includes(groups.gateway_probe?.state)) affected.push("Gateway path");
+      if (["elevated", "degraded", "severe"].includes(groups.gateway_probe?.state)) affected.push("Router path");
       if (["elevated", "degraded", "severe"].includes(groups.internet_probe?.state)) affected.push("Internet probes");
       if (["elevated", "degraded", "severe"].includes(groups.resolver_probe?.state)) affected.push("Resolver probes");
       const degradedMember = Array.isArray(dependency?.members)
@@ -2083,7 +2109,7 @@
     function healthyScopeFromDimensions(dimensions, dependency){
       const groups = dimensions?.technical_condition?.target_groups || {};
       const healthy = [];
-      if (groups.gateway_probe?.state === "healthy") healthy.push("gateway path healthy");
+      if (groups.gateway_probe?.state === "healthy") healthy.push("router path healthy");
       if (groups.internet_probe?.state === "healthy") healthy.push("internet probes healthy");
       if (groups.resolver_probe?.state === "healthy") healthy.push("resolver probes healthy");
       if (Array.isArray(dependency?.members)){
@@ -2104,7 +2130,7 @@
       const affected = [];
       if (["elevated", "degraded", "severe"].includes(groups.internet_probe?.state)) affected.push("internet probes");
       if (["elevated", "degraded", "severe"].includes(groups.resolver_probe?.state)) affected.push("resolver probes");
-      if (["elevated", "degraded", "severe"].includes(groups.gateway_probe?.state)) affected.push("local mesh gateway");
+      if (["elevated", "degraded", "severe"].includes(groups.gateway_probe?.state)) affected.push("router path");
       if (!affected.length) return null;
       return `${affected.map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" and ")} affected`;
     }
@@ -2113,9 +2139,9 @@
       const impactState = (dimensions?.estimated_user_impact || dimensions?.user_impact || {}).state;
       const technicalState = dimensions?.technical_condition?.state;
       const app = dimensions?.application_experience;
-      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return `${healthLabel(technicalState)} technical condition; current application checks did not reproduce a user-facing failure.`;
-      if (meaningfulUserImpactState(impactState)) return `${healthLabel(technicalState)} technical condition with ${healthLabel(impactState).toLowerCase()} estimated user impact.`;
-      return `${healthLabel(technicalState)} technical condition from local evidence.`;
+      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return "Internet connection is unstable. DNS and web checks are working. No user-facing failure was detected by current checks.";
+      if (meaningfulUserImpactState(impactState)) return `Internet connection is ${healthLabel(technicalState).toLowerCase()}. User-facing impact is ${healthLabel(impactState).toLowerCase()}.`;
+      return `Internet connection is ${healthLabel(technicalState).toLowerCase()} based on local evidence.`;
     }
 
     function isSubstantiveAttribution(refined){
@@ -2180,12 +2206,12 @@
       const estimatedState = estimatedImpact?.state;
       const observedState = observedImpact?.state;
       const hasMeaningfulObservedImpact = observedState && observedState !== "unknown";
-      const impactLabel = estimatedState ? healthLabel(estimatedState) : "Not established";
+      const impactLabel = userImpactValue(estimatedImpact, observedImpact, application);
       const attributionSubstantive = isSubstantiveAttribution(refined);
-      const faultDomain = cleanOperatorText(matchedReview?.likely_fault_domain || (attributionSubstantive ? healthLabel(refined?.domain) : "Fault domain not yet localized"));
+      const faultDomain = cleanOperatorText(matchedReview?.likely_fault_domain || (attributionSubstantive ? healthLabel(refined?.domain) : "Likely issue is not yet localized"));
 
-      document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline || (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Legacy artifact rendered safely; multidimensional evidence is not available.");
-      document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "compatibility mode");
+      document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline ? cleanOperatorText(matchedReview.headline) : (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Legacy evidence rendered safely; current health dimensions are not available.");
+      document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "legacy mode");
 
       renderDimensionCard("technicalConditionCard", "technicalConditionValue", "technicalConditionPill", "technicalConditionDetail", "Technical", dimensions?.technical_condition, "technical");
       renderDimensionCard("evidenceQualityCard", "detectionConfidenceValue", "detectionConfidencePill", "detectionConfidenceDetail", "Confidence", dimensions?.detection_confidence, "confidence");
@@ -2194,12 +2220,16 @@
 
       renderDimensionCard("userImpactCard", "userImpactValue", "userImpactPill", "userImpactDetail", "Estimated", estimatedImpact, "impact");
       document.getElementById("userImpactCard").style.display = estimatedState ? "" : "none";
+      document.getElementById("userImpactValue").textContent = impactLabel;
+      document.getElementById("userImpactDetail").textContent = application?.is_current && (application.failure_counts?.total || 0) === 0
+        ? "No user-facing failure detected by current checks."
+        : "User-facing impact is estimated from local evidence.";
       if (!estimatedState){
         document.getElementById("userImpactValue").textContent = "Not established";
-        document.getElementById("userImpactDetail").textContent = "Estimated impact is reflected in Operator Assessment until useful evidence is available.";
+        document.getElementById("userImpactDetail").textContent = "User-facing impact is not established yet.";
       }
 
-      document.getElementById("observedImpactInline").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "No reported impact";
+      document.getElementById("observedImpactInline").textContent = observedImpactDetail(observedImpact, feedback);
 
       renderApplicationExperience(application);
 
@@ -2235,11 +2265,11 @@
 
       const refinedTone = healthTone("attribution", refined?.confidence);
       document.getElementById("refinedAttributionCard").style.display = attributionSubstantive ? "" : "none";
-      document.getElementById("refinedAttributionValue").textContent = attributionSubstantive ? healthLabel(refined?.domain) : "Fault domain not yet localized";
+      document.getElementById("refinedAttributionValue").textContent = attributionSubstantive ? healthLabel(refined?.domain) : "Likely issue is not yet localized";
       document.getElementById("refinedAttributionConfidence").textContent = attributionSubstantive ? healthLabel(refined?.confidence) : "Evidence insufficient";
       document.getElementById("refinedAttributionDetail").textContent = Array.isArray(refined?.evidence_for) && refined.evidence_for.length
         ? refined.evidence_for.slice(0, 2).map(cleanOperatorText).join("; ")
-        : "Fault domain not yet localized from current evidence.";
+        : "Likely issue is not yet localized from current evidence.";
       document.getElementById("refinedAttributionUncertainty").textContent = Array.isArray(refined?.unresolved_evidence) && refined.unresolved_evidence.length
         ? `Limits: ${refined.unresolved_evidence.slice(0, 2).map(cleanOperatorText).join(", ")}`
         : "";
@@ -2247,8 +2277,8 @@
       setPillText("refinedAttributionPill", "Refined", refinedTone);
 
       document.getElementById("mobileUserImpactValue").textContent = impactLabel;
-      document.getElementById("mobileUserImpactDetail").textContent = "Inferred from local evidence.";
-      document.getElementById("mobileObservedImpactInline").textContent = hasMeaningfulObservedImpact ? healthLabel(observedState) : "No reported impact";
+      document.getElementById("mobileUserImpactDetail").textContent = document.getElementById("userImpactDetail").textContent;
+      document.getElementById("mobileObservedImpactInline").textContent = observedImpactDetail(observedImpact, feedback);
     }
 
     function selectCurrentAttributionObservation(payload){
@@ -2646,7 +2676,7 @@
       document.getElementById("internetConditionsDetails").style.display = "block";
       document.getElementById("internetConditionsUnavailable").style.display = "none";
       const supportingContext = document.getElementById("supportingContextDetails");
-      if (supportingContext) supportingContext.open = status !== "normal";
+      if (supportingContext) supportingContext.open = false;
       setAccent(document.getElementById("internetConditionsCard"), cardAccent);
       setAccent(document.getElementById("internetConditionsValue"), valueAccent);
       document.getElementById("mobileInternetConditionsValue").textContent = label;
@@ -2728,7 +2758,7 @@
       document.getElementById("mobilePowerInfrastructureUpdated").textContent = toRelativeAge(generatedAt);
       syncPowerInfrastructureDisclosureState(status);
       const supportingContext = document.getElementById("supportingContextDetails");
-      if (supportingContext && isActivePowerInfrastructureStatus(status)) supportingContext.open = true;
+      if (supportingContext) supportingContext.open = false;
       syncPowerDisclosureLabels(items.length);
     }
 

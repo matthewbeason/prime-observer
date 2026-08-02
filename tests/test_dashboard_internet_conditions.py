@@ -68,7 +68,7 @@ class DashboardInternetConditionsTest(unittest.TestCase):
         self.assertIn('return `${providerName} external context normal`;', html)
         self.assertIn('return `${providerName} external anomaly reported`;', html)
         self.assertIn('return `${providerName} routing event reported`;', html)
-        self.assertIn('No reported impact', html)
+        self.assertIn('Reported symptoms are unknown.', html)
         self.assertNotIn('document.getElementById("internetConditionsValue").textContent = targetLabel;', html)
 
     def test_dashboard_renders_v2_signal_results_and_partial_states(self):
