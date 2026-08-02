@@ -12,6 +12,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_operator_first_section_order(self):
         section_ids = [
+            'id="incidentHeroSection"',
             'id="assistantReviewSection"',
             'id="currentStatusSection"',
             'id="summarySection"',
@@ -31,6 +32,8 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_primary_page_uses_operator_language(self):
         for text in (
             "Summary",
+            "Current incident",
+            "Selected interval",
             "Current status",
             "What is affected details",
             "DNS resolver path details",
@@ -59,6 +62,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "data.episode_summary",
             "data.evidence_argument",
             "data.evidence_buckets",
+            "data.incident_record",
             "row.phase_summary",
         ):
             self.assertIn(field, self.html)
@@ -128,7 +132,9 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("data-event-id", self.html)
         self.assertIn("history.pushState", self.html)
         self.assertIn("popstate", self.html)
-        self.assertIn("?event=", self.html)
+        self.assertIn("?view=incident&event=", self.html)
+        self.assertIn("view=current", self.html)
+        self.assertIn('view === "interval"', self.html)
         self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
 
     def test_browser_remains_local_renderer_only(self):

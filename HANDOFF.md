@@ -57,6 +57,10 @@ Repository-backed recent milestones:
   `viz/operator_impact_feedback.json`, split estimated/observed impact
   presentation, and dashboard/Investigation rendering for Application Experience
   evidence
+- post-`v0.9.0` Incident Intelligence Phase 1 makes Investigation entry points
+  explicit (`view=current`, `view=interval`, `view=incident`) and adds an
+  additive Python-owned `incident_record` story to newly generated automatic
+  investigations
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -114,10 +118,13 @@ Current projection state:
 The repository currently says to live with `v0.9.0` for several days before
 expanding functionality.
 
-The current uncommitted work should be completed by validating the Incident
-Record Investigation redesign before committing. Direct links/bookmarks for
-historical investigations are now implemented through `?event=<event-id>`. Event
-comparison and recurrence or similarity detection remain future work.
+The current uncommitted work should be completed by validating Incident
+Intelligence Phase 1 before committing. Direct links/bookmarks for current,
+selected-interval, and historical investigation entry points are explicit:
+`?view=current`, `?view=interval&start=<ISO>&end=<ISO>`, and
+`?view=incident&event=<event-id>`. Legacy `?event=<event-id>` links remain
+supported. Event replay, comparison, recurrence, and similarity detection remain
+future work.
 
 Generated JSON and CSV artifacts remain canonical. No database is needed at the
 current local scale; any future PostgreSQL or Supabase work should be an optional

@@ -526,7 +526,7 @@
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
-      <a class="badge" id="historicalEvidenceBadge" href="./investigate.html">Investigation history</a>
+      <a class="badge" id="historicalEvidenceBadge" href="./investigate.html?view=current">Open current incident</a>
       <span class="badge" id="buildBadge">Build <strong id="buildTag">v0.9.0</strong></span>
     </div>
   </div>
@@ -846,7 +846,7 @@
       </div>
       <div class="panel-actions">
         <span id="selectedBucketActionCopy">Need event-level tables or nearby context?</span>
-        <a id="selectedBucketInvestigationLink" class="button-link" href="./investigate.html">Investigation history</a>
+        <a id="selectedBucketInvestigationLink" class="button-link" href="./investigate.html?view=current">Open current incident</a>
         <button type="button" class="button-link" id="clearSelectionButton" hidden>Clear selection</button>
       </div>
     </div>
@@ -1496,6 +1496,7 @@
 
     function buildInvestigationHref(bucket){
       const url = new URL("./investigate.html", window.location.href);
+      url.searchParams.set("view", bucket ? "interval" : "current");
       if (bucket?.t) url.searchParams.set("start", bucket.t.toISOString());
       if (bucket?.t2) url.searchParams.set("end", bucket.t2.toISOString());
       return `${url.pathname}${url.search}`;
@@ -1507,19 +1508,19 @@
       const panelLink = document.getElementById("selectedBucketInvestigationLink");
       if (badge){
         badge.href = href;
-        badge.textContent = bucket ? "Investigation history (selected)" : "Investigation history";
-        badge.setAttribute("aria-label", bucket ? "Open investigation history for the selected interval" : "Open investigation history");
+        badge.textContent = bucket ? "Open selected interval evidence" : "Open current incident";
+        badge.setAttribute("aria-label", bucket ? "Open selected interval evidence" : "Open current incident");
       }
       if (panelLink){
         panelLink.href = href;
-        panelLink.textContent = bucket ? "Open investigation history for this interval" : "Investigation history";
-        panelLink.setAttribute("aria-label", bucket ? "Open investigation history for this interval" : "Open investigation history");
+        panelLink.textContent = bucket ? "Open selected interval evidence" : "Open current incident";
+        panelLink.setAttribute("aria-label", bucket ? "Open selected interval evidence" : "Open current incident");
       }
       const actionCopy = document.getElementById("selectedBucketActionCopy");
       if (actionCopy){
         actionCopy.textContent = bucket
-          ? "Carry this exact 15-minute interval into investigation history."
-          : "Need event-level tables or nearby context?";
+          ? "Open a safe interval-scoped evidence request for this exact 15-minute window."
+          : "Need the current incident story and evidence?";
       }
       const clearButton = document.getElementById("clearSelectionButton");
       if (clearButton) {

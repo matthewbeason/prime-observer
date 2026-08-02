@@ -203,6 +203,37 @@
     <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Loading investigation.json...</div>
     <div id="deepLink" class="status" aria-live="polite" aria-atomic="true" style="display:none;"></div>
 
+    <section id="intervalRequestSection" class="section section-hero" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Selected interval</div>
+          <h2>Selected interval evidence</h2>
+          <p id="intervalRequestSummary" class="assistant-assessment">Exact interval evidence is not currently generated.</p>
+        </div>
+        <div class="pill-group"><span class="pill tone-watch">Selected interval</span></div>
+      </div>
+      <div class="card-grid">
+        <div class="card"><h3>Start</h3><div class="value" id="intervalRequestStart">—</div></div>
+        <div class="card"><h3>End</h3><div class="value" id="intervalRequestEnd">—</div></div>
+      </div>
+      <div class="history-toolbar" style="margin-top:14px;">
+        <a class="current-investigation-button" href="./investigate.html?view=current">Open current incident</a>
+        <a class="current-investigation-button" href="./index.html">Return to dashboard</a>
+      </div>
+    </section>
+
+    <section id="incidentHeroSection" class="section section-hero" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker" id="incidentHeroKicker">Incident story</div>
+          <h2 id="incidentHeroTitle">Incident</h2>
+          <p id="incidentHeroNarrative" class="assistant-assessment"></p>
+        </div>
+        <div id="incidentHeroPills" class="pill-group"></div>
+      </div>
+      <div id="incidentHeroCards" class="card-grid"></div>
+    </section>
+
     <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
       <div class="section-header">
         <div>
@@ -338,7 +369,7 @@
           <h2>Completed incidents</h2>
           <p class="section-note">Review completed incidents and compare their evidence, impact, and recovery.</p>
         </div>
-        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Current Investigation</button>
+        <button id="currentInvestigationButton" class="current-investigation-button" type="button" aria-current="true">Open current incident</button>
       </div>
       <div id="historyList" class="history-list"><div class="empty-note">Loading investigation history...</div></div>
     </section>
@@ -453,6 +484,10 @@
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return value;
       return date.toLocaleString();
+    }
+
+    function currentIncidentHref(){
+      return `${window.location.pathname}?view=current`;
     }
 
     function cell(value, suffix = ""){
@@ -815,8 +850,9 @@
         : [];
       for (const button of historyButtons){
         button.addEventListener("click", () => {
-          history.pushState({snapshotPath: button.dataset.snapshotPath}, "", `?event=${encodeURIComponent(button.dataset.eventId || button.dataset.snapshotPath)}`);
-          loadInvestigation(`./${button.dataset.snapshotPath}`, button.dataset.snapshotPath, false).catch(showInvestigationLoadError);
+          const eventId = button.dataset.eventId || button.dataset.snapshotPath;
+          history.pushState({view: "incident", event: eventId}, "", `?view=incident&event=${encodeURIComponent(eventId)}`);
+          loadInvestigation(`./${button.dataset.snapshotPath}`, button.dataset.snapshotPath, "incident").catch(showInvestigationLoadError);
         });
       }
     }
@@ -842,6 +878,62 @@
 
     function findObservationReference(data, view){
       return (data.observation_references || []).find(item => item.scope?.view === view);
+    }
+
+    function renderIncidentHero(data, view){
+      const record = data?.incident_record && typeof data.incident_record === "object" && !Array.isArray(data.incident_record)
+        ? data.incident_record
+        : null;
+      const section = document.getElementById("incidentHeroSection");
+      if (!record){
+        section.style.display = "none";
+        return;
+      }
+      section.style.display = "";
+      document.getElementById("incidentHeroKicker").textContent = view === "incident" ? "Completed incident" : "Current incident";
+      document.getElementById("incidentHeroTitle").textContent = record.title || "Network incident under investigation";
+      document.getElementById("incidentHeroNarrative").textContent = record.narrative || "Deterministic incident story is unavailable for this artifact.";
+      document.getElementById("incidentHeroPills").innerHTML = [
+        renderChip("Status", statusLabel(record.status), toneForStatus(record.status)),
+        renderChip("Confidence", healthLabel(record.confidence), healthTone("confidence", record.confidence)),
+      ].join("");
+      document.getElementById("incidentHeroCards").innerHTML = [
+        renderMetricCard("Start", shortTime(record.started_at), "Incident start from deterministic evidence.", "tone-accent"),
+        renderMetricCard("Latest affected", shortTime(record.latest_affected_at), "Latest affected sample or recovery boundary.", toneForStatus(record.status)),
+        renderMetricCard("Duration", fmt(record.duration_minutes, " min"), "Duration from start to latest affected time.", "tone-muted"),
+        renderMetricCard("Affected services", (record.affected_services || []).join(", ") || "No sustained affected service", (record.healthy_comparisons || []).join(", ") || "No healthy comparisons reported.", (record.affected_services || []).length ? "tone-warn" : "tone-ok"),
+        renderMetricCard("User-facing impact", record.user_facing_impact || "Unknown", "From deterministic impact and application evidence.", "tone-watch"),
+        renderMetricCard("Likely issue", record.likely_issue || "Unknown", "Shown only when supported by local evidence.", record.likely_issue && record.likely_issue !== "Unknown" ? "tone-accent" : "tone-muted"),
+      ].join("");
+    }
+
+    function setMainSectionsVisible(visible){
+      for (const section of document.querySelectorAll("section")){
+        if (section.id === "intervalRequestSection") continue;
+        section.style.display = visible ? "" : "none";
+      }
+    }
+
+    function renderIntervalRequest(params){
+      const start = params.get("start") || params.get("event_start") || "";
+      const end = params.get("end") || params.get("event_end") || "";
+      setMainSectionsVisible(false);
+      const interval = document.getElementById("intervalRequestSection");
+      interval.style.display = "";
+      document.getElementById("status").classList.remove("error");
+      document.getElementById("status").textContent = "Selected interval · exact interval evidence is not currently generated";
+      document.getElementById("modePill").textContent = "Selected interval";
+      document.getElementById("intervalRequestStart").textContent = fmt(start);
+      document.getElementById("intervalRequestEnd").textContent = fmt(end);
+      document.getElementById("intervalRequestSummary").textContent = "Prime Observer received this exact selected interval, but no interval-scoped investigation artifact has been generated yet. The current incident is available separately and is not being shown as a substitute for this interval.";
+      const heading = document.getElementById("investigationHeading");
+      if (heading) heading.textContent = "Selected interval";
+      if (heading && typeof heading.focus === "function") heading.focus({preventScroll: true});
+    }
+
+    function restoreInvestigationSections(){
+      document.getElementById("intervalRequestSection").style.display = "none";
+      setMainSectionsVisible(true);
     }
 
     function renderSummary(data){
@@ -1512,12 +1604,18 @@
       ].join(" ");
     }
 
-    function renderInvestigation(data, sourceLabel, isCurrent){
+    function renderInvestigation(data, sourceLabel, view){
+      restoreInvestigationSections();
+      const isCurrent = view === "current" || view === true;
+      const isIncident = view === "incident" || view === false;
       const status = document.getElementById("status");
       status.classList.remove("error");
-      status.textContent = isCurrent ? "Telemetry current · current investigation loaded" : `Historical Investigation · Loaded ${sourceLabel}`;
-      document.getElementById("modePill").textContent = isCurrent ? "Current Investigation" : "Historical Investigation";
+      status.textContent = isCurrent ? "Current incident · current investigation loaded" : `Completed incident · Loaded ${sourceLabel}`;
+      document.getElementById("modePill").textContent = isCurrent ? "Current incident" : "Completed incident";
+      const heading = document.getElementById("investigationHeading");
+      if (heading) heading.textContent = isCurrent ? "Current incident" : "Completed incident";
       document.getElementById("environmentalContextSection").style.display = "none";
+      renderIncidentHero(data, isIncident ? "incident" : "current");
       renderSummary(data);
       renderMultidimensionalHealth(data);
       renderPeriodTable(data);
@@ -1538,18 +1636,47 @@
       }
       renderSources(data);
       renderAssistantReview(isCurrent ? assistantReviewArtifact : null, isCurrent ? assistantInputArtifact : null, data);
-      const heading = document.getElementById("investigationHeading");
       if (heading && typeof heading.focus === "function") heading.focus({preventScroll: true});
     }
 
-    async function loadInvestigation(url, sourceLabel, isCurrent){
+    async function loadInvestigation(url, sourceLabel, view){
+      const isCurrent = view === "current" || view === true;
       const response = isCurrent
         ? await fetch(INVESTIGATION_URL, {cache: "no-store"})
         : await fetch(url, {cache: "no-store"});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       markHistorySelection(isCurrent ? null : sourceLabel);
-      renderInvestigation(data, sourceLabel, isCurrent);
+      renderInvestigation(data, sourceLabel, isCurrent ? "current" : "incident");
+    }
+
+    function routeFromLocation(catalog){
+      const params = new URLSearchParams(window.location.search);
+      const legacyEventId = params.get("event");
+      const view = params.get("view") || (legacyEventId ? "incident" : "current");
+      if (view === "interval") return {view, params};
+      if (view === "incident"){
+        const event = legacyEventId && catalog?.events?.find(item => item.event_id === legacyEventId);
+        return {view, eventId: legacyEventId, event};
+      }
+      return {view: "current"};
+    }
+
+    async function applyRoute(catalog){
+      const route = routeFromLocation(catalog);
+      if (route.view === "interval"){
+        renderIntervalRequest(route.params);
+        return;
+      }
+      if (route.view === "incident" && route.event?.snapshot_path){
+        await loadInvestigation(`./${route.event.snapshot_path}`, route.event.snapshot_path, "incident");
+        return;
+      }
+      if (route.view === "incident" && route.eventId){
+        showInvestigationLoadError(new Error(`Unknown event ${route.eventId}`));
+        return;
+      }
+      await loadInvestigation(INVESTIGATION_URL, "investigation.json", "current");
     }
 
     async function main(){
@@ -1565,30 +1692,18 @@
       const currentButton = document.getElementById("currentInvestigationButton");
       if (typeof currentButton.addEventListener === "function"){
         currentButton.addEventListener("click", () => {
-          history.pushState({}, "", window.location.pathname);
-          loadInvestigation(INVESTIGATION_URL, "investigation.json", true).catch(showInvestigationLoadError);
+          history.pushState({view: "current"}, "", currentIncidentHref());
+          loadInvestigation(INVESTIGATION_URL, "investigation.json", "current").catch(showInvestigationLoadError);
         });
       }
-      const params = new URLSearchParams(window.location.search);
-      const eventId = params.get("event");
-      const event = eventId && catalog?.events?.find(item => item.event_id === eventId);
-      if (event?.snapshot_path){
-        await loadInvestigation(`./${event.snapshot_path}`, event.snapshot_path, false);
-      } else {
-        await loadInvestigation(INVESTIGATION_URL, "investigation.json", true);
-      }
+      await applyRoute(catalog);
     }
 
     if (typeof window.addEventListener === "function"){
       window.addEventListener("popstate", () => {
-        const params = new URLSearchParams(window.location.search);
-        const eventId = params.get("event");
-        const button = eventId ? Array.from(document.querySelectorAll(".history-button")).find(item => item.dataset.eventId === eventId) : null;
-        if (button){
-          loadInvestigation(`./${button.dataset.snapshotPath}`, button.dataset.snapshotPath, false).catch(showInvestigationLoadError);
-        } else {
-          loadInvestigation(INVESTIGATION_URL, "investigation.json", true).catch(showInvestigationLoadError);
-        }
+        fetchOptionalJson(INVESTIGATION_CATALOG_URL)
+          .then(catalog => applyRoute(catalog))
+          .catch(showInvestigationLoadError);
       });
     }
 

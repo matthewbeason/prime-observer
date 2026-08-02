@@ -103,6 +103,9 @@ The automatic schema is `schema_version: 2` and uses:
 - `immutable: false` for the mutable current artifact
 - `artifact_state` for current/stale/historical display state
 - `freshness` for telemetry/evidence timestamp alignment
+- `incident_record` for the Python-owned deterministic incident story, title,
+  timing, affected services, healthy comparisons, likely issue when supported,
+  user-facing impact, confidence, and evidence references
 - `selected_event` for the selected confirmed event
 - `windows.baseline`, `windows.degradation`, and `windows.recovery`
 - `timeline` rows with Python-generated assessment labels, summaries, tones,
@@ -333,9 +336,22 @@ window while the evidence still comes from `viz/investigation.json`. A future
 Olivaw integration can generate the JSON first, then link to the page with the
 same start/end parameters.
 
-Direct links/bookmarks for completed automatic historical investigations are now
-implemented through `?event=<event-id>`. Event comparison and recurrence or
-similarity detection remain future work.
+Explicit Investigation entry points are:
+
+- `investigate.html?view=current` opens the mutable current incident from
+  `viz/investigation.json` and labels it `Current incident`.
+- `investigate.html?view=interval&start=<ISO>&end=<ISO>` opens a selected
+  interval safety view. It displays the exact requested interval, states that
+  exact interval evidence is not currently generated, and does not render the
+  current incident as a substitute.
+- `investigate.html?view=incident&event=<event-id>` opens the immutable completed
+  snapshot listed in `viz/investigation_catalog.json` and labels it `Completed
+  incident`.
+- Legacy `?event=<event-id>` links continue to resolve to completed snapshots
+  when the event is present in the catalog.
+
+Event comparison, replay, recurrence, and similarity detection remain future
+work.
 
 ## Storage Direction
 

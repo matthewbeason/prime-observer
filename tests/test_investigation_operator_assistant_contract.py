@@ -343,9 +343,9 @@ globalThis.fetch = async (url) => {{
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertIn("current investigation", rendered["currentStatus"])
-        self.assertIn("Historical Investigation", rendered["historicalStatus"])
-        self.assertEqual(rendered["mode"], "Historical Investigation")
+        self.assertIn("Current incident", rendered["currentStatus"])
+        self.assertIn("Completed incident", rendered["historicalStatus"])
+        self.assertEqual(rendered["mode"], "Completed incident")
 
     def test_missing_or_malformed_catalog_keeps_current_investigation_usable(self):
         current = self.investigation_payload()
@@ -362,9 +362,87 @@ globalThis.fetch = async (url) => {{
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertIn("current investigation", rendered["status"])
+        self.assertIn("Current incident", rendered["status"])
         self.assertIn("catalog is not available", rendered["history"])
         self.assertEqual(rendered["assessment"], "")
+
+    def test_interval_view_does_not_load_current_investigation_as_substitute(self):
+        body = """
+window.location.search = "?view=interval&start=2026-08-02T10:00:00.000Z&end=2026-08-02T10:15:00.000Z";
+const fetched = [];
+globalThis.fetch = async (url) => {
+  fetched.push(url);
+  return {ok: false, status: 404, json: async () => ({})};
+};
+(async () => {
+  await main();
+  console.log(JSON.stringify({
+    fetched,
+    status: document.getElementById("status").textContent,
+    mode: document.getElementById("modePill").textContent,
+    start: document.getElementById("intervalRequestStart").textContent,
+    end: document.getElementById("intervalRequestEnd").textContent,
+    summary: document.getElementById("intervalRequestSummary").textContent,
+  }));
+})().catch(err => { console.error(err); process.exit(1); });
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertNotIn(INVESTIGATION_URL := "./investigation.json", rendered["fetched"])
+        self.assertEqual(rendered["mode"], "Selected interval")
+        self.assertEqual(rendered["start"], "2026-08-02T10:00:00.000Z")
+        self.assertEqual(rendered["end"], "2026-08-02T10:15:00.000Z")
+        self.assertIn("not being shown as a substitute", rendered["summary"])
+
+    def test_explicit_current_view_loads_current_artifact(self):
+        current = self.investigation_payload()
+        body = f"""
+window.location.search = "?view=current";
+const fetched = [];
+globalThis.fetch = async (url) => {{
+  fetched.push(url);
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{fetched, status: document.getElementById("status").textContent, mode: document.getElementById("modePill").textContent}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("./investigation.json", rendered["fetched"])
+        self.assertIn("Current incident", rendered["status"])
+        self.assertEqual(rendered["mode"], "Current incident")
+
+    def test_historical_and_legacy_event_routes_load_snapshot(self):
+        current = self.investigation_payload()
+        historical = json.loads(json.dumps(current))
+        catalog = {"artifact_type": "investigation_catalog", "events": [{"event_id": "event-history", "snapshot_path": "investigations/event-history.json"}], "invalid_snapshots": []}
+        for search in ("?view=incident&event=event-history", "?event=event-history"):
+            body = f"""
+window.location.search = "{search}";
+const fetched = [];
+globalThis.fetch = async (url) => {{
+  fetched.push(url);
+  if (url === INVESTIGATION_CATALOG_URL) return {{ok: true, json: async () => ({json.dumps(catalog)})}};
+  if (url === "./investigations/event-history.json") return {{ok: true, json: async () => ({json.dumps(historical)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{fetched, status: document.getElementById("status").textContent, mode: document.getElementById("modePill").textContent}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+            rendered = json.loads(self.run_node(body))
+            self.assertIn("./investigations/event-history.json", rendered["fetched"])
+            self.assertIn("Completed incident", rendered["status"])
+            self.assertEqual(rendered["mode"], "Completed incident")
+
+    def test_back_forward_route_handler_preserves_view_state(self):
+        self.assertIn("popstate", self.script)
+        self.assertIn("applyRoute(catalog)", self.script)
+        self.assertIn('view === "interval"', self.script)
 
     def test_empty_catalog_and_invalid_snapshot_metadata_render_calm_history_status(self):
         body = """

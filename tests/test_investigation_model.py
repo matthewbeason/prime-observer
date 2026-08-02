@@ -97,6 +97,68 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertEqual(event["confirmed_at"], (self.base + dt.timedelta(minutes=2)).isoformat())
         self.assertIsNone(event["recovered_at"])
 
+    def test_incident_record_title_and_narrative_are_deterministic(self):
+        rows = [
+            self.row(0, host="192.168.1.1", target_class="gateway_probe"),
+            self.row(0, host="1.1.1.1", target_class="internet_probe"),
+            self.row(1, p95=180, raw=True),
+            self.row(2, p95=181, raw=True, sustained=True),
+        ]
+        health_dimensions = {
+            "application_experience": {"is_current": True, "failure_counts": {"total": 0}},
+            "estimated_user_impact": {"state": "low"},
+            "observed_user_impact": {"state": "none_reported"},
+            "attribution": {
+                "domain": "resolver_provider_path",
+                "confidence": "medium",
+                "evidence_for": ["resolver probes degraded while internet probes and gateway were healthy"],
+            },
+        }
+
+        payload = self.module.build_automatic_investigation(
+            rows_out=rows,
+            generated_at=self.base + dt.timedelta(minutes=10),
+            wan_series_marked=[
+                {
+                    "t": self.module.parse_ts(row["ts"]),
+                    "host": row["host"],
+                    "target_class": row["target_class"],
+                    "raw_bad": row.get("raw_bad", False),
+                    "is_bad": row.get("is_bad", False),
+                }
+                for row in rows
+                if row["target_class"] != "gateway_probe"
+            ],
+            health_dimensions=health_dimensions,
+            observations_projection={"observations": []},
+        )
+
+        record = payload["incident_record"]
+        self.assertEqual(record["title"], "Resolver path degradation")
+        self.assertEqual(record["incident_type"], "resolver_path_degradation")
+        self.assertEqual(record["incident_id"], payload["selected_event"]["id"])
+        self.assertIn("Prime Observer detected sustained degradation on resolver probes", record["narrative"])
+        self.assertIn("DNS and HTTPS checks continued to succeed", record["narrative"])
+        self.assertIn("dns provider path", record["narrative"].lower())
+        self.assertEqual(record["likely_issue"], "DNS provider path")
+        self.assertTrue(record["evidence_refs"])
+
+    def test_incident_record_uses_unknown_for_unsupported_likely_issue(self):
+        payload = self.module.build_automatic_investigation(
+            rows_out=[self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)],
+            generated_at=self.base + dt.timedelta(minutes=10),
+            wan_series_marked=[
+                {"t": self.base, "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": True, "is_bad": False},
+                {"t": self.base + dt.timedelta(minutes=1), "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": True, "is_bad": True},
+            ],
+            health_dimensions={"attribution": {"domain": "unknown", "confidence": "low", "evidence_for": []}},
+            observations_projection={"observations": []},
+        )
+
+        record = payload["incident_record"]
+        self.assertEqual(record["likely_issue"], "Unknown")
+        self.assertIn("not yet localized", record["narrative"])
+
     def test_baseline_ends_before_first_anomaly(self):
         payload = self.build([
             self.row(0),

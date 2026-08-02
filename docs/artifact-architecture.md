@@ -297,12 +297,12 @@ Stage ownership:
   `periods`, `observation_references`, `events`, `navigation`,
   `event_neighborhoods`, `timeline_samples`, `dns_context`, `provenance`,
   `notes`
-- Optional fields: `internet_conditions_context`; observation references inside
-  event details; empty evidence sections when no samples are present;
-  automatic `message` when no sustained incident is present; Phase 2 adds
-  `health_dimensions`, `impact_assessment`, `dependency_state`, and
-  `deterministic_operator_interpretation` additively for current artifacts and
-  for new snapshots only
+- Optional fields: `incident_record`; `internet_conditions_context`; observation
+  references inside event details; empty evidence sections when no samples are
+  present; automatic `message` when no sustained incident is present; Phase 2
+  adds `health_dimensions`, `impact_assessment`, `dependency_state`, and
+  `deterministic_operator_interpretation` additively for current artifacts and for
+  new snapshots only
 - Unavailable behavior: no dedicated unavailable artifact; the script still
   writes a valid investigation payload and uses `status: "no_samples"` when no
   telemetry matches the selected source window. Automatic mode emits a valid
@@ -316,6 +316,22 @@ the artifact is current, stale, historical, active, recovering, completed, or a
 no-incident package. `freshness` reports generated, latest telemetry, and latest
 evidence timestamps. A completed event can be current when it was generated from
 the latest transform telemetry.
+
+`incident_record` is additive and Python-owned. It contains deterministic
+operator-facing story fields: `incident_id`, `title`, `incident_type`,
+`started_at`, `confirmed_at`, `latest_affected_at`, `duration_minutes`,
+`status`, `affected_services`, `healthy_comparisons`, `likely_issue`,
+`user_facing_impact`, `confidence`, `narrative`, and `evidence_refs`. The browser
+renders these fields but does not infer or rewrite them. Older schema 2 artifacts
+and existing immutable snapshots without `incident_record` continue to render
+through the established fallback sections.
+
+Investigation URL semantics are explicit. `?view=current` loads the mutable
+current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected
+interval request and does not load `viz/investigation.json` as a substitute.
+`?view=incident&event=<event-id>` loads an immutable snapshot through the
+catalog. Legacy `?event=<event-id>` links remain supported when the catalog
+contains the event.
 
 Automatic timeline rows include `phase_summary` so the renderer can show
 representative p95, sustained-bad samples and buckets, phase duration, sample

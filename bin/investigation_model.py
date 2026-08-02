@@ -1058,6 +1058,168 @@ def operator_brief(selected_event, windows, periods, recovery, attribution):
     }
 
 
+def operator_label(value):
+    labels = {
+        "active": "Active",
+        "recovering": "Recovering",
+        "complete": "Recovered",
+        "no_sustained_incident": "No sustained incident",
+        "healthy": "Healthy",
+        "elevated": "Elevated",
+        "degraded": "Degraded",
+        "severe": "Unstable",
+        "none_expected": "None expected",
+        "none_reported": "None reported",
+        "not_observed": "Not observed",
+        "unlikely": "Unlikely",
+        "possible": "Possible",
+        "likely": "Likely",
+        "confirmed": "Confirmed",
+        "reported_minor": "Minor impact reported",
+        "reported_major": "Major impact reported",
+        "confirmed_service_failure": "Service failure confirmed",
+        "broad_isp_path": "ISP or upstream path",
+        "upstream_transit_route": "ISP or upstream path",
+        "resolver_provider_path": "DNS provider path",
+        "resolver_endpoint_or_pop": "DNS resolver endpoint",
+        "local_gateway": "Router or local gateway",
+        "local_lan_or_wifi": "Local LAN or Wi-Fi",
+        "broad_internet_condition": "Broader internet condition",
+        "mixed": "Mixed evidence",
+        "unknown": "Unknown",
+        None: "Unknown",
+    }
+    if value in labels:
+        return labels[value]
+    return str(value or "Unknown").replace("_", " ").title()
+
+
+def incident_title(selected_event, attribution, health_dimensions):
+    if not selected_event:
+        return "Network incident under investigation"
+    target_class = selected_event.get("target_class")
+    domain = (attribution or {}).get("domain") if isinstance(attribution, dict) else None
+    app = (health_dimensions or {}).get("application_experience") if isinstance(health_dimensions, dict) else {}
+    app_failures = ((app or {}).get("failure_counts") or {}).get("total", 0) if isinstance(app, dict) else 0
+    if target_class == "gateway_probe" or domain in {"local_gateway", "local_lan_or_wifi"}:
+        return "Router connectivity failure"
+    if target_class == "resolver_probe" and app_failures:
+        return "DNS service degradation"
+    if target_class == "resolver_probe":
+        return "Resolver path degradation"
+    if target_class == "internet_probe" and domain in {"broad_isp_path", "upstream_transit_route", "broad_internet_condition"}:
+        return "Broad upstream instability"
+    if target_class == "internet_probe":
+        return "Internet path instability"
+    return "Network incident under investigation"
+
+
+def supported_likely_issue(attribution):
+    if not isinstance(attribution, dict):
+        return None
+    domain = attribution.get("domain")
+    confidence = attribution.get("confidence")
+    evidence = attribution.get("evidence_for") or attribution.get("supporting_evidence") or []
+    if not domain or domain == "unknown" or confidence == "low" or not evidence:
+        return None
+    return operator_label(domain)
+
+
+def incident_impact_text(health_dimensions):
+    dimensions = health_dimensions if isinstance(health_dimensions, dict) else {}
+    application = dimensions.get("application_experience") if isinstance(dimensions.get("application_experience"), dict) else {}
+    failures = (application.get("failure_counts") or {}).get("total", 0) if isinstance(application, dict) else 0
+    if application.get("is_current") and failures == 0:
+        return "No user-facing failure detected by current checks"
+    if application.get("is_current") and failures:
+        return "Current DNS or web checks reported failures"
+    observed = dimensions.get("observed_user_impact") if isinstance(dimensions.get("observed_user_impact"), dict) else {}
+    estimated = dimensions.get("estimated_user_impact") if isinstance(dimensions.get("estimated_user_impact"), dict) else {}
+    state = observed.get("state") if observed.get("state") not in {None, "unknown"} else estimated.get("state")
+    return operator_label(state)
+
+
+def application_story(health_dimensions):
+    dimensions = health_dimensions if isinstance(health_dimensions, dict) else {}
+    application = dimensions.get("application_experience") if isinstance(dimensions.get("application_experience"), dict) else {}
+    failures = (application.get("failure_counts") or {}).get("total", 0) if isinstance(application, dict) else 0
+    if application.get("is_current") and failures == 0:
+        return "DNS and HTTPS checks continued to succeed."
+    if application.get("is_current") and failures:
+        return "Current DNS or HTTPS checks reported failures."
+    return "Current DNS and HTTPS check evidence was unavailable."
+
+
+def lifecycle_story(status):
+    if status == "active":
+        return "The incident is still active."
+    if status == "recovering":
+        return "Recovery has started but has not been confirmed."
+    if status == "complete":
+        return "Recovery has been confirmed."
+    return "No sustained incident is currently selected."
+
+
+def incident_record(selected_event, windows, scope, recovery, attribution, health_dimensions):
+    degradation = phase_summary_metrics((windows or {}).get("degradation", {}))
+    status = selected_event.get("lifecycle_state") if selected_event else "no_sustained_incident"
+    affected_services = [target_label(selected_event.get("target_class"))] if selected_event else []
+    healthy_comparisons = [
+        target_label(item.get("target_class"))
+        for item in (scope or {}).get("unaffected_comparison_groups", [])
+        if isinstance(item, dict) and item.get("target_class")
+    ]
+    likely = supported_likely_issue(attribution)
+    started = selected_event.get("first_anomalous_at") if selected_event else None
+    latest = (
+        selected_event.get("last_anomalous_at")
+        or selected_event.get("evidence_latest_at")
+        if selected_event else None
+    )
+    title = incident_title(selected_event, attribution, health_dimensions)
+    if selected_event:
+        first_sentence = f"Beginning at {started}, Prime Observer detected sustained degradation on {target_label(selected_event.get('target_class')).lower()}."
+    else:
+        first_sentence = "Prime Observer did not select a sustained network incident from the available deterministic evidence."
+    comparison_sentence = (
+        f"{', '.join(healthy_comparisons)} remained healthier during the incident."
+        if healthy_comparisons else
+        "Healthy comparison evidence was limited."
+    )
+    likely_sentence = f"The issue appears most consistent with {likely.lower()}." if likely else "The likely issue is not yet localized from available evidence."
+    narrative = " ".join([
+        first_sentence,
+        comparison_sentence,
+        application_story(health_dimensions),
+        incident_impact_text(health_dimensions) + ".",
+        likely_sentence,
+        lifecycle_story(status),
+    ])
+    return {
+        "incident_id": selected_event.get("id") if selected_event else "incident-no-sustained-event",
+        "title": title,
+        "incident_type": title.lower().replace(" ", "_"),
+        "started_at": started,
+        "confirmed_at": selected_event.get("confirmed_at") if selected_event else None,
+        "latest_affected_at": latest,
+        "duration_minutes": duration_minutes(started, latest),
+        "status": status,
+        "affected_services": affected_services,
+        "healthy_comparisons": healthy_comparisons,
+        "likely_issue": likely or "Unknown",
+        "user_facing_impact": incident_impact_text(health_dimensions),
+        "confidence": selected_event.get("confidence") if selected_event else "low",
+        "narrative": narrative,
+        "evidence_refs": [
+            {"field": "selected_event", "reason": "incident identity and lifecycle"},
+            {"field": "windows.degradation", "reason": f"{degradation.get('sustained_bad_count', 0)} sustained bad sample(s)"},
+            {"field": "scope_impact.unaffected_comparison_groups", "reason": "healthy comparison groups"},
+            {"field": "health_dimensions.application_experience", "reason": "DNS and HTTPS user-facing checks"},
+            {"field": "health_dimensions.attribution", "reason": "likely issue when supported"},
+        ],
+    }
+
+
 def event_list(events):
     out = []
     for event in events:
@@ -1138,6 +1300,7 @@ def build_automatic_investigation(
     episodes = episode_summary(selected, secondary_context, observations)
     evidence = evidence_argument(selected, windows, periods, scope, recovery)
     brief = operator_brief(selected, windows, periods, recovery, attribution)
+    incident = incident_record(selected, windows, scope, recovery, (health_dimensions or {}).get("attribution") if isinstance(health_dimensions, dict) else attribution, health_dimensions)
     event_start = periods["during"].get("start")
     event_end = periods["during"].get("end")
     event_midpoint = midpoint(parse_ts(event_start), parse_ts(event_end)) or telemetry_latest_at
@@ -1170,6 +1333,7 @@ def build_automatic_investigation(
             else artifact_state(selected)
         ),
         "freshness": freshness(generated_at, telemetry_latest_at, evidence_latest_at),
+        "incident_record": incident,
         "selected_event": selected,
         "operator_brief": brief,
         "impact_assessment": (health_dimensions or {}).get("user_impact") if isinstance(health_dimensions, dict) else None,
@@ -1478,6 +1642,7 @@ def event_semantic_payload(payload):
             "max_loss_pct": metrics.get("max_loss_pct"),
         }
     selected = payload.get("selected_event") if isinstance(payload.get("selected_event"), dict) else {}
+    incident = payload.get("incident_record") if isinstance(payload.get("incident_record"), dict) else {}
     selected_keys = (
         "id",
         "target_class",
@@ -1512,6 +1677,22 @@ def event_semantic_payload(payload):
             "is_historical": artifact.get("is_historical"),
             "label": artifact.get("label"),
             "stale_reason": artifact.get("stale_reason"),
+        },
+        "incident_record": {
+            "incident_id": incident.get("incident_id"),
+            "title": incident.get("title"),
+            "incident_type": incident.get("incident_type"),
+            "started_at": incident.get("started_at"),
+            "confirmed_at": incident.get("confirmed_at"),
+            "latest_affected_at": incident.get("latest_affected_at"),
+            "duration_minutes": incident.get("duration_minutes"),
+            "status": incident.get("status"),
+            "affected_services": incident.get("affected_services"),
+            "healthy_comparisons": incident.get("healthy_comparisons"),
+            "likely_issue": incident.get("likely_issue"),
+            "user_facing_impact": incident.get("user_facing_impact"),
+            "confidence": incident.get("confidence"),
+            "narrative": incident.get("narrative"),
         },
         "selected_event": {key: selected.get(key) for key in selected_keys},
         "secondary_context": payload.get("secondary_context"),

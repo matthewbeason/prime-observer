@@ -69,12 +69,17 @@ Current watch period:
 - Phase 4.5 adds command-line local operator feedback for observed impact and
   surfaces Application Experience evidence in dashboard and Investigation
   rendering. Estimated and observed impact remain separate.
+- Incident Intelligence Phase 1 makes Investigation entry points explicit,
+  prevents selected interval links from silently rendering the current incident,
+  and adds a deterministic Python-owned `incident_record` story to newly
+  generated automatic investigations.
 
 ## Next Logical Milestone
 
-Direct links/bookmarks for historical investigations are now implemented for
-completed automatic snapshots. The next planned capability after this redesign is
-Needs Matthew Review.
+Direct links/bookmarks for current, selected-interval, and completed incident
+views are now explicit. The selected interval view is a safe request state until
+interval-scoped evidence generation is implemented. The next planned capability
+after this redesign is Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate
