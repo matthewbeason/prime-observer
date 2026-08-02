@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from health_model import WAN_BAD, WAN_BAD_PERSISTENCE, lan_elevation
+from health_model import ATTRIBUTION_CUT_MINUTES, WAN_BAD, WAN_BAD_PERSISTENCE, lan_elevation
 from target_metadata import target_metadata
 
 
@@ -624,6 +624,33 @@ def aggregate_technical_condition(conditions: list[str | None]) -> str:
     return max(clean, key=condition_rank)
 
 
+def technical_condition_from_parts(
+    *,
+    gateway: dict[str, Any],
+    internet: dict[str, Any],
+    resolver: dict[str, Any],
+    members: list[dict[str, Any]],
+    diagnostics: list[dict[str, Any]],
+    marked_samples: list[dict[str, Any]],
+    missing_evidence: list[str] | None = None,
+) -> dict[str, Any]:
+    member_states = [member.get("technical_condition", {}).get("state") for member in members]
+    state = aggregate_technical_condition([gateway.get("state"), internet.get("state"), resolver.get("state"), *member_states])
+    technical = {
+        "state": state,
+        "confidence": detection_confidence(marked_samples, diagnostics, state),
+        "drivers": list(dict.fromkeys(
+            [driver for member in members for driver in member.get("technical_condition", {}).get("drivers", [])]
+            + (["gateway degraded"] if gateway.get("state") in {"degraded", "severe"} else [])
+            + (["internet probes degraded"] if internet.get("state") in {"degraded", "severe"} else [])
+            + (["resolver probes degraded"] if resolver.get("state") in {"degraded", "severe"} else [])
+        )),
+        "missing_evidence": missing_evidence or [],
+        "target_groups": {"gateway_probe": gateway, "internet_probe": internet, "resolver_probe": resolver},
+    }
+    return technical
+
+
 def diagnostic_types(diagnostics: list[dict[str, Any]], *, current_only: bool = True) -> set[str]:
     return {str(item.get("type")) for item in diagnostics if (item.get("is_current") or not current_only) and item.get("type")}
 
@@ -1116,24 +1143,84 @@ def evaluate_health_dimensions(
     dependency["dependency_group_id"] = dependency_group_id
     dependency["dependency_type"] = next((member.get("dependency_type") for member in members if member.get("dependency_type")), None)
 
-    member_states = [member.get("technical_condition", {}).get("state") for member in members]
-    technical_state = aggregate_technical_condition([gateway.get("state"), internet.get("state"), resolver.get("state"), *member_states])
-    technical = {
-        "state": technical_state,
-        "confidence": detection_confidence(marked, diagnostics, technical_state),
-        "drivers": list(dict.fromkeys(
-            [driver for member in members for driver in member.get("technical_condition", {}).get("drivers", [])]
-            + (["gateway degraded"] if gateway.get("state") in {"degraded", "severe"} else [])
-            + (["internet probes degraded"] if internet.get("state") in {"degraded", "severe"} else [])
-            + (["resolver probes degraded"] if resolver.get("state") in {"degraded", "severe"} else [])
-        )),
-        "missing_evidence": [],
-        "target_groups": {"gateway_probe": gateway, "internet_probe": internet, "resolver_probe": resolver},
-    }
+    technical = technical_condition_from_parts(
+        gateway=gateway,
+        internet=internet,
+        resolver=resolver,
+        members=members,
+        diagnostics=diagnostics,
+        marked_samples=marked,
+    )
     if not samples:
         technical["state"] = "unknown"
         technical["confidence"] = "low"
         technical["missing_evidence"] = ["telemetry"]
+
+    latest_sample_at = max((sample["t"] for sample in all_samples), default=None)
+    current_end = latest_sample_at or generated_at
+    current_start = current_end - dt.timedelta(minutes=ATTRIBUTION_CUT_MINUTES)
+    current_lan_samples = [sample for sample in lan_samples if sample["t"] >= current_start]
+    current_marked = [sample for sample in marked if sample["t"] >= current_start]
+    current_marked_by_member = [sample for sample in marked_by_member if sample["t"] >= current_start]
+    current_gateway = gateway_condition(current_lan_samples)
+    current_internet = group_condition(current_marked, target_class="internet_probe")
+    current_resolver = group_condition(current_marked, target_class="resolver_probe")
+    current_member_rows: dict[str, dict[str, Any]] = {}
+    for sample in current_marked_by_member:
+        if sample.get("target_class") != "resolver_probe" or not sample.get("member_id"):
+            continue
+        member = current_member_rows.setdefault(sample["member_id"], {
+            "dependency_group_id": sample.get("dependency_group_id"),
+            "dependency_type": sample.get("dependency_type"),
+            "member_id": sample.get("member_id"),
+            "role": sample.get("role"),
+            "provider": sample.get("provider"),
+            "endpoint": sample.get("endpoint"),
+            "host": sample.get("host"),
+            "samples": [],
+        })
+        member["samples"].append(sample)
+    current_members = []
+    for member in current_member_rows.values():
+        item = dict(member)
+        item["technical_condition"] = member_technical_condition(member, diagnostics)
+        current_members.append(item)
+    current_members.sort(key=lambda item: (item.get("dependency_group_id") or "", item.get("role") or "", item.get("member_id") or ""))
+    if condition_rank(current_resolver.get("state")) >= 2 and current_members and not any(
+        condition_rank(member.get("technical_condition", {}).get("state")) >= 2
+        for member in current_members
+    ):
+        current_resolver["state"] = "elevated"
+    current_condition = technical_condition_from_parts(
+        gateway=current_gateway,
+        internet=current_internet,
+        resolver=current_resolver,
+        members=current_members,
+        diagnostics=diagnostics,
+        marked_samples=current_marked,
+        missing_evidence=[] if current_marked or current_lan_samples else ["current_telemetry"],
+    )
+    if not current_marked and not current_lan_samples:
+        current_condition["state"] = "unknown"
+        current_condition["confidence"] = "low"
+    current_condition["window"] = {
+        "minutes": ATTRIBUTION_CUT_MINUTES,
+        "start": iso(current_start),
+        "end": iso(current_end),
+        "lan_samples": len(current_lan_samples),
+        "wan_samples": len(current_marked),
+    }
+
+    rolling_condition = {
+        **technical,
+        "window": {
+            "hours": 24,
+            "start": iso(min((sample["t"] for sample in all_samples), default=None)),
+            "end": iso(latest_sample_at),
+            "lan_samples": len(lan_samples),
+            "wan_samples": len(marked),
+        },
+    }
 
     impact = user_impact_assessment(
         technical_state=technical["state"],
@@ -1176,6 +1263,8 @@ def evaluate_health_dimensions(
         "model_version": HEALTH_DIMENSIONS_MODEL_VERSION,
         "generated_at": iso(generated_at),
         "technical_condition": technical,
+        "current_condition": current_condition,
+        "rolling_condition": rolling_condition,
         "user_impact": impact,
         "estimated_user_impact": estimated_impact,
         "observed_user_impact": observed_impact,
@@ -1221,6 +1310,8 @@ def semantic_health_dimensions(dimensions: dict[str, Any] | None) -> dict[str, A
     return {
         "model_version": dimensions.get("model_version"),
         "technical_condition": (dimensions.get("technical_condition") or {}).get("state"),
+        "current_condition": (dimensions.get("current_condition") or {}).get("state"),
+        "rolling_condition": (dimensions.get("rolling_condition") or {}).get("state"),
         "user_impact": (dimensions.get("user_impact") or {}).get("state"),
         "estimated_user_impact": (dimensions.get("estimated_user_impact") or {}).get("state"),
         "observed_user_impact": (dimensions.get("observed_user_impact") or {}).get("state"),

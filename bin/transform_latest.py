@@ -947,6 +947,8 @@ def build_dashboard_health(rows, attribution, generated_at, health_dimensions=No
                 "model_version",
                 "generated_at",
                 "technical_condition",
+                "current_condition",
+                "rolling_condition",
                 "user_impact",
                 "estimated_user_impact",
                 "observed_user_impact",

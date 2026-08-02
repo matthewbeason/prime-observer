@@ -81,6 +81,20 @@ def custom_rows(*, gateway=None, internet=None, primary=None, secondary=None, lo
     return rows
 
 
+def timed_rows(base, entries):
+    rows = []
+    for minute, host, p95 in entries:
+        rows.append({
+            "ts": (base + dt.timedelta(minutes=minute)).isoformat(),
+            "phase_label": "fiber",
+            "host": host,
+            "p95_ms": str(p95),
+            "jitter_ms": "5",
+            "loss_pct": "0",
+        })
+    return rows
+
+
 def diagnostic_payload(summary):
     return {"status": "ok", "items": summary.get("diagnostics") or []}
 
@@ -337,6 +351,60 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
 
         self.assertEqual(semantic["estimated_user_impact"], "low")
         self.assertEqual(semantic["observed_user_impact"], "none_reported")
+
+    def test_current_condition_can_be_healthy_while_rolling_condition_remains_severe(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        base = generated_at - dt.timedelta(minutes=40)
+        rows = timed_rows(base, [
+            (0, "45.90.30.134", 260),
+            (1, "45.90.30.134", 270),
+            (25, "192.168.1.1", 8),
+            (25, "1.1.1.1", 25),
+            (25, "45.90.28.134", 35),
+            (25, "45.90.30.134", 36),
+            (26, "192.168.1.1", 8),
+            (26, "1.1.1.1", 25),
+            (26, "45.90.28.134", 35),
+            (26, "45.90.30.134", 36),
+        ])
+
+        result = self.module.evaluate_health_dimensions(
+            rows,
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at),
+        )
+
+        self.assertEqual(result["technical_condition"]["state"], "severe")
+        self.assertEqual(result["rolling_condition"]["state"], "severe")
+        self.assertEqual(result["current_condition"]["state"], "healthy")
+        self.assertEqual(result["current_condition"]["window"]["minutes"], self.module.ATTRIBUTION_CUT_MINUTES)
+        self.assertTrue(result["application_experience"]["is_current"])
+
+    def test_current_probe_failure_is_not_hidden_by_healthy_application_checks(self):
+        generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)
+        base = generated_at - dt.timedelta(minutes=5)
+        rows = timed_rows(base, [
+            (0, "192.168.1.1", 8),
+            (0, "1.1.1.1", 25),
+            (0, "45.90.28.134", 35),
+            (0, "45.90.30.134", 260),
+            (1, "192.168.1.1", 8),
+            (1, "1.1.1.1", 25),
+            (1, "45.90.28.134", 35),
+            (1, "45.90.30.134", 270),
+        ])
+
+        result = self.module.evaluate_health_dimensions(
+            rows,
+            generated_at=generated_at,
+            diagnostic_evidence={"status": "ok", "items": []},
+            application_experience=app_payload(generated_at),
+        )
+
+        self.assertEqual(result["current_condition"]["state"], "severe")
+        self.assertEqual(result["technical_condition"]["state"], "severe")
+        self.assertEqual(result["application_experience"]["failure_counts"]["total"], 0)
 
     def test_application_success_reduces_estimated_impact_for_direct_resolver_degradation(self):
         generated_at = dt.datetime(2026, 7, 21, 13, 0, tzinfo=dt.timezone.utc)

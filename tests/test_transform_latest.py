@@ -142,6 +142,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("health_dimensions", dashboard_health)
         self.assertIn("dependency_groups", dashboard_health)
         self.assertEqual(dashboard_health["health_dimensions"]["model_version"], "prime_observer.health_dimensions.v1")
+        self.assertIn("current_condition", dashboard_health["health_dimensions"])
+        self.assertIn("rolling_condition", dashboard_health["health_dimensions"])
         self.assertEqual(investigation["schema_version"], 2)
         self.assertEqual(investigation["mode"], "automatic")
         self.assertEqual(investigation["artifact_type"], "current_investigation")
@@ -417,6 +419,31 @@ class TransformLatestTest(unittest.TestCase):
             dashboard_health["attribution_evidence_counts"],
             self.module.camelize_classification_counts(window_counts),
         )
+
+    def test_dashboard_health_preserves_rolling_condition_while_current_window_is_healthy(self):
+        base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
+        rows_out = [
+            self.telemetry_row((base + dt.timedelta(minutes=0)).isoformat(), "45.90.30.134", 260),
+            self.telemetry_row((base + dt.timedelta(minutes=1)).isoformat(), "45.90.30.134", 270),
+            self.telemetry_row((base + dt.timedelta(minutes=25)).isoformat(), "192.168.1.1", 8),
+            self.telemetry_row((base + dt.timedelta(minutes=25)).isoformat(), "1.1.1.1", 25),
+            self.telemetry_row((base + dt.timedelta(minutes=25)).isoformat(), "45.90.28.134", 35),
+            self.telemetry_row((base + dt.timedelta(minutes=25)).isoformat(), "45.90.30.134", 36),
+            self.telemetry_row((base + dt.timedelta(minutes=26)).isoformat(), "192.168.1.1", 8),
+            self.telemetry_row((base + dt.timedelta(minutes=26)).isoformat(), "1.1.1.1", 25),
+            self.telemetry_row((base + dt.timedelta(minutes=26)).isoformat(), "45.90.28.134", 35),
+            self.telemetry_row((base + dt.timedelta(minutes=26)).isoformat(), "45.90.30.134", 36),
+        ]
+        for row in rows_out:
+            row.update(self.module.target_metadata(row["host"]))
+        generated_at = base + dt.timedelta(minutes=27)
+        health_dimensions = self.module.evaluate_health_dimensions(rows_out, generated_at=generated_at)
+        attribution = self.module.compute_network_attribution(rows_out, generated_at, health_dimensions=health_dimensions)
+        dashboard_health = self.module.build_dashboard_health(rows_out, attribution, generated_at, health_dimensions=health_dimensions)
+
+        self.assertEqual(dashboard_health["health_dimensions"]["technical_condition"]["state"], "severe")
+        self.assertEqual(dashboard_health["health_dimensions"]["rolling_condition"]["state"], "severe")
+        self.assertEqual(dashboard_health["health_dimensions"]["current_condition"]["state"], "healthy")
 
     def test_bad_bucket_can_be_driven_by_loss_even_when_p95_is_low(self):
         base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)

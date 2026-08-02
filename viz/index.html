@@ -1147,10 +1147,13 @@
       panel.classList.add("has-selection");
       const stateLabel = bucket.isBadBucket ? "Sustained bad" : (bucket.isTurbulence ? "Turbulence" : "Calm");
       const stateClass = bucket.isBadBucket ? "risk" : (bucket.isTurbulence ? "watch" : "ok");
+      const isHistorical = !bucketOverlapsCurrentWindow(bucket, currentVizState?.currentCondition);
       headline.textContent = `${stateLabel} interval selected`;
-      legend.textContent = "This 15-minute interval stays pinned across the evidence chips and all three charts until you tap it again or click outside the heatmap.";
+      legend.textContent = isHistorical
+        ? "Historical interval — not current"
+        : "Current interval selected";
       interval.textContent = `${toShortTime(bucket.t)} – ${toShortTime(bucket.t2)}`;
-      path.textContent = `${pathTagLabel(bucket.phase)} • 15-minute bucket`;
+      path.textContent = `${pathTagLabel(bucket.phase)} • 15-minute bucket${isHistorical ? " • Historical interval — not current" : ""}`;
       state.textContent = stateLabel;
       state.classList.add(stateClass);
       summary.textContent = `${bucket.evidenceLabel || compositeEvidenceLabel(bucket)}. Composite sustained bad ${bucket.bad}/${bucket.total}; raw bad ${bucket.rawBad}/${bucket.total}.`;
@@ -2125,8 +2128,8 @@
       return ["none_expected", "low", "possible", "likely", "severe", "confirmed"].includes(String(state || "").toLowerCase());
     }
 
-    function technicalScopeText(dimensions){
-      const groups = dimensions?.technical_condition?.target_groups || {};
+    function technicalScopeText(dimensions, condition = null){
+      const groups = (condition || dimensions?.technical_condition)?.target_groups || {};
       const affected = [];
       if (["elevated", "degraded", "severe"].includes(groups.internet_probe?.state)) affected.push("internet probes");
       if (["elevated", "degraded", "severe"].includes(groups.resolver_probe?.state)) affected.push("resolver probes");
@@ -2135,11 +2138,26 @@
       return `${affected.map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" and ")} affected`;
     }
 
+    function isHealthyCondition(condition){
+      return condition?.state === "healthy";
+    }
+
+    function hasEarlierInstability(dimensions){
+      const rollingState = dimensions?.rolling_condition?.state || dimensions?.technical_condition?.state;
+      return ["elevated", "degraded", "severe"].includes(String(rollingState || "").toLowerCase());
+    }
+
     function plainFallbackHeadline(dimensions, dependency, refined){
       const impactState = (dimensions?.estimated_user_impact || dimensions?.user_impact || {}).state;
-      const technicalState = dimensions?.technical_condition?.state;
+      const currentCondition = dimensions?.current_condition || dimensions?.technical_condition || null;
+      const technicalState = currentCondition?.state;
       const app = dimensions?.application_experience;
-      if (app?.is_current && (app.failure_counts?.total || 0) === 0) return "Internet connection is unstable. DNS and web checks are working. No user-facing failure was detected by current checks.";
+      const appFailureTotal = app?.is_current ? (app.failure_counts?.total || 0) : 0;
+      if (isHealthyCondition(currentCondition) && appFailureTotal === 0 && hasEarlierInstability(dimensions)) return "Network is working normally now. Instability was detected earlier.";
+      if (isHealthyCondition(currentCondition) && appFailureTotal > 0) return "Network probes are healthy, but DNS or web checks are currently failing.";
+      if (["degraded", "severe"].includes(String(technicalState || "").toLowerCase())) return `Network is currently ${healthLabel(technicalState).toLowerCase()} based on current probe evidence.`;
+      if (technicalState === "elevated") return "Network is currently elevated based on current probe evidence.";
+      if (appFailureTotal === 0 && technicalState === "healthy") return "Network is working normally now.";
       if (meaningfulUserImpactState(impactState)) return `Internet connection is ${healthLabel(technicalState).toLowerCase()}. User-facing impact is ${healthLabel(impactState).toLowerCase()}.`;
       return `Internet connection is ${healthLabel(technicalState).toLowerCase()} based on local evidence.`;
     }
@@ -2194,6 +2212,8 @@
       const dependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
       const refined = networkAttributionPayload?.refined_attribution || dimensions?.attribution || null;
       const application = dimensions?.application_experience || null;
+      const currentCondition = dimensions?.current_condition || dimensions?.technical_condition || null;
+      const rollingCondition = dimensions?.rolling_condition || dimensions?.technical_condition || null;
       const feedback = dimensions?.operator_impact_feedback || null;
       const matchedReview = matchingAssistantReview(assistantReviewPayload, assistantInputPayload);
       const hasDimensions = Boolean(dimensions);
@@ -2213,10 +2233,12 @@
       document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline ? cleanOperatorText(matchedReview.headline) : (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Legacy evidence rendered safely; current health dimensions are not available.");
       document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "legacy mode");
 
-      renderDimensionCard("technicalConditionCard", "technicalConditionValue", "technicalConditionPill", "technicalConditionDetail", "Technical", dimensions?.technical_condition, "technical");
+      renderDimensionCard("technicalConditionCard", "technicalConditionValue", "technicalConditionPill", "technicalConditionDetail", "Current", currentCondition, "technical");
       renderDimensionCard("evidenceQualityCard", "detectionConfidenceValue", "detectionConfidencePill", "detectionConfidenceDetail", "Confidence", dimensions?.detection_confidence, "confidence");
-      const technicalScope = technicalScopeText(dimensions);
+      const technicalScope = technicalScopeText(dimensions, currentCondition);
       if (technicalScope) document.getElementById("technicalConditionDetail").textContent = technicalScope;
+      else if (isHealthyCondition(currentCondition) && hasEarlierInstability(dimensions)) document.getElementById("technicalConditionDetail").textContent = "Current window is healthy; earlier rolling evidence remains visible in history.";
+      else if (rollingCondition?.state && currentCondition?.state && rollingCondition.state !== currentCondition.state) document.getElementById("technicalConditionDetail").textContent = `Current window is ${healthLabel(currentCondition.state).toLowerCase()}; rolling history is ${healthLabel(rollingCondition.state).toLowerCase()}.`;
 
       renderDimensionCard("userImpactCard", "userImpactValue", "userImpactPill", "userImpactDetail", "Estimated", estimatedImpact, "impact");
       document.getElementById("userImpactCard").style.display = estimatedState ? "" : "none";
@@ -2357,6 +2379,15 @@
       const end = normalizeIntervalBoundary(bucket.t2 ?? bucket.end);
       if (!start || !end || end <= start) return null;
       return { start, end };
+    }
+
+    function bucketOverlapsCurrentWindow(bucket, currentCondition){
+      const bucketInterval = normalizeBucketInterval(bucket);
+      const currentWindow = currentCondition?.window || null;
+      const currentStart = normalizeIntervalBoundary(currentWindow?.start);
+      const currentEnd = normalizeIntervalBoundary(currentWindow?.end);
+      if (!bucketInterval || !currentStart || !currentEnd) return true;
+      return bucketInterval.start < currentEnd && bucketInterval.end > currentStart;
     }
 
     function resolveSharedChartDomain(seriesCollections=[], buckets=[]){
@@ -3644,7 +3675,7 @@
           compositeWanBuckets
         );
 
-        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain };
+        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, currentCondition: dashboardHealth?.healthDimensions?.current_condition || null };
 
         updateConnectionCard(raw);
         computeUserNoticeability(noticeSummary);
