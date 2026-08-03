@@ -2156,6 +2156,7 @@
       const appFailureTotal = app?.is_current ? (app.failure_counts?.total || 0) : 0;
       if (isHealthyCondition(currentCondition) && appFailureTotal === 0 && hasEarlierInstability(dimensions)) return "Network is working normally now. Instability was detected earlier.";
       if (isHealthyCondition(currentCondition) && appFailureTotal > 0) return "Network probes are healthy, but DNS or web checks are currently failing.";
+      if (currentCondition?.adaptive_baseline_state === "elevated_but_stable") return "Secondary resolver latency remains above its original target but has been stable. DNS and web checks continue succeeding. No active incident is detected.";
       if (["degraded", "severe"].includes(String(technicalState || "").toLowerCase())) return `Network is currently ${healthLabel(technicalState).toLowerCase()} based on current probe evidence.`;
       if (technicalState === "elevated") return "Network is currently elevated based on current probe evidence.";
       if (appFailureTotal === 0 && technicalState === "healthy") return "Network is working normally now.";
@@ -2237,7 +2238,8 @@
       renderDimensionCard("technicalConditionCard", "technicalConditionValue", "technicalConditionPill", "technicalConditionDetail", "Current", currentCondition, "technical");
       renderDimensionCard("evidenceQualityCard", "detectionConfidenceValue", "detectionConfidencePill", "detectionConfidenceDetail", "Confidence", dimensions?.detection_confidence, "confidence");
       const technicalScope = technicalScopeText(dimensions, currentCondition);
-      if (technicalScope) document.getElementById("technicalConditionDetail").textContent = technicalScope;
+      if (currentCondition?.adaptive_baseline_state === "elevated_but_stable") document.getElementById("technicalConditionDetail").textContent = "Elevated resolver latency is retained as evidence, but adaptive incident eligibility is suppressed by an established degraded baseline.";
+      else if (technicalScope) document.getElementById("technicalConditionDetail").textContent = technicalScope;
       else if (isHealthyCondition(currentCondition) && hasEarlierInstability(dimensions)) document.getElementById("technicalConditionDetail").textContent = "Current window is healthy; earlier rolling evidence remains visible in history.";
       else if (rollingCondition?.state && currentCondition?.state && rollingCondition.state !== currentCondition.state) document.getElementById("technicalConditionDetail").textContent = `Current window is ${healthLabel(currentCondition.state).toLowerCase()}; rolling history is ${healthLabel(rollingCondition.state).toLowerCase()}.`;
 

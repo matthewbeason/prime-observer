@@ -19,6 +19,7 @@ from health_model import (
     is_turbulence_bucket,
 )
 from health_dimensions import semantic_health_dimensions
+from target_metadata import target_metadata
 
 
 BASE = Path(__file__).resolve().parents[1]
@@ -256,6 +257,101 @@ def merge_marked_wan(rows, wan_series_marked):
     return samples
 
 
+def adaptive_member_index(health_dimensions):
+    if not isinstance(health_dimensions, dict):
+        return {}
+    members = ((health_dimensions.get("adaptive_baseline") or {}).get("resolver_members") or [])
+    indexed = {}
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        keys = {
+            str(member.get("member_id") or "").strip(),
+            str(member.get("endpoint") or "").strip(),
+        }
+        for key in keys:
+            if key:
+                indexed[key] = member
+    return indexed
+
+
+def adaptive_for_sample(sample, adaptive_index):
+    if sample.get("target_class") != "resolver_probe":
+        return None
+    meta = target_metadata(sample.get("host"))
+    for key in (meta.get("member_id"), meta.get("endpoint"), sample.get("host")):
+        if key and key in adaptive_index:
+            adaptive = adaptive_index[key]
+            window = adaptive.get("evidence_window") if isinstance(adaptive.get("evidence_window"), dict) else adaptive.get("baseline_window")
+            if isinstance(window, dict):
+                start = parse_ts(window.get("start"))
+                end = parse_ts(window.get("end"))
+                if start is not None and sample.get("t") < start:
+                    return None
+                if end is not None and sample.get("t") > end:
+                    return None
+            return adaptive
+    return None
+
+
+def is_adaptive_suppressed(adaptive):
+    if not isinstance(adaptive, dict):
+        return False
+    evidence = adaptive.get("evidence_window") if isinstance(adaptive.get("evidence_window"), dict) else {}
+    deviation = adaptive.get("deviation_from_baseline") if isinstance(adaptive.get("deviation_from_baseline"), dict) else {}
+    return (
+        adaptive.get("baseline_state") == "elevated_but_stable"
+        and adaptive.get("incident_suppression_reason") == "established_degraded_baseline"
+        and not adaptive.get("guardrail_breaches")
+        and adaptive.get("incident_eligible") is False
+        and evidence.get("direct_dns_success") is True
+        and evidence.get("system_dns_success") is True
+        and evidence.get("https_success") is True
+        and evidence.get("no_reported_user_impact") is True
+        and not deviation.get("worsening_trend")
+    )
+
+
+def annotate_adaptive_eligibility(samples, health_dimensions):
+    adaptive_index = adaptive_member_index(health_dimensions)
+    if not adaptive_index:
+        return samples, []
+    suppressed = {}
+    annotated = []
+    for sample in samples:
+        item = dict(sample)
+        adaptive = adaptive_for_sample(item, adaptive_index)
+        if adaptive:
+            item["adaptive_incident_eligible"] = bool(adaptive.get("incident_eligible"))
+            item["adaptive_baseline_state"] = adaptive.get("baseline_state")
+            item["adaptive_suppression_reason"] = adaptive.get("incident_suppression_reason")
+            item["adaptive_guardrail_breaches"] = adaptive.get("guardrail_breaches") or []
+            item["adaptive_recovery_candidate"] = is_adaptive_suppressed(adaptive)
+            if item["adaptive_recovery_candidate"]:
+                key = adaptive.get("member_id") or item.get("host")
+                suppressed[key] = {
+                    "member_id": adaptive.get("member_id"),
+                    "endpoint": adaptive.get("endpoint") or item.get("host"),
+                    "baseline_state": adaptive.get("baseline_state"),
+                    "suppression_reason": adaptive.get("incident_suppression_reason"),
+                    "guardrail_breaches": adaptive.get("guardrail_breaches") or [],
+                    "evidence_window": adaptive.get("evidence_window") or {},
+                    "deviation_from_baseline": adaptive.get("deviation_from_baseline") or {},
+                }
+        annotated.append(item)
+    return annotated, sorted(suppressed.values(), key=lambda item: (item.get("member_id") or item.get("endpoint") or ""))
+
+
+def event_sample_is_incident_eligible(sample):
+    if sample.get("target_class") != "resolver_probe":
+        return bool(sample.get("raw_bad"))
+    if sample.get("adaptive_recovery_candidate"):
+        return False
+    if sample.get("adaptive_incident_eligible") is True:
+        return True
+    return bool(sample.get("raw_bad"))
+
+
 def host_counts(samples):
     counts = {}
     for sample in samples:
@@ -459,7 +555,8 @@ def detect_events(samples, telemetry_latest_at=None):
         current = None
         healthy_run = 0
         for sample in rows:
-            if sample.get("raw_bad"):
+            incident_bad = bool(sample.get("raw_bad") and event_sample_is_incident_eligible(sample))
+            if incident_bad:
                 if current is None:
                     current = new_event(target_class, sample)
                 current["last_anomalous_at"] = sample["t"]
@@ -489,6 +586,9 @@ def detect_events(samples, telemetry_latest_at=None):
                 healthy_run = 1
             else:
                 healthy_run += 1
+            if sample.get("adaptive_recovery_candidate"):
+                current["adaptive_recovery"] = True
+                current["baseline_transition"] = sample.get("adaptive_suppression_reason") or "established_degraded_baseline"
             if healthy_run >= RECOVERY_HEALTHY_PERSISTENCE and current.get("recovery_started_at") is None:
                 current["recovery_started_at"] = current["recovery_candidate_at"]
             if current.get("recovery_started_at") is not None:
@@ -567,7 +667,7 @@ def severity_for_event(event):
 
 def public_event(event, telemetry_latest_at):
     affected = sorted(event["affected_targets"])
-    return {
+    payload = {
         "id": event_id(event["target_class"], event["first_anomalous_at"]),
         "target_class": event["target_class"],
         "lifecycle_state": event["lifecycle_state"],
@@ -587,6 +687,28 @@ def public_event(event, telemetry_latest_at):
         "max_jitter_ms": rounded(event.get("max_jitter_ms")),
         "max_loss_pct": rounded(event.get("max_loss_pct"), 2),
         "evidence_latest_at": iso(event.get("recovered_at") or event.get("last_anomalous_at") or telemetry_latest_at),
+    }
+    if event.get("adaptive_recovery"):
+        payload["adaptive_recovery"] = True
+        payload["baseline_transition"] = event.get("baseline_transition") or "established_degraded_baseline"
+    return payload
+
+
+def suppression_summary(suppressed_members):
+    if not suppressed_members:
+        return {
+            "incident_suppressed": False,
+            "suppression_reason": None,
+            "adaptive_recovery": False,
+            "baseline_transition": None,
+        }
+    reasons = [item.get("suppression_reason") for item in suppressed_members if item.get("suppression_reason")]
+    return {
+        "incident_suppressed": True,
+        "suppression_reason": reasons[0] if reasons else "established_degraded_baseline",
+        "adaptive_recovery": True,
+        "baseline_transition": "established_degraded_baseline",
+        "suppressed_members": suppressed_members,
     }
 
 
@@ -1680,6 +1802,8 @@ def build_automatic_investigation(
     snapshot_written_at=None,
 ):
     samples = merge_marked_wan(rows_out, wan_series_marked)
+    samples, suppressed_members = annotate_adaptive_eligibility(samples, health_dimensions)
+    suppression = suppression_summary(suppressed_members)
     telemetry_latest_at = max((sample["t"] for sample in samples), default=generated_at)
     events, secondary_context = detect_events(samples, telemetry_latest_at)
     selected_raw = select_event(events)
@@ -1743,6 +1867,10 @@ def build_automatic_investigation(
         "incident_record": incident,
         "incident_phases": phases,
         "incident_replay": replay,
+        "incident_suppressed": suppression["incident_suppressed"],
+        "suppression_reason": suppression["suppression_reason"],
+        "adaptive_recovery": suppression["adaptive_recovery"],
+        "baseline_transition": suppression["baseline_transition"],
         "selected_event": selected,
         "operator_brief": brief,
         "impact_assessment": (health_dimensions or {}).get("user_impact") if isinstance(health_dimensions, dict) else None,
@@ -1807,6 +1935,10 @@ def build_automatic_investigation(
         payload["snapshot_written_at"] = iso(snapshot_written_at or generated_at)
     if not selected:
         payload["message"] = "No sustained network incident is present in the available evidence."
+    if suppression["incident_suppressed"]:
+        payload["suppressed_incident_context"] = suppression
+        if not selected:
+            payload["message"] = "No active incident is present because elevated resolver latency matches an established degraded baseline."
     if internet_context is not None:
         payload["internet_conditions_context"] = internet_context
     payload["provenance"]["event_semantic_hash"] = event_semantic_hash(payload)

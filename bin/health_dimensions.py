@@ -62,9 +62,9 @@ MAX_OPERATOR_FEEDBACK_NOTE_CHARS = 500
 ADAPTIVE_BASELINE_MIN_SAMPLES = 12
 ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES = 60
 ADAPTIVE_BASELINE_RECENT_SAMPLES = 3
-ADAPTIVE_BASELINE_STABLE_SPREAD_PCT = 20.0
+ADAPTIVE_BASELINE_STABLE_SPREAD_PCT = 35.0
 ADAPTIVE_BASELINE_WORSENING_DELTA_PCT = 35.0
-ADAPTIVE_BASELINE_SEVERE_P95_MS = 240.0
+ADAPTIVE_BASELINE_SEVERE_P95_MS = 500.0
 
 
 def parse_ts(value: Any) -> dt.datetime | None:
@@ -531,7 +531,11 @@ def adaptive_resolver_member_baseline(
     baseline_median = percentile(baseline_p95, 50)
     recent_median = percentile(recent_p95, 50)
     delta_pct = ((recent_median - baseline_median) / baseline_median) * 100.0 if baseline_median and recent_median is not None else None
-    spread_pct = ((max(p95_values) - min(p95_values)) / (percentile(p95_values, 50) or 1.0)) * 100.0 if p95_values else None
+    recent_spread_pct = None
+    if recent_p95:
+        recent_median_for_spread = percentile(recent_p95, 50) or 1.0
+        recent_spread_pct = ((percentile(recent_p95, 75) or 0.0) - (percentile(recent_p95, 25) or 0.0)) / recent_median_for_spread * 100.0
+    spread_pct = recent_spread_pct
     enough_samples = len(samples) >= ADAPTIVE_BASELINE_MIN_SAMPLES and window_minutes >= ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES
     absolute_breached = any(
         (sample.get("p95") or 0.0) > WAN_BAD["p95"]
@@ -581,16 +585,16 @@ def adaptive_resolver_member_baseline(
         eligible = True
         reason = None
         confidence = "high"
-    elif elevated and stable and direct_dns_ok and app_ok and no_reported_impact:
-        state = "elevated_but_stable"
-        eligible = False
-        reason = "established_degraded_baseline"
-        confidence = "high"
     elif improving and direct_dns_ok and app_ok and no_reported_impact:
         state = "recovering"
         eligible = True
         reason = None
         confidence = "medium"
+    elif elevated and stable and direct_dns_ok and app_ok and no_reported_impact:
+        state = "elevated_but_stable"
+        eligible = False
+        reason = "established_degraded_baseline"
+        confidence = "high"
     elif not absolute_breached:
         state = "within_target"
         eligible = False
@@ -613,6 +617,7 @@ def adaptive_resolver_member_baseline(
             "recent_median_p95_ms": rounded(recent_median, 1),
             "delta_pct": rounded(delta_pct, 1),
             "spread_pct": rounded(spread_pct, 1),
+            "spread_basis": "recent_p95_iqr",
             "worsening_trend": worsening,
             "improving_trend": improving,
         },
@@ -634,6 +639,49 @@ def adaptive_resolver_member_baseline(
             "unrelated_target_groups_broadly_degraded": internet.get("state") in {"degraded", "severe"},
         },
     }
+
+
+def suppressed_adaptive_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for member in members:
+        adaptive = member.get("adaptive_baseline") if isinstance(member.get("adaptive_baseline"), dict) else None
+        if not adaptive:
+            continue
+        evidence = adaptive.get("evidence_window") if isinstance(adaptive.get("evidence_window"), dict) else {}
+        deviation = adaptive.get("deviation_from_baseline") if isinstance(adaptive.get("deviation_from_baseline"), dict) else {}
+        if (
+            adaptive.get("baseline_state") == "elevated_but_stable"
+            and adaptive.get("incident_suppression_reason") == "established_degraded_baseline"
+            and not adaptive.get("guardrail_breaches")
+            and adaptive.get("incident_eligible") is False
+            and evidence.get("direct_dns_success") is True
+            and evidence.get("system_dns_success") is True
+            and evidence.get("https_success") is True
+            and evidence.get("no_reported_user_impact") is True
+            and not deviation.get("worsening_trend")
+        ):
+            out.append(member)
+    return out
+
+
+def apply_adaptive_current_condition(current_condition: dict[str, Any], members: list[dict[str, Any]]) -> dict[str, Any]:
+    suppressed = suppressed_adaptive_members(members)
+    if not suppressed:
+        return current_condition
+    roles = ", ".join(str(member.get("role") or member.get("member_id") or "resolver") for member in suppressed)
+    adjusted = dict(current_condition)
+    adjusted["state"] = "elevated"
+    adjusted["confidence"] = "high"
+    adjusted["adaptive_baseline_state"] = "elevated_but_stable"
+    adjusted["incident_eligible"] = False
+    adjusted["incident_suppression_reason"] = "established_degraded_baseline"
+    adjusted["drivers"] = list(dict.fromkeys([
+        f"{roles.title()} resolver latency remains above original target but stable",
+        "DNS and web checks continue succeeding",
+        "No active incident is detected",
+        *adjusted.get("drivers", []),
+    ]))
+    return adjusted
 
 
 def diagnostic_matches(item: dict[str, Any], member: dict[str, Any]) -> bool:
@@ -1470,6 +1518,7 @@ def evaluate_health_dimensions(
     if not current_marked and not current_lan_samples:
         current_condition["state"] = "unknown"
         current_condition["confidence"] = "low"
+    current_condition = apply_adaptive_current_condition(current_condition, members)
     current_condition["window"] = {
         "minutes": ATTRIBUTION_CUT_MINUTES,
         "start": iso(current_start),

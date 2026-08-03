@@ -58,6 +58,50 @@ class InvestigationModelTest(unittest.TestCase):
             observations_projection={"observations": []},
         )
 
+    def adaptive_dimensions(self, *, state="elevated_but_stable", eligible=False, reason="established_degraded_baseline", guardrails=None, start=None, end=None):
+        start = start or self.base
+        end = end or (self.base + dt.timedelta(minutes=60))
+        return {
+            "adaptive_baseline": {
+                "resolver_members": [{
+                    "member_id": "nextdns_secondary",
+                    "endpoint": "45.90.30.134",
+                    "baseline_state": state,
+                    "incident_eligible": eligible,
+                    "incident_suppression_reason": reason,
+                    "guardrail_breaches": guardrails or [],
+                    "evidence_window": {
+                        "start": start.isoformat(),
+                        "end": end.isoformat(),
+                        "direct_dns_success": True,
+                        "system_dns_success": True,
+                        "https_success": True,
+                        "no_reported_user_impact": True,
+                    },
+                    "deviation_from_baseline": {"worsening_trend": state == "degraded_from_baseline"},
+                }]
+            }
+        }
+
+    def build_with_adaptive(self, rows, health_dimensions, generated_minute=60):
+        return self.module.build_automatic_investigation(
+            rows_out=rows,
+            generated_at=self.base + dt.timedelta(minutes=generated_minute),
+            wan_series_marked=[
+                {
+                    "t": self.module.parse_ts(row["ts"]),
+                    "host": row["host"],
+                    "target_class": row["target_class"],
+                    "raw_bad": row.get("raw_bad", False),
+                    "is_bad": row.get("is_bad", False),
+                }
+                for row in rows
+                if row["target_class"] != "gateway_probe"
+            ],
+            health_dimensions=health_dimensions,
+            observations_projection={"observations": []},
+        )
+
     def history_args(self, rows, generated_minute=60):
         return {
             "rows_out": rows,
@@ -97,33 +141,56 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertEqual(event["confirmed_at"], (self.base + dt.timedelta(minutes=2)).isoformat())
         self.assertIsNone(event["recovered_at"])
 
-    def test_adaptive_metadata_does_not_change_incident_lifecycle(self):
+    def test_adaptive_stable_elevated_resolver_never_opens_incident(self):
         rows = [
             self.row(0),
             self.row(1, p95=180, raw=True),
             self.row(2, p95=181, raw=True, sustained=True),
         ]
-        without_adaptive = self.build(rows)
-        with_adaptive = self.module.build_automatic_investigation(
-            rows_out=rows,
-            generated_at=self.base + dt.timedelta(minutes=60),
-            wan_series_marked=[
-                {
-                    "t": self.module.parse_ts(row["ts"]),
-                    "host": row["host"],
-                    "target_class": row["target_class"],
-                    "raw_bad": row.get("raw_bad", False),
-                    "is_bad": row.get("is_bad", False),
-                }
-                for row in rows
-                if row["target_class"] != "gateway_probe"
-            ],
-            health_dimensions={"adaptive_baseline": {"resolver_members": [{"member_id": "nextdns_secondary", "incident_eligible": False}]}},
-            observations_projection={"observations": []},
-        )
+        payload = self.build_with_adaptive(rows, self.adaptive_dimensions())
 
-        self.assertEqual(with_adaptive["selected_event"], without_adaptive["selected_event"])
-        self.assertEqual(with_adaptive["recovery_progress"], without_adaptive["recovery_progress"])
+        self.assertIsNone(payload["selected_event"])
+        self.assertTrue(payload["incident_suppressed"])
+        self.assertEqual(payload["suppression_reason"], "established_degraded_baseline")
+        self.assertEqual(payload["message"], "No active incident is present because elevated resolver latency matches an established degraded baseline.")
+
+    def test_packet_loss_guardrail_overrides_adaptive_suppression(self):
+        rows = [self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)]
+        payload = self.build_with_adaptive(rows, self.adaptive_dimensions(state="failing", eligible=True, reason=None, guardrails=["packet_loss_above_threshold"]))
+
+        self.assertIsNotNone(payload["selected_event"])
+        self.assertEqual(payload["selected_event"]["lifecycle_state"], "active")
+        self.assertFalse(payload["incident_suppressed"])
+
+    def test_timeout_dns_https_gateway_both_broad_and_worsening_guardrails_override_suppression(self):
+        guardrails = [
+            "timeout",
+            "dns_failure",
+            "application_failure",
+            "gateway_degradation",
+            "both_resolver_members_degraded",
+            "broad_correlated_resolver_and_internet_degradation",
+            "rapid_worsening",
+            "reported_major_or_confirmed_impact",
+            "severe_excursion",
+        ]
+        rows = [self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)]
+        for guardrail in guardrails:
+            with self.subTest(guardrail=guardrail):
+                payload = self.build_with_adaptive(rows, self.adaptive_dimensions(state="failing", eligible=True, reason=None, guardrails=[guardrail]))
+                self.assertIsNotNone(payload["selected_event"])
+                self.assertFalse(payload["incident_suppressed"])
+
+    def test_adaptive_recovery_closes_legacy_incident_into_degraded_baseline(self):
+        rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute, p95=176, raw=True, sustained=True) for minute in (2, 3, 11, 18))
+        payload = self.build_with_adaptive(rows, self.adaptive_dimensions(start=self.base + dt.timedelta(minutes=2), end=self.base + dt.timedelta(minutes=18)))
+
+        event = payload["selected_event"]
+        self.assertEqual(event["lifecycle_state"], "complete")
+        self.assertTrue(event["adaptive_recovery"])
+        self.assertEqual(event["baseline_transition"], "established_degraded_baseline")
+        self.assertTrue(payload["adaptive_recovery"])
 
     def test_incident_record_title_and_narrative_are_deterministic(self):
         rows = [

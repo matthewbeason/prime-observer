@@ -268,6 +268,9 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
         self.assertTrue(adaptive["evidence_window"]["direct_dns_success"])
         self.assertTrue(adaptive["evidence_window"]["system_dns_success"])
         self.assertTrue(adaptive["evidence_window"]["https_success"])
+        self.assertEqual(result["current_condition"]["state"], "elevated")
+        self.assertFalse(result["current_condition"]["incident_eligible"])
+        self.assertIn("DNS and web checks continue succeeding", result["current_condition"]["drivers"])
 
     def test_sudden_worsening_from_elevated_baseline_is_eligible(self):
         result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 248, 252, 255])

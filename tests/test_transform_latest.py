@@ -86,6 +86,28 @@ class TransformLatestTest(unittest.TestCase):
             self.telemetry_row(timestamp.isoformat(), host, p95, jitter=jitter, loss=loss)
         )
 
+    def write_application_experience(self, generated_at):
+        checked_at = generated_at.isoformat().replace("+00:00", "Z")
+        payload = {
+            "schema_version": 1,
+            "model_version": "prime_observer.application_experience.v1",
+            "generated_at": checked_at,
+            "status": "ok",
+            "freshness": "fresh",
+            "is_current": True,
+            "dns_transactions": [
+                {"role": "primary", "type": "direct_dns", "resolver_endpoint": "45.90.28.134", "checked_at": checked_at, "status": "ok", "success": True, "latency_ms": 25, "timeout": False, "failure_category": None},
+                {"role": "secondary", "type": "direct_dns", "resolver_endpoint": "45.90.30.134", "checked_at": checked_at, "status": "ok", "success": True, "latency_ms": 30, "timeout": False, "failure_category": None},
+                {"role": "system", "type": "system_dns", "resolver_endpoint": "system", "checked_at": checked_at, "status": "ok", "success": True, "latency_ms": 20, "timeout": False, "failure_category": None},
+            ],
+            "https_transaction": {"checked_at": checked_at, "status": "ok", "success": True, "timeout": False, "failure_category": None, "total_duration_ms": 120},
+            "failure_counts": {"total": 0},
+            "latency_summaries": {},
+            "evidence": ["System DNS queries are succeeding normally.", "HTTPS session establishment remains normal."],
+            "limitations": [],
+        }
+        self.module.APPLICATION_EXPERIENCE_IN.write_text(json.dumps(payload))
+
     def marked_recent_wan_samples(self, generated_at, internet_p95=None, resolver_p95=None):
         internet_p95 = internet_p95 or []
         resolver_p95 = resolver_p95 or []
@@ -232,6 +254,38 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(episodes[0]["state"]["status"], "turbulence")
         self.assertEqual(episodes[0]["scope"]["target_class"], "resolver_probe")
 
+    def test_stable_elevated_resolver_keeps_observations_but_suppresses_current_incident(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        base = now - dt.timedelta(hours=2)
+        rows = []
+        for idx in range(12):
+            ts = (base + dt.timedelta(minutes=idx * 10)).isoformat()
+            rows.extend([
+                self.telemetry_row(ts, "192.168.1.1", 8),
+                self.telemetry_row(ts, "1.1.1.1", 30),
+                self.telemetry_row(ts, "45.90.28.134", 35),
+                self.telemetry_row(ts, "45.90.30.134", 176),
+            ])
+        self.write_rows(rows)
+        self.write_application_experience(now)
+
+        self.module.main()
+
+        dashboard_health = json.loads(self.module.DASHBOARD_HEALTH_OUT.read_text())
+        observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
+        investigation = json.loads(self.module.INVESTIGATION_OUT.read_text())
+        adaptive = next(item for item in dashboard_health["health_dimensions"]["adaptive_baseline"]["resolver_members"] if item["member_id"] == "nextdns_secondary")
+
+        self.assertEqual(adaptive["baseline_state"], "elevated_but_stable")
+        self.assertFalse(adaptive["incident_eligible"])
+        self.assertEqual(dashboard_health["health_dimensions"]["current_condition"]["state"], "elevated")
+        self.assertIsNone(investigation["selected_event"])
+        self.assertTrue(investigation["incident_suppressed"])
+        self.assertEqual(investigation["suppression_reason"], "established_degraded_baseline")
+        episodes = [item for item in observations["observations"] if item["type"] == "episode"]
+        self.assertTrue(episodes)
+        self.assertEqual(episodes[0]["state"]["status"], "sustained_degradation")
+
     def test_dashboard_consumes_observations_for_attribution_and_episode_projection_only(self):
         dashboard_html = INDEX_HTML_PATH.read_text()
         investigation_html = INVESTIGATE_HTML_PATH.read_text()
@@ -316,7 +370,9 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("OPENROUTER", dashboard_html)
         self.assertNotIn("OpenRouter", investigation_html)
         self.assertNotIn("OPENROUTER", investigation_html)
-        self.assertNotIn("adaptive_baseline", dashboard_html)
+        self.assertIn("adaptive_baseline_state", dashboard_html)
+        self.assertIn("No active incident is detected", dashboard_html)
+        self.assertNotIn("incident_eligible", dashboard_html)
         self.assertNotIn("adaptive_baseline", investigation_html)
 
     def test_dashboard_health_projection_matches_python_classification(self):

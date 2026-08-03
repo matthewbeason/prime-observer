@@ -528,6 +528,21 @@ resolver degradation without a proven healthy fallback, broad correlated resolve
 and Internet degradation, rapid worsening, severe excursions, or major/confirmed
 impact are present.
 
+Adaptive Baseline Phase B begins using that metadata for automatic incident
+eligibility only. `raw_bad`, `is_bad`, bad buckets, heatmap evidence,
+observations, attribution, impact, collectors, renderers, and historical
+snapshots remain factual legacy telemetry. A resolver bad sample is suppressed
+from incident lifecycle creation only when it is explicitly
+`elevated_but_stable`, has `established_degraded_baseline` suppression, has no
+guardrail breaches, has healthy direct DNS/system DNS/HTTPS evidence, has no
+reported user impact, and has no worsening trend. Any guardrail breach remains
+incident-eligible.
+
+An active legacy incident may recover when subsequent samples are accepted as an
+established degraded baseline. New artifacts expose this through additive
+`incident_suppressed`, `suppression_reason`, `adaptive_recovery`, and
+`baseline_transition` fields. Old snapshots are not rewritten.
+
 ## DNS Security Context
 
 DNS context comes only from generated `viz/nextdns_summary.json`. It is optional

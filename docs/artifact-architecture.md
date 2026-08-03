@@ -356,6 +356,15 @@ not redefine `raw_bad`, `is_bad`, buckets, incidents, recovery, attribution,
 impact, renderer behavior, historical snapshots, or Operator Assistant semantic
 hashing.
 
+Adaptive Baseline Phase B uses that advisory metadata only at the automatic
+incident eligibility and recovery boundary. Factual `raw_bad`, `is_bad`, bad
+bucket, observation, attribution, impact, collector, renderer, replay, and
+historical snapshot semantics remain unchanged. Current investigation artifacts
+may add `incident_suppressed`, `suppression_reason`, `adaptive_recovery`, and
+`baseline_transition` to explain when stable elevated resolver behavior was not
+selected as an active incident or when an older event recovered into an accepted
+degraded baseline.
+
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected
 interval request and does not load `viz/investigation.json` as a substitute.
