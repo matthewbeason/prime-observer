@@ -960,6 +960,7 @@ def build_dashboard_health(rows, attribution, generated_at, health_dimensions=No
                 "diagnostic_evidence",
                 "application_experience",
                 "operator_impact_feedback",
+                "adaptive_baseline",
                 "deterministic_operator_interpretation",
             )
         }

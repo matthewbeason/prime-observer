@@ -346,6 +346,16 @@ browser renders the sequence and expandable evidence details without calculating
 ordering, meaning, lifecycle, likely issue, or metrics. Older artifacts without
 `incident_replay` continue to use the established timeline fallback.
 
+Adaptive Baseline Phase A adds advisory resolver-member metadata under
+`health_dimensions.adaptive_baseline.resolver_members` and each resolver
+dependency member's `adaptive_baseline` object. These fields include baseline
+state, model/version identifiers, learned range, baseline/evidence windows,
+deviation from baseline, absolute threshold state, guardrail breaches,
+incident-eligibility metadata, suppression reason, and confidence. Phase A does
+not redefine `raw_bad`, `is_bad`, buckets, incidents, recovery, attribution,
+impact, renderer behavior, historical snapshots, or Operator Assistant semantic
+hashing.
+
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected
 interval request and does not load `viz/investigation.json` as a substitute.

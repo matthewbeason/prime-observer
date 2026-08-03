@@ -112,6 +112,18 @@ def safe_dict(value):
     return value if isinstance(value, dict) else {}
 
 
+def strip_adaptive_baseline(value):
+    if isinstance(value, dict):
+        return {
+            key: strip_adaptive_baseline(item)
+            for key, item in value.items()
+            if key != "adaptive_baseline"
+        }
+    if isinstance(value, list):
+        return [strip_adaptive_baseline(item) for item in value]
+    return value
+
+
 def normalized_input_payload(input_payload):
     payload = safe_dict(input_payload)
     investigation = safe_dict(payload.get("investigation"))
@@ -528,7 +540,7 @@ def build_package(investigation, source_file):
     selected_event = safe_dict(investigation.get("selected_event"))
     artifact_state = safe_dict(investigation.get("artifact_state"))
     freshness = safe_dict(investigation.get("freshness"))
-    health_dimensions = safe_dict(investigation.get("health_dimensions"))
+    health_dimensions = safe_dict(strip_adaptive_baseline(investigation.get("health_dimensions")))
     target_class = selected_event.get("target_class")
     use_schema2 = investigation.get("schema_version") == 2 and bool(windows)
 
@@ -561,7 +573,7 @@ def build_package(investigation, source_file):
         "operator_brief": safe_dict(investigation.get("operator_brief")),
         "health_dimensions": health_dimensions,
         "deterministic_operator_interpretation": safe_dict(investigation.get("deterministic_operator_interpretation")),
-        "dependency_groups": investigation.get("dependency_state") if isinstance(investigation.get("dependency_state"), list) else [],
+        "dependency_groups": strip_adaptive_baseline(investigation.get("dependency_state")) if isinstance(investigation.get("dependency_state"), list) else [],
         "impact_assessment": safe_dict(investigation.get("impact_assessment")),
         "scope_impact": safe_dict(investigation.get("scope_impact")),
         "recovery_progress": safe_dict(investigation.get("recovery_progress")),

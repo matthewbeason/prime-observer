@@ -95,6 +95,30 @@ def timed_rows(base, entries):
     return rows
 
 
+def adaptive_rows(base, *, secondary, primary=None, internet=None, gateway=None, secondary_loss=0, primary_loss=0, internet_loss=0, gateway_loss=0):
+    primary = primary if primary is not None else [35 for _ in secondary]
+    internet = internet if internet is not None else [30 for _ in secondary]
+    gateway = gateway if gateway is not None else [8 for _ in secondary]
+    rows = []
+    for idx, secondary_p95 in enumerate(secondary):
+        ts = base + dt.timedelta(minutes=idx * 10)
+        for host, p95, loss in (
+            ("192.168.1.1", gateway[min(idx, len(gateway) - 1)], gateway_loss),
+            ("1.1.1.1", internet[min(idx, len(internet) - 1)], internet_loss),
+            ("45.90.28.134", primary[min(idx, len(primary) - 1)], primary_loss),
+            ("45.90.30.134", secondary_p95, secondary_loss),
+        ):
+            rows.append({
+                "ts": ts.isoformat(),
+                "phase_label": "fiber",
+                "host": host,
+                "p95_ms": str(p95),
+                "jitter_ms": "5",
+                "loss_pct": str(loss),
+            })
+    return rows
+
+
 def diagnostic_payload(summary):
     return {"status": "ok", "items": summary.get("diagnostics") or []}
 
@@ -181,6 +205,21 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
             diagnostic_evidence=diagnostic_payload(fixture["evidence_summary"]),
         )
 
+    def secondary_adaptive_baseline(self, result):
+        members = result["adaptive_baseline"]["resolver_members"]
+        return next(item for item in members if item["member_id"] == "nextdns_secondary")
+
+    def evaluate_adaptive(self, *, secondary, primary=None, internet=None, gateway=None, app_secondary="ok", secondary_loss=0, primary_loss=0, internet_loss=0, gateway_loss=0, feedback="none_observed"):
+        generated_at = dt.datetime(2026, 7, 21, 14, 0, tzinfo=dt.timezone.utc)
+        base = generated_at - dt.timedelta(hours=3)
+        return self.module.evaluate_health_dimensions(
+            adaptive_rows(base, secondary=secondary, primary=primary, internet=internet, gateway=gateway, secondary_loss=secondary_loss, primary_loss=primary_loss, internet_loss=internet_loss, gateway_loss=gateway_loss),
+            generated_at=generated_at,
+            application_experience=app_payload(generated_at, secondary=app_secondary),
+            operator_impact_feedback=feedback_payload(generated_at, impact=feedback),
+            diagnostic_evidence={"status": "ok", "items": []},
+        )
+
     def assert_expected(self, fixture_id):
         fixture = next(item for item in self.fixtures if item["id"] == fixture_id)
         result = self.evaluate_fixture(fixture_id)
@@ -216,6 +255,94 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
 
         self.assertEqual(result["estimated_user_impact"]["state"], "low")
         self.assertEqual(result["observed_user_impact"]["state"], "none_reported")
+
+    def test_stable_elevated_secondary_resolver_is_adaptive_degraded_baseline(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176])
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertEqual(adaptive["absolute_threshold_state"], "breached")
+        self.assertEqual(adaptive["baseline_state"], "elevated_but_stable")
+        self.assertFalse(adaptive["incident_eligible"])
+        self.assertEqual(adaptive["incident_suppression_reason"], "established_degraded_baseline")
+        self.assertEqual(adaptive["guardrail_breaches"], [])
+        self.assertTrue(adaptive["evidence_window"]["direct_dns_success"])
+        self.assertTrue(adaptive["evidence_window"]["system_dns_success"])
+        self.assertTrue(adaptive["evidence_window"]["https_success"])
+
+    def test_sudden_worsening_from_elevated_baseline_is_eligible(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 248, 252, 255])
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("rapid_worsening", adaptive["guardrail_breaches"])
+
+    def test_packet_loss_keeps_stable_elevated_resolver_eligible(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176], secondary_loss=3)
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("packet_loss_above_threshold", adaptive["guardrail_breaches"])
+
+    def test_timeout_keeps_stable_elevated_resolver_eligible(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176], app_secondary="timeout")
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("timeout", adaptive["guardrail_breaches"])
+
+    def test_direct_dns_failure_keeps_stable_elevated_resolver_eligible(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176], app_secondary="failed")
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("dns_failure", adaptive["guardrail_breaches"])
+
+    def test_both_resolver_members_degraded_remain_eligible(self):
+        result = self.evaluate_adaptive(
+            primary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176],
+            secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176],
+        )
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("both_resolver_members_degraded", adaptive["guardrail_breaches"])
+
+    def test_gateway_failure_keeps_stable_elevated_resolver_eligible(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176], gateway=[160] * 12)
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("gateway_degradation", adaptive["guardrail_breaches"])
+
+    def test_broad_correlated_degradation_keeps_stable_elevated_resolver_eligible(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172, 175, 178, 173, 176, 174, 177, 175, 176], internet=[190] * 12)
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn("broad_correlated_resolver_and_internet_degradation", adaptive["guardrail_breaches"])
+
+    def test_too_little_data_blocks_adaptive_baseline_learning(self):
+        result = self.evaluate_adaptive(secondary=[170, 174, 176, 172])
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertEqual(adaptive["baseline_state"], "unknown")
+        self.assertEqual(adaptive["incident_suppression_reason"], "insufficient_baseline_evidence")
+
+    def test_worsening_trend_cannot_be_normalized(self):
+        result = self.evaluate_adaptive(secondary=[150, 152, 153, 151, 154, 153, 152, 154, 153, 210, 215, 220])
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertEqual(adaptive["baseline_state"], "degraded_from_baseline")
+        self.assertTrue(adaptive["deviation_from_baseline"]["worsening_trend"])
+        self.assertTrue(adaptive["incident_eligible"])
+
+    def test_improving_elevated_condition_is_marked_recovering_metadata_only(self):
+        result = self.evaluate_adaptive(secondary=[220, 224, 226, 222, 225, 228, 223, 226, 224, 138, 140, 139])
+
+        adaptive = self.secondary_adaptive_baseline(result)
+        self.assertEqual(adaptive["baseline_state"], "recovering")
+        self.assertTrue(adaptive["deviation_from_baseline"]["improving_trend"])
+        self.assertTrue(adaptive["incident_eligible"])
 
     def test_one_resolver_degraded_with_active_path_unknown_estimates_low_not_likely(self):
         result = self.evaluate_fixture("primary_degraded_secondary_healthy_active_unknown")
@@ -444,7 +571,24 @@ class HealthDimensionsEvaluatorTest(unittest.TestCase):
         self.assertIn("Current application checks did not reproduce user-facing failure.", result["estimated_user_impact"]["drivers"])
         self.assertEqual(result["technical_condition"], baseline["technical_condition"])
         self.assertEqual(result["attribution"], baseline["attribution"])
-        self.assertEqual(result["dependency_groups"], baseline["dependency_groups"])
+        def legacy_dependency(group):
+            return {
+                "state": group.get("state"),
+                "redundancy_status": group.get("redundancy_status"),
+                "active_member": group.get("active_member"),
+                "fallback_status": group.get("fallback_status"),
+                "members": [
+                    {
+                        "member_id": member.get("member_id"),
+                        "role": member.get("role"),
+                        "endpoint": member.get("endpoint"),
+                        "provider": member.get("provider"),
+                        "technical_condition": member.get("technical_condition"),
+                    }
+                    for member in group.get("members", [])
+                ],
+            }
+        self.assertEqual([legacy_dependency(group) for group in result["dependency_groups"]], [legacy_dependency(group) for group in baseline["dependency_groups"]])
         self.assertEqual(result["observed_user_impact"], baseline["observed_user_impact"])
 
     def test_stale_healthy_application_evidence_does_not_dampen_telemetry_likely_impact(self):

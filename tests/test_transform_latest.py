@@ -144,6 +144,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(dashboard_health["health_dimensions"]["model_version"], "prime_observer.health_dimensions.v1")
         self.assertIn("current_condition", dashboard_health["health_dimensions"])
         self.assertIn("rolling_condition", dashboard_health["health_dimensions"])
+        self.assertIn("adaptive_baseline", dashboard_health["health_dimensions"])
+        self.assertIn("adaptive_baseline", investigation["health_dimensions"])
         self.assertIn("incident_record", investigation)
         self.assertIn("title", investigation["incident_record"])
         self.assertIn("narrative", investigation["incident_record"])
@@ -314,6 +316,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("OPENROUTER", dashboard_html)
         self.assertNotIn("OpenRouter", investigation_html)
         self.assertNotIn("OPENROUTER", investigation_html)
+        self.assertNotIn("adaptive_baseline", dashboard_html)
+        self.assertNotIn("adaptive_baseline", investigation_html)
 
     def test_dashboard_health_projection_matches_python_classification(self):
         base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)

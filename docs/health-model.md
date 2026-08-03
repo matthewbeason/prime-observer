@@ -505,6 +505,29 @@ from `baseline_sample_count` in `viz/index.html`.
 Pattern Awareness answers "is this unusual?" It is contextual evidence, not an
 alert and not attribution.
 
+## Adaptive Baseline Phase A
+
+Adaptive Baseline Phase A adds Python-owned resolver-member classification
+metadata without changing current bad-sample, sustained-sample, bad-bucket,
+incident, recovery, attribution, impact, dashboard-rendering, or Operator
+Assistant semantics.
+
+The additive metadata is emitted for resolver dependency members and under
+`health_dimensions.adaptive_baseline.resolver_members`. Phase A states are
+`within_target`, `elevated_but_stable`, `degraded_from_baseline`, `anomalous`,
+`failing`, `recovering`, and `unknown`. `incident_eligible` is advisory metadata
+only in Phase A and is not used to suppress incident creation.
+
+`elevated_but_stable` requires enough samples over the evidence window, stable
+elevated latency, successful direct DNS, successful system DNS, successful HTTPS,
+no reported major impact or confirmed service failure, no worsening trend, no
+broad unrelated target degradation, and no guardrail breach. Guardrails keep a
+resolver member incident-eligible when packet loss, timeout, DNS failure,
+application failure, gateway degradation, both resolver members degraded, active
+resolver degradation without a proven healthy fallback, broad correlated resolver
+and Internet degradation, rapid worsening, severe excursions, or major/confirmed
+impact are present.
+
 ## DNS Security Context
 
 DNS context comes only from generated `viz/nextdns_summary.json`. It is optional

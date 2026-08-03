@@ -11,6 +11,7 @@ from target_metadata import target_metadata
 
 HEALTH_DIMENSIONS_SCHEMA_VERSION = 1
 HEALTH_DIMENSIONS_MODEL_VERSION = "prime_observer.health_dimensions.v1"
+ADAPTIVE_BASELINE_MODEL_VERSION = "prime_observer.adaptive_baseline.v1.phase_a"
 DIAGNOSTIC_EVIDENCE_MODEL_VERSION = "prime_observer.diagnostic_evidence.v1"
 APPLICATION_EXPERIENCE_MODEL_VERSION = "prime_observer.application_experience.v1"
 OPERATOR_IMPACT_FEEDBACK_MODEL_VERSION = "prime_observer.operator_impact_feedback.v1"
@@ -58,6 +59,12 @@ OPERATOR_IMPACT_FEEDBACK_STATES = {
     "unknown",
 }
 MAX_OPERATOR_FEEDBACK_NOTE_CHARS = 500
+ADAPTIVE_BASELINE_MIN_SAMPLES = 12
+ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES = 60
+ADAPTIVE_BASELINE_RECENT_SAMPLES = 3
+ADAPTIVE_BASELINE_STABLE_SPREAD_PCT = 20.0
+ADAPTIVE_BASELINE_WORSENING_DELTA_PCT = 35.0
+ADAPTIVE_BASELINE_SEVERE_P95_MS = 240.0
 
 
 def parse_ts(value: Any) -> dt.datetime | None:
@@ -385,6 +392,250 @@ def max_or_none(values: list[float | None]) -> float | None:
     return max(clean) if clean else None
 
 
+def percentile(values: list[float | None], pct: float) -> float | None:
+    clean = sorted(value for value in values if value is not None)
+    if not clean:
+        return None
+    if len(clean) == 1:
+        return clean[0]
+    pos = (len(clean) - 1) * (pct / 100.0)
+    lower = int(pos)
+    upper = min(lower + 1, len(clean) - 1)
+    weight = pos - lower
+    return clean[lower] + ((clean[upper] - clean[lower]) * weight)
+
+
+def rounded(value: float | None, digits: int = 1) -> float | None:
+    if value is None:
+        return None
+    return round(value, digits)
+
+
+def direct_dns_success_for_member(application_experience: dict[str, Any] | None, diagnostics: list[dict[str, Any]], member: dict[str, Any]) -> bool:
+    app = application_transaction_summary(application_experience)
+    role = str(member.get("role") or "").lower()
+    endpoint = str(member.get("endpoint") or member.get("host") or "").lower()
+    if app.get("current"):
+        for item in (application_experience or {}).get("dns_transactions", []):
+            if not isinstance(item, dict) or item.get("role") == "system":
+                continue
+            item_role = str(item.get("role") or "").lower()
+            item_endpoint = str(item.get("resolver_endpoint") or "").lower()
+            if (role and item_role == role) or (endpoint and item_endpoint == endpoint):
+                return bool(item.get("success")) and not bool(item.get("timeout"))
+    for item in diagnostics:
+        if not item.get("is_current") or item.get("type") != "direct_dns_query_measurement":
+            continue
+        if not diagnostic_matches(item, member):
+            continue
+        status = diagnostic_status(item)
+        if status in {"timeout", "failed", "failure", "error"}:
+            return False
+        latencies = item.get("latency_ms") if isinstance(item.get("latency_ms"), list) else []
+        if latencies:
+            return True
+    return False
+
+
+def member_dns_failed(application_experience: dict[str, Any] | None, member: dict[str, Any]) -> bool:
+    app = application_transaction_summary(application_experience)
+    if not app.get("current"):
+        return False
+    role = str(member.get("role") or "").lower()
+    endpoint = str(member.get("endpoint") or member.get("host") or "").lower()
+    for item in (application_experience or {}).get("dns_transactions", []):
+        if not isinstance(item, dict) or item.get("role") == "system":
+            continue
+        item_role = str(item.get("role") or "").lower()
+        item_endpoint = str(item.get("resolver_endpoint") or "").lower()
+        if (role and item_role == role) or (endpoint and item_endpoint == endpoint):
+            return not bool(item.get("success"))
+    return False
+
+
+def adaptive_baseline_guardrails(
+    *,
+    member: dict[str, Any],
+    members: list[dict[str, Any]],
+    gateway: dict[str, Any],
+    internet: dict[str, Any],
+    dependency: dict[str, Any],
+    observed: dict[str, Any],
+    application_experience: dict[str, Any] | None,
+    diagnostics: list[dict[str, Any]],
+    worsening: bool,
+) -> list[str]:
+    app = application_transaction_summary(application_experience)
+    condition = member.get("technical_condition") or {}
+    samples = member.get("samples") or []
+    breaches = []
+    if any((sample.get("loss") or 0.0) > WAN_BAD["loss"] for sample in samples):
+        breaches.append("packet_loss_above_threshold")
+    if app.get("current") and app.get("total_timeouts", 0) > 0:
+        breaches.append("timeout")
+    if member_dns_failed(application_experience, member):
+        breaches.append("dns_failure")
+    if app.get("current") and (app.get("system_dns_failed") or app.get("https_failed") or app.get("broad_failure_count", 0) > 0):
+        breaches.append("application_failure")
+    if gateway.get("state") in {"degraded", "severe"}:
+        breaches.append("gateway_degradation")
+    degraded_members = [item for item in members if condition_rank((item.get("technical_condition") or {}).get("state")) >= 2]
+    if len(degraded_members) >= 2:
+        breaches.append("both_resolver_members_degraded")
+    if dependency.get("active_member") == member.get("member_id") and condition_rank(condition.get("state")) >= 2 and dependency.get("fallback_status") != "healthy":
+        breaches.append("active_resolver_degraded_without_proven_healthy_fallback")
+    if internet.get("state") in {"degraded", "severe"} and condition_rank(condition.get("state")) >= 2:
+        breaches.append("broad_correlated_resolver_and_internet_degradation")
+    if worsening:
+        breaches.append("rapid_worsening")
+    if (condition.get("max_p95_ms") or 0.0) >= ADAPTIVE_BASELINE_SEVERE_P95_MS:
+        breaches.append("severe_excursion")
+    if observed.get("state") in {"reported_major", "confirmed_service_failure"}:
+        breaches.append("reported_major_or_confirmed_impact")
+    for item in diagnostics:
+        if not item.get("is_current"):
+            continue
+        if diagnostic_matches(item, member) and diagnostic_status(item) in {"timeout", "failed", "failure", "error"}:
+            breaches.append("dns_failure")
+    return list(dict.fromkeys(breaches))
+
+
+def adaptive_resolver_member_baseline(
+    *,
+    member: dict[str, Any],
+    members: list[dict[str, Any]],
+    gateway: dict[str, Any],
+    internet: dict[str, Any],
+    dependency: dict[str, Any],
+    observed: dict[str, Any],
+    application_experience: dict[str, Any] | None,
+    diagnostics: list[dict[str, Any]],
+) -> dict[str, Any]:
+    samples = sorted(member.get("samples") or [], key=lambda item: item.get("t"))
+    p95_values = [sample.get("p95") for sample in samples if sample.get("p95") is not None]
+    start = samples[0].get("t") if samples else None
+    end = samples[-1].get("t") if samples else None
+    window_minutes = int((end - start).total_seconds() // 60) if start and end else 0
+    learned = {
+        "min_p95_ms": rounded(min(p95_values), 1) if p95_values else None,
+        "p25_p95_ms": rounded(percentile(p95_values, 25), 1),
+        "median_p95_ms": rounded(percentile(p95_values, 50), 1),
+        "p75_p95_ms": rounded(percentile(p95_values, 75), 1),
+        "p90_p95_ms": rounded(percentile(p95_values, 90), 1),
+        "max_p95_ms": rounded(max(p95_values), 1) if p95_values else None,
+    }
+    baseline_samples = samples[:-ADAPTIVE_BASELINE_RECENT_SAMPLES] if len(samples) > ADAPTIVE_BASELINE_RECENT_SAMPLES else samples
+    recent_samples = samples[-ADAPTIVE_BASELINE_RECENT_SAMPLES:] if samples else []
+    baseline_p95 = [sample.get("p95") for sample in baseline_samples if sample.get("p95") is not None]
+    recent_p95 = [sample.get("p95") for sample in recent_samples if sample.get("p95") is not None]
+    baseline_median = percentile(baseline_p95, 50)
+    recent_median = percentile(recent_p95, 50)
+    delta_pct = ((recent_median - baseline_median) / baseline_median) * 100.0 if baseline_median and recent_median is not None else None
+    spread_pct = ((max(p95_values) - min(p95_values)) / (percentile(p95_values, 50) or 1.0)) * 100.0 if p95_values else None
+    enough_samples = len(samples) >= ADAPTIVE_BASELINE_MIN_SAMPLES and window_minutes >= ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES
+    absolute_breached = any(
+        (sample.get("p95") or 0.0) > WAN_BAD["p95"]
+        or (sample.get("jitter") or 0.0) > WAN_BAD["jitter"]
+        or (sample.get("loss") or 0.0) > WAN_BAD["loss"]
+        for sample in samples
+    )
+    elevated = bool(learned["median_p95_ms"] is not None and learned["median_p95_ms"] > WAN_BAD["p95"])
+    stable = bool(spread_pct is not None and spread_pct <= ADAPTIVE_BASELINE_STABLE_SPREAD_PCT)
+    worsening = bool(delta_pct is not None and delta_pct >= ADAPTIVE_BASELINE_WORSENING_DELTA_PCT)
+    improving = bool(delta_pct is not None and delta_pct <= -ADAPTIVE_BASELINE_WORSENING_DELTA_PCT)
+    direct_dns_ok = direct_dns_success_for_member(application_experience, diagnostics, member)
+    app = application_transaction_summary(application_experience)
+    app_ok = bool(app.get("current") and app.get("healthy_system_dns") and app.get("healthy_https") and app.get("total_failures", 0) == 0 and app.get("total_timeouts", 0) == 0)
+    no_reported_impact = observed.get("state") in {"none_reported", "unknown"}
+    guardrails = adaptive_baseline_guardrails(
+        member=member,
+        members=members,
+        gateway=gateway,
+        internet=internet,
+        dependency=dependency,
+        observed=observed,
+        application_experience=application_experience,
+        diagnostics=diagnostics,
+        worsening=worsening,
+    )
+    if not samples:
+        state = "unknown"
+        eligible = False
+        reason = "insufficient_evidence"
+        confidence = "low"
+    elif guardrails:
+        if guardrails == ["rapid_worsening"]:
+            state = "degraded_from_baseline"
+        else:
+            state = "failing" if any(item in guardrails for item in {"packet_loss_above_threshold", "timeout", "dns_failure", "application_failure", "gateway_degradation", "both_resolver_members_degraded"}) else "anomalous"
+        eligible = True
+        reason = None
+        confidence = "high" if enough_samples else "medium"
+    elif not enough_samples:
+        state = "unknown"
+        eligible = bool(absolute_breached)
+        reason = "insufficient_baseline_evidence"
+        confidence = "low"
+    elif worsening:
+        state = "degraded_from_baseline"
+        eligible = True
+        reason = None
+        confidence = "high"
+    elif elevated and stable and direct_dns_ok and app_ok and no_reported_impact:
+        state = "elevated_but_stable"
+        eligible = False
+        reason = "established_degraded_baseline"
+        confidence = "high"
+    elif improving and direct_dns_ok and app_ok and no_reported_impact:
+        state = "recovering"
+        eligible = True
+        reason = None
+        confidence = "medium"
+    elif not absolute_breached:
+        state = "within_target"
+        eligible = False
+        reason = "within_target"
+        confidence = "high" if enough_samples else "medium"
+    else:
+        state = "anomalous"
+        eligible = True
+        reason = None
+        confidence = "medium"
+    return {
+        "baseline_state": state,
+        "baseline_version": f"{member.get('member_id') or member.get('host') or 'resolver'}:{iso(start)}:{iso(end)}",
+        "baseline_model_version": ADAPTIVE_BASELINE_MODEL_VERSION,
+        "learned_range": learned,
+        "baseline_window": {"start": iso(start), "end": iso(end), "duration_minutes": window_minutes},
+        "baseline_sample_count": len(samples),
+        "deviation_from_baseline": {
+            "baseline_median_p95_ms": rounded(baseline_median, 1),
+            "recent_median_p95_ms": rounded(recent_median, 1),
+            "delta_pct": rounded(delta_pct, 1),
+            "spread_pct": rounded(spread_pct, 1),
+            "worsening_trend": worsening,
+            "improving_trend": improving,
+        },
+        "absolute_threshold_state": "breached" if absolute_breached else "within_target",
+        "guardrail_breaches": guardrails,
+        "incident_eligible": eligible,
+        "incident_suppression_reason": reason,
+        "confidence": confidence,
+        "evidence_window": {
+            "start": iso(start),
+            "end": iso(end),
+            "sample_count": len(samples),
+            "required_sample_count": ADAPTIVE_BASELINE_MIN_SAMPLES,
+            "required_duration_minutes": ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES,
+            "direct_dns_success": direct_dns_ok,
+            "system_dns_success": bool(app.get("healthy_system_dns")),
+            "https_success": bool(app.get("healthy_https")),
+            "no_reported_user_impact": no_reported_impact,
+            "unrelated_target_groups_broadly_degraded": internet.get("state") in {"degraded", "severe"},
+        },
+    }
+
+
 def diagnostic_matches(item: dict[str, Any], member: dict[str, Any]) -> bool:
     tokens = {
         str(member.get("host") or ""),
@@ -570,6 +821,7 @@ def dependency_group_state(members: list[dict[str, Any]], diagnostics: list[dict
                 "endpoint": member.get("endpoint"),
                 "provider": member.get("provider"),
                 "technical_condition": member.get("technical_condition"),
+                **({"adaptive_baseline": member.get("adaptive_baseline")} if isinstance(member.get("adaptive_baseline"), dict) else {}),
             }
             for member in members
         ],
@@ -1142,6 +1394,21 @@ def evaluate_health_dimensions(
     dependency_group_id = next((member.get("dependency_group_id") for member in members if member.get("dependency_group_id")), None)
     dependency["dependency_group_id"] = dependency_group_id
     dependency["dependency_type"] = next((member.get("dependency_type") for member in members if member.get("dependency_type")), None)
+    observed_impact = observed_user_impact_assessment(diagnostics=diagnostics, operator_feedback=operator_impact_feedback)
+    for member in members:
+        member["adaptive_baseline"] = adaptive_resolver_member_baseline(
+            member=member,
+            members=members,
+            gateway=gateway,
+            internet=internet,
+            dependency=dependency,
+            observed=observed_impact,
+            application_experience=application_experience,
+            diagnostics=diagnostics,
+        )
+    dependency = dependency_group_state(members, diagnostics)
+    dependency["dependency_group_id"] = dependency_group_id
+    dependency["dependency_type"] = next((member.get("dependency_type") for member in members if member.get("dependency_type")), None)
 
     technical = technical_condition_from_parts(
         gateway=gateway,
@@ -1229,7 +1496,6 @@ def evaluate_health_dimensions(
         dependency=dependency,
         diagnostics=diagnostics,
     )
-    observed_impact = observed_user_impact_assessment(diagnostics=diagnostics, operator_feedback=operator_impact_feedback)
     estimated_impact = estimated_user_impact_assessment(
         technical_state=technical["state"],
         gateway=gateway,
@@ -1273,6 +1539,19 @@ def evaluate_health_dimensions(
         "attribution_confidence": attribution.get("confidence", "low"),
         "attribution": attribution,
         "dependency_groups": [dependency] if dependency.get("state") != "insufficient_evidence" or members else [],
+        "adaptive_baseline": {
+            "model_version": ADAPTIVE_BASELINE_MODEL_VERSION,
+            "resolver_members": [
+                {
+                    "member_id": member.get("member_id"),
+                    "role": member.get("role"),
+                    "endpoint": member.get("endpoint"),
+                    **(member.get("adaptive_baseline") or {}),
+                }
+                for member in members
+                if isinstance(member.get("adaptive_baseline"), dict)
+            ],
+        },
         "diagnostic_evidence": {
             "status": (diagnostic_evidence or {}).get("status", "missing"),
             "items_considered": len(diagnostics),

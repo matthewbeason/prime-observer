@@ -97,6 +97,34 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertEqual(event["confirmed_at"], (self.base + dt.timedelta(minutes=2)).isoformat())
         self.assertIsNone(event["recovered_at"])
 
+    def test_adaptive_metadata_does_not_change_incident_lifecycle(self):
+        rows = [
+            self.row(0),
+            self.row(1, p95=180, raw=True),
+            self.row(2, p95=181, raw=True, sustained=True),
+        ]
+        without_adaptive = self.build(rows)
+        with_adaptive = self.module.build_automatic_investigation(
+            rows_out=rows,
+            generated_at=self.base + dt.timedelta(minutes=60),
+            wan_series_marked=[
+                {
+                    "t": self.module.parse_ts(row["ts"]),
+                    "host": row["host"],
+                    "target_class": row["target_class"],
+                    "raw_bad": row.get("raw_bad", False),
+                    "is_bad": row.get("is_bad", False),
+                }
+                for row in rows
+                if row["target_class"] != "gateway_probe"
+            ],
+            health_dimensions={"adaptive_baseline": {"resolver_members": [{"member_id": "nextdns_secondary", "incident_eligible": False}]}},
+            observations_projection={"observations": []},
+        )
+
+        self.assertEqual(with_adaptive["selected_event"], without_adaptive["selected_event"])
+        self.assertEqual(with_adaptive["recovery_progress"], without_adaptive["recovery_progress"])
+
     def test_incident_record_title_and_narrative_are_deterministic(self):
         rows = [
             self.row(0, host="192.168.1.1", target_class="gateway_probe"),

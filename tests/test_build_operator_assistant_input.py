@@ -386,6 +386,31 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
 
         self.assertEqual(older["input_hash"], newer["input_hash"])
 
+    def test_adaptive_baseline_metadata_does_not_change_input_hash(self):
+        investigation = self.investigation_payload()
+        investigation["health_dimensions"] = {
+            "technical_condition": {"state": "severe"},
+            "estimated_user_impact": {"state": "low"},
+            "observed_user_impact": {"state": "none_reported"},
+            "operational_risk": {"state": "elevated"},
+            "attribution": {"domain": "resolver_provider_path"},
+            "dependency_groups": [{"state": "primary_healthy_secondary_degraded", "members": [{"member_id": "nextdns_secondary"}]}],
+        }
+        baseline = self.module.build_package(investigation, "viz/investigation.json")
+        investigation["health_dimensions"]["adaptive_baseline"] = {
+            "model_version": "prime_observer.adaptive_baseline.v1.phase_a",
+            "resolver_members": [{"member_id": "nextdns_secondary", "baseline_state": "elevated_but_stable", "incident_eligible": False}],
+        }
+        investigation["health_dimensions"]["dependency_groups"][0]["members"][0]["adaptive_baseline"] = {
+            "baseline_state": "elevated_but_stable",
+            "baseline_version": "volatile",
+        }
+
+        with_adaptive = self.module.build_package(investigation, "viz/investigation.json")
+
+        self.assertEqual(baseline["input_hash"], with_adaptive["input_hash"])
+        self.assertNotIn("adaptive_baseline", json.dumps(with_adaptive))
+
     def test_changed_semantic_input_writes_pending_generation_state(self):
         payload = self.module.build_package(self.investigation_payload(), "viz/investigation.json")
 
