@@ -252,6 +252,102 @@ class InvestigationModelTest(unittest.TestCase):
 
         self.assertIn("Internet probes", payload["incident_phases"]["during"]["healthy_comparisons"])
 
+    def test_incident_replay_orders_supported_milestones(self):
+        rows = [self.row(0), self.row(1), self.row(2, p95=180, raw=True), self.row(3, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (4, 5, 12, 19))
+
+        payload = self.build(rows)
+        milestones = payload["incident_replay"]["milestones"]
+        states = [item["state"] for item in milestones]
+        timestamps = [item["timestamp"] for item in milestones]
+
+        self.assertEqual(timestamps, sorted(timestamps))
+        self.assertIn("first_anomaly", states)
+        self.assertIn("persistence_confirmed", states)
+        self.assertIn("recovery_candidate", states)
+        self.assertIn("recovery_started", states)
+        self.assertEqual(states[-1], "recovery_confirmed")
+
+    def test_incident_replay_omits_unsupported_recovery_milestones(self):
+        payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
+
+        states = [item["state"] for item in payload["incident_replay"]["milestones"]]
+        self.assertIn("first_anomaly", states)
+        self.assertIn("persistence_confirmed", states)
+        self.assertNotIn("recovery_candidate", states)
+        self.assertNotIn("recovery_started", states)
+        self.assertNotIn("recovery_confirmed", states)
+
+    def test_incident_replay_unresolved_incident_ends_with_current_known_state(self):
+        payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
+
+        last = payload["incident_replay"]["milestones"][-1]
+        self.assertIn(last["state"], {"persistence_confirmed", "affected_scope_changed"})
+        self.assertNotEqual(last["state"], "recovery_confirmed")
+
+    def test_incident_replay_application_status_milestone(self):
+        payload = self.module.build_automatic_investigation(
+            rows_out=[self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)],
+            generated_at=self.base + dt.timedelta(minutes=10),
+            wan_series_marked=[
+                {"t": self.base, "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": False, "is_bad": False},
+                {"t": self.base + dt.timedelta(minutes=1), "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": True, "is_bad": False},
+                {"t": self.base + dt.timedelta(minutes=2), "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": True, "is_bad": True},
+            ],
+            health_dimensions={"application_experience": {"is_current": True, "generated_at": (self.base + dt.timedelta(minutes=4)).isoformat(), "failure_counts": {"total": 0}}},
+            observations_projection={"observations": []},
+        )
+
+        states = [item["state"] for item in payload["incident_replay"]["milestones"]]
+        self.assertIn("application_status_changed", states)
+
+    def test_incident_replay_operator_feedback_milestone(self):
+        feedback_time = (self.base + dt.timedelta(minutes=5)).isoformat()
+        payload = self.module.build_automatic_investigation(
+            rows_out=[self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)],
+            generated_at=self.base + dt.timedelta(minutes=10),
+            wan_series_marked=[
+                {"t": self.base, "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": False, "is_bad": False},
+                {"t": self.base + dt.timedelta(minutes=1), "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": True, "is_bad": False},
+                {"t": self.base + dt.timedelta(minutes=2), "host": "45.90.30.134", "target_class": "resolver_probe", "raw_bad": True, "is_bad": True},
+            ],
+            health_dimensions={"operator_impact_feedback": {"is_current": True, "impact_state": "minor_slowness", "note": "Video calls were choppy.", "observed_at": feedback_time}},
+            observations_projection={"observations": []},
+        )
+
+        feedback = [item for item in payload["incident_replay"]["milestones"] if item["state"] == "operator_feedback_added"]
+        self.assertEqual(len(feedback), 1)
+        self.assertIn("video calls", feedback[0]["summary"].lower())
+
+    def test_incident_replay_external_context_milestone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_viz_dir = self.module.VIZ_DIR
+            self.module.VIZ_DIR = Path(tmp) / "viz"
+            self.module.VIZ_DIR.mkdir()
+            try:
+                (self.module.VIZ_DIR / "internet_conditions.json").write_text(json.dumps({
+                    "available": True,
+                    "status": "disruption",
+                    "generated_at": (self.base + dt.timedelta(minutes=4)).isoformat(),
+                    "summary": "Ongoing Cox routing disruption reported.",
+                    "items": [],
+                }))
+                payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
+            finally:
+                self.module.VIZ_DIR = old_viz_dir
+
+        external = [item for item in payload["incident_replay"]["milestones"] if item["state"] == "external_context_changed"]
+        self.assertEqual(len(external), 1)
+        self.assertIn("routing disruption", external[0]["summary"])
+
+    def test_incident_replay_milestones_include_evidence_refs_and_metrics(self):
+        payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
+
+        for milestone in payload["incident_replay"]["milestones"]:
+            self.assertTrue(milestone["evidence_refs"])
+            self.assertIn("metrics_snapshot", milestone)
+            self.assertIn("representative_metrics", milestone["metrics_snapshot"])
+
     def test_baseline_ends_before_first_anomaly(self):
         payload = self.build([
             self.row(0),

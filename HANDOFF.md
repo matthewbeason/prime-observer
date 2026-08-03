@@ -64,6 +64,9 @@ Repository-backed recent milestones:
 - post-`v0.9.0` Incident Intelligence Phase 2 adds additive Python-owned
   `incident_phases` for Before, During, and optional Recovery story sections;
   the browser renders these fields without inferring phase semantics
+- post-`v0.9.0` Incident Intelligence Phase 3 adds additive Python-owned
+  `incident_replay` milestones so Investigation can render deterministic replay
+  without browser-side inference or historical similarity
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -122,12 +125,12 @@ The repository currently says to live with `v0.9.0` for several days before
 expanding functionality.
 
 The current uncommitted work should be completed by validating Incident
-Intelligence Phase 2 before any commit. Direct links/bookmarks for current,
+Intelligence Phase 3 before any commit. Direct links/bookmarks for current,
 selected-interval, and historical investigation entry points remain explicit:
 `?view=current`, `?view=interval&start=<ISO>&end=<ISO>`, and
 `?view=incident&event=<event-id>`. Legacy `?event=<event-id>` links remain
-supported. Event replay, comparison, recurrence, and similarity detection remain
-future work.
+supported. Event comparison, recurrence, and similarity detection remain future
+work.
 
 Generated JSON and CSV artifacts remain canonical. No database is needed at the
 current local scale; any future PostgreSQL or Supabase work should be an optional

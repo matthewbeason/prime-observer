@@ -135,6 +135,49 @@ globalThis.fetch = async () => ({{ok: false, status: 404, json: async () => ({{}
                     "remaining_stable_seconds": 420,
                 },
             },
+            "incident_replay": {
+                "milestones": [
+                    {
+                        "id": "first-anomaly",
+                        "timestamp": "2026-07-20T03:11:00Z",
+                        "state": "first_anomaly",
+                        "title": "Resolver anomaly detected",
+                        "summary": "Latency increased on resolver probes while Internet probes remained healthy.",
+                        "affected_services": ["Resolver probes"],
+                        "healthy_services": ["Internet probes"],
+                        "likely_issue": "Unknown",
+                        "confidence": "medium",
+                        "evidence_refs": [{"field": "selected_event.first_anomalous_at", "reason": "first anomalous sample"}],
+                        "metrics_snapshot": {"representative_metrics": {"sample_count": 8, "typical_p95_ms": 176, "sustained_bad_count": 2}, "maximum_excursions": {"max_p95_ms": 320}, "raw_values": {"first_anomalous_at": "2026-07-20T03:11:00Z"}},
+                    },
+                    {
+                        "id": "persistence-confirmed",
+                        "timestamp": "2026-07-20T03:12:00Z",
+                        "state": "persistence_confirmed",
+                        "title": "Resolver degradation persisted",
+                        "summary": "Persistence was confirmed while Internet probes stayed healthy.",
+                        "affected_services": ["Resolver probes"],
+                        "healthy_services": ["Internet probes"],
+                        "likely_issue": "DNS provider path",
+                        "confidence": "high",
+                        "evidence_refs": [{"field": "selected_event.confirmed_at", "reason": "persistence confirmation"}],
+                        "metrics_snapshot": {"representative_metrics": {"sample_count": 8, "typical_p95_ms": 176, "sustained_bad_count": 2}, "maximum_excursions": {"max_p95_ms": 320}, "raw_values": {"confirmed_at": "2026-07-20T03:12:00Z"}},
+                    },
+                    {
+                        "id": "recovery-started",
+                        "timestamp": "2026-07-20T03:19:00Z",
+                        "state": "recovery_started",
+                        "title": "Recovery started",
+                        "summary": "Healthy samples have persisted; recovery is not confirmed yet.",
+                        "affected_services": ["Resolver probes"],
+                        "healthy_services": ["Internet probes"],
+                        "likely_issue": "DNS provider path",
+                        "confidence": "high",
+                        "evidence_refs": [{"field": "selected_event.recovery_started_at", "reason": "healthy persistence start"}],
+                        "metrics_snapshot": {"representative_metrics": {"sample_count": 5, "typical_p95_ms": 30, "sustained_bad_count": 0}, "maximum_excursions": {"max_p95_ms": 40}, "raw_values": {"remaining_stable_seconds": 420}},
+                    },
+                ]
+            },
             "operator_brief": {
                 "headline": "Resolver probe degradation is recovering.",
                 "summary": "Resolver probes degraded while comparison groups stayed healthier.",
@@ -427,6 +470,56 @@ globalThis.fetch = async (url) => {{
 
         self.assertIn("Resolver probes became degraded", rendered["currentStory"])
         self.assertIn("Resolver probes became degraded", rendered["historicalStory"])
+
+    def test_incident_replay_renders_ordered_vertical_sequence(self):
+        body = f"""
+renderIncidentReplay({json.dumps(self.investigation_payload())});
+console.log(JSON.stringify({{html: document.getElementById("timelineMilestones").innerHTML, cls: document.getElementById("timelineMilestones").className}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["cls"], "stack")
+        self.assertLess(rendered["html"].index("Resolver anomaly detected"), rendered["html"].index("Resolver degradation persisted"))
+        self.assertLess(rendered["html"].index("Resolver degradation persisted"), rendered["html"].index("Recovery started"))
+        self.assertIn("Latency increased on resolver probes", rendered["html"])
+        self.assertIn("Healthy comparisons", rendered["html"])
+        self.assertIn("Confidence", rendered["html"])
+        self.assertIn("selected_event.first_anomalous_at", rendered["html"])
+        self.assertIn("Typical p95", rendered["html"])
+
+    def test_incident_replay_legacy_fallback_uses_existing_timeline(self):
+        payload = self.investigation_payload()
+        payload.pop("incident_replay")
+        payload["selected_event"]["confirmed_at"] = "2026-07-20T03:12:00Z"
+        body = f"""
+renderIncidentReplay({json.dumps(payload)});
+console.log(JSON.stringify({{html: document.getElementById("timelineMilestones").innerHTML, cls: document.getElementById("timelineMilestones").className}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["cls"], "card-grid")
+        self.assertIn("Sustained confirmation", rendered["html"])
+
+    def test_current_and_historical_views_render_replay_without_openrouter(self):
+        current = self.investigation_payload()
+        historical = json.loads(json.dumps(current))
+        body = f"""
+globalThis.fetch = async (url) => {{
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  if (url === "./investigations/event-history.json") return {{ok: true, json: async () => ({json.dumps(historical)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await loadInvestigation(INVESTIGATION_URL, "investigation.json", "current");
+  const currentReplay = document.getElementById("timelineMilestones").innerHTML;
+  await loadInvestigation("./investigations/event-history.json", "investigations/event-history.json", "incident");
+  console.log(JSON.stringify({{currentReplay, historicalReplay: document.getElementById("timelineMilestones").innerHTML}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("Resolver anomaly detected", rendered["currentReplay"])
+        self.assertIn("Resolver anomaly detected", rendered["historicalReplay"])
 
     def test_material_limitations_are_secondary_disclosures(self):
         review = {

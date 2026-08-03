@@ -150,6 +150,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("incident_phases", investigation)
         self.assertIn("before", investigation["incident_phases"])
         self.assertIn("during", investigation["incident_phases"])
+        self.assertIn("incident_replay", investigation)
+        self.assertIn("milestones", investigation["incident_replay"])
         self.assertEqual(investigation["schema_version"], 2)
         self.assertEqual(investigation["mode"], "automatic")
         self.assertEqual(investigation["artifact_type"], "current_investigation")

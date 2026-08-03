@@ -77,14 +77,17 @@ Current watch period:
   Recovery incident phase story fields and renders them ahead of technical
   detail without changing thresholds, attribution, impact, collectors, or
   OpenRouter behavior.
+- Incident Intelligence Phase 3 adds Python-owned deterministic replay milestones
+  for Investigation without animation, browser-side inference, historical
+  similarity, or pattern matching.
 
 ## Next Logical Milestone
 
 Direct links/bookmarks for current, selected-interval, and completed incident
 views are now explicit. The selected interval view is a safe request state until
 interval-scoped evidence generation is implemented. Incident phase storytelling
-is additive over existing artifacts. The next planned capability after this
-redesign is Needs Matthew Review.
+and deterministic replay are additive over existing artifacts. The next planned
+capability after this redesign is Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate

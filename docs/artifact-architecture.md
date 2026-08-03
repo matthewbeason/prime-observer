@@ -297,7 +297,7 @@ Stage ownership:
   `periods`, `observation_references`, `events`, `navigation`,
   `event_neighborhoods`, `timeline_samples`, `dns_context`, `provenance`,
   `notes`
-- Optional fields: `incident_record`; `incident_phases`;
+- Optional fields: `incident_record`; `incident_phases`; `incident_replay`;
   `internet_conditions_context`; observation references inside event details;
   empty evidence sections when no samples are present; automatic `message` when
   no sustained incident is present; Phase 2 adds `health_dimensions`,
@@ -337,6 +337,14 @@ first anomaly and explains persistence, affected services, healthy comparisons,
 application checks, and likely issue when supported. `after` is present only when
 recovery candidate evidence exists and distinguishes candidate, started, and
 confirmed recovery states.
+
+`incident_replay` is additive and Python-owned. It contains ordered `milestones`
+for deterministic operator replay. Each milestone includes `id`, `timestamp`,
+`state`, `title`, `summary`, `affected_services`, `healthy_services`,
+`likely_issue`, `confidence`, `evidence_refs`, and `metrics_snapshot`. The
+browser renders the sequence and expandable evidence details without calculating
+ordering, meaning, lifecycle, likely issue, or metrics. Older artifacts without
+`incident_replay` continue to use the established timeline fallback.
 
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected

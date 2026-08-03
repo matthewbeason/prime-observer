@@ -110,6 +110,10 @@ The automatic schema is `schema_version: 2` and uses:
   sections with status, headline, summary, affected services, healthy
   comparisons, representative metrics, maximum excursions, evidence references,
   and limitations
+- `incident_replay` for Python-owned deterministic replay milestones ordered as
+  Prime Observer observed the incident, including title, summary, affected
+  services, healthy services, likely issue, confidence, evidence references, and
+  metrics snapshot
 - `selected_event` for the selected confirmed event
 - `windows.baseline`, `windows.degradation`, and `windows.recovery`
 - `timeline` rows with Python-generated assessment labels, summaries, tones,
@@ -143,6 +147,15 @@ Incident phase semantics are intentionally operator-facing:
   recovery candidate, recovery started but not confirmed, and confirmed recovery.
   If recovery has not started, the phase is omitted and the incident narrative
   says so.
+
+Incident replay is also Python-owned. Initial milestone states are
+`first_anomaly`, `persistence_confirmed`, `affected_scope_changed`,
+`application_status_changed`, `external_context_changed`,
+`operator_feedback_added`, `recovery_candidate`, `recovery_started`, and
+`recovery_confirmed`. Unsupported milestones are omitted. Current incidents end
+with the latest supported known state. Completed incidents end with confirmed
+recovery when recovery was observed. Replay does not perform historical
+similarity, recurrence detection, or pattern matching.
 
 Event selection is deterministic:
 

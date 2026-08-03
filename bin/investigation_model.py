@@ -1395,6 +1395,235 @@ def incident_record(selected_event, windows, scope, recovery, attribution, healt
     }
 
 
+def replay_evidence_refs(*refs):
+    return [{"field": field, "reason": reason} for field, reason in refs]
+
+
+def replay_metrics_snapshot(phase=None, extra=None):
+    phase = phase if isinstance(phase, dict) else {}
+    snapshot = {
+        "representative_metrics": phase.get("representative_metrics") or {},
+        "maximum_excursions": phase.get("maximum_excursions") or {},
+        "raw_values": {},
+    }
+    if isinstance(extra, dict):
+        snapshot["raw_values"].update(extra)
+    return snapshot
+
+
+def replay_milestone(milestone_id, timestamp, state, title, summary, affected_services, healthy_services, likely_issue, confidence, evidence_refs, metrics_snapshot):
+    return {
+        "id": milestone_id,
+        "timestamp": timestamp,
+        "state": state,
+        "title": title,
+        "summary": summary,
+        "affected_services": affected_services or [],
+        "healthy_services": healthy_services or [],
+        "likely_issue": likely_issue or "Unknown",
+        "confidence": confidence or "low",
+        "evidence_refs": evidence_refs,
+        "metrics_snapshot": metrics_snapshot or {"representative_metrics": {}, "maximum_excursions": {}, "raw_values": {}},
+    }
+
+
+def application_replay_milestone(selected_event, health_dimensions, phases, likely):
+    dimensions = health_dimensions if isinstance(health_dimensions, dict) else {}
+    application = dimensions.get("application_experience") if isinstance(dimensions.get("application_experience"), dict) else {}
+    if not application or application.get("status") == "missing":
+        return None
+    failures = (application.get("failure_counts") or {}).get("total", 0)
+    title = "DNS and web checks stayed available" if failures == 0 else "DNS or web checks reported failures"
+    summary = application_story(health_dimensions)
+    timestamp = application.get("generated_at") or (selected_event or {}).get("confirmed_at")
+    return replay_milestone(
+        "application-status-changed",
+        timestamp,
+        "application_status_changed",
+        title,
+        summary,
+        (phases.get("during") or {}).get("affected_services", []),
+        (phases.get("during") or {}).get("healthy_comparisons", []),
+        likely,
+        (selected_event or {}).get("confidence", "medium"),
+        replay_evidence_refs(("health_dimensions.application_experience", "DNS and HTTPS user-facing checks")),
+        replay_metrics_snapshot(phases.get("during"), {"application_failures": failures}),
+    )
+
+
+def external_context_replay_milestone(selected_event, internet_context, phases, likely):
+    if not isinstance(internet_context, dict) or not internet_context.get("available"):
+        return None
+    minutes_from_event = internet_context.get("minutes_from_event_midpoint")
+    if isinstance(minutes_from_event, (int, float)) and minutes_from_event > 180:
+        return None
+    status = internet_context.get("status")
+    if status in {None, "normal", "healthy"}:
+        return None
+    timestamp = internet_context.get("generated_at") or (selected_event or {}).get("confirmed_at")
+    return replay_milestone(
+        "external-context-changed",
+        timestamp,
+        "external_context_changed",
+        "External context changed",
+        internet_context.get("summary") or "External context reported a material change during the incident window.",
+        (phases.get("during") or {}).get("affected_services", []),
+        (phases.get("during") or {}).get("healthy_comparisons", []),
+        likely,
+        (selected_event or {}).get("confidence", "medium"),
+        replay_evidence_refs(("internet_conditions_context", "external context copied from generated local evidence")),
+        replay_metrics_snapshot(phases.get("during"), {"external_context_status": status}),
+    )
+
+
+def operator_feedback_replay_milestone(selected_event, health_dimensions, phases, likely):
+    dimensions = health_dimensions if isinstance(health_dimensions, dict) else {}
+    feedback = dimensions.get("operator_impact_feedback") if isinstance(dimensions.get("operator_impact_feedback"), dict) else {}
+    if not feedback or not feedback.get("is_current"):
+        return None
+    state = feedback.get("impact_state") or feedback.get("state")
+    if not state or state == "unknown":
+        return None
+    timestamp = feedback.get("observed_at") or feedback.get("recorded_at") or (selected_event or {}).get("confirmed_at")
+    detail = f" Operator note: {feedback.get('note')}" if feedback.get("note") else ""
+    return replay_milestone(
+        "operator-feedback-added",
+        timestamp,
+        "operator_feedback_added",
+        "Operator feedback added",
+        f"Operator feedback reported {operator_label(state).lower()}.{detail}".strip(),
+        (phases.get("during") or {}).get("affected_services", []),
+        (phases.get("during") or {}).get("healthy_comparisons", []),
+        likely,
+        (selected_event or {}).get("confidence", "medium"),
+        replay_evidence_refs(("health_dimensions.operator_impact_feedback", "bounded local operator feedback")),
+        replay_metrics_snapshot(phases.get("during"), {"operator_impact_state": state}),
+    )
+
+
+def incident_replay(selected_event, phases, scope, recovery, attribution, health_dimensions, internet_context=None):
+    if not selected_event:
+        return {"milestones": []}
+    phases = phases if isinstance(phases, dict) else {}
+    during = phases.get("during") if isinstance(phases.get("during"), dict) else {}
+    after = phases.get("after") if isinstance(phases.get("after"), dict) else None
+    affected = during.get("affected_services") or [target_label(selected_event.get("target_class"))]
+    healthy = during.get("healthy_comparisons") or healthy_comparison_labels(scope)
+    likely = supported_likely_issue(attribution) or "Unknown"
+    confidence = selected_event.get("confidence") or "medium"
+    milestones = [
+        replay_milestone(
+            "first-anomaly",
+            selected_event.get("first_anomalous_at"),
+            "first_anomaly",
+            f"{target_label(selected_event.get('target_class'))} anomaly detected",
+            f"Latency increased on {target_label(selected_event.get('target_class')).lower()} while {', '.join(healthy).lower() if healthy else 'comparison evidence'} remained healthier.",
+            affected,
+            healthy,
+            "Unknown",
+            "medium",
+            replay_evidence_refs(("selected_event.first_anomalous_at", "first anomalous sample"), ("windows.degradation", "during-incident evidence window")),
+            replay_metrics_snapshot(during, {"first_anomalous_at": selected_event.get("first_anomalous_at")}),
+        )
+    ]
+    if selected_event.get("confirmed_at"):
+        milestones.append(replay_milestone(
+            "persistence-confirmed",
+            selected_event.get("confirmed_at"),
+            "persistence_confirmed",
+            "Resolver degradation persisted" if selected_event.get("target_class") == "resolver_probe" else f"{target_label(selected_event.get('target_class'))} degradation persisted",
+            during.get("summary") or "Persistence was confirmed by sustained bad samples in the incident window.",
+            affected,
+            healthy,
+            likely,
+            confidence,
+            replay_evidence_refs(("selected_event.confirmed_at", "persistence confirmation"), ("incident_phases.during", "during-incident story")),
+            replay_metrics_snapshot(during, {"confirmed_at": selected_event.get("confirmed_at"), "sustained_bad_count": selected_event.get("sustained_bad_count", 0)}),
+        ))
+    if healthy:
+        milestones.append(replay_milestone(
+            "affected-scope-changed",
+            selected_event.get("confirmed_at") or selected_event.get("first_anomalous_at"),
+            "affected_scope_changed",
+            "Affected scope narrowed",
+            f"{', '.join(affected)} were affected while {', '.join(healthy)} stayed healthier.",
+            affected,
+            healthy,
+            likely,
+            confidence,
+            replay_evidence_refs(("scope_impact.unaffected_comparison_groups", "healthy comparison groups"), ("incident_phases.during.healthy_comparisons", "what stayed healthy")),
+            replay_metrics_snapshot(during, {"affected_targets": selected_event.get("affected_targets", [])}),
+        ))
+    for optional in (
+        application_replay_milestone(selected_event, health_dimensions, phases, likely),
+        external_context_replay_milestone(selected_event, internet_context, phases, likely),
+        operator_feedback_replay_milestone(selected_event, health_dimensions, phases, likely),
+    ):
+        if optional:
+            milestones.append(optional)
+    if selected_event.get("recovery_candidate_at"):
+        milestones.append(replay_milestone(
+            "recovery-candidate",
+            selected_event.get("recovery_candidate_at"),
+            "recovery_candidate",
+            "Recovery candidate observed",
+            (after or {}).get("summary") or "A healthy sample appeared after the last anomaly, but recovery was not confirmed yet.",
+            affected,
+            healthy,
+            likely,
+            confidence,
+            replay_evidence_refs(("selected_event.recovery_candidate_at", "first healthy sample after anomaly"), ("recovery_progress", "recovery tracking")),
+            replay_metrics_snapshot(after, {"recovery_candidate_at": selected_event.get("recovery_candidate_at")}),
+        ))
+    if selected_event.get("recovery_started_at"):
+        milestones.append(replay_milestone(
+            "recovery-started",
+            selected_event.get("recovery_started_at"),
+            "recovery_started",
+            "Recovery started",
+            (after or {}).get("summary") or "Healthy persistence started but the stable recovery window was not complete yet.",
+            affected,
+            healthy,
+            likely,
+            confidence,
+            replay_evidence_refs(("selected_event.recovery_started_at", "healthy persistence start"), ("recovery_progress.remaining_stable_seconds", "remaining recovery confirmation time")),
+            replay_metrics_snapshot(after, {"remaining_stable_seconds": (recovery or {}).get("remaining_stable_seconds")}),
+        ))
+    if selected_event.get("recovered_at"):
+        milestones.append(replay_milestone(
+            "recovery-confirmed",
+            selected_event.get("recovered_at"),
+            "recovery_confirmed",
+            "Recovery confirmed",
+            (after or {}).get("summary") or "The affected service remained healthy through the required recovery window.",
+            affected,
+            healthy,
+            likely,
+            confidence,
+            replay_evidence_refs(("selected_event.recovered_at", "stable recovery window completed"), ("incident_phases.after", "recovery story")),
+            replay_metrics_snapshot(after, {"recovered_at": selected_event.get("recovered_at")}),
+        ))
+    order = {
+        "first_anomaly": 0,
+        "persistence_confirmed": 1,
+        "affected_scope_changed": 2,
+        "application_status_changed": 3,
+        "external_context_changed": 4,
+        "operator_feedback_added": 5,
+        "recovery_candidate": 6,
+        "recovery_started": 7,
+        "recovery_confirmed": 8,
+    }
+    terminal_recovery = any(item.get("state") == "recovery_confirmed" for item in milestones)
+    milestones = sorted(milestones, key=lambda item: (
+        1 if terminal_recovery and item.get("state") == "recovery_confirmed" else 0,
+        item.get("timestamp") or "",
+        order.get(item.get("state"), 99),
+        item.get("id") or "",
+    ))
+    return {"milestones": milestones}
+
+
 def event_list(events):
     out = []
     for event in events:
@@ -1482,6 +1711,7 @@ def build_automatic_investigation(
     event_end = periods["during"].get("end")
     event_midpoint = midpoint(parse_ts(event_start), parse_ts(event_end)) or telemetry_latest_at
     internet_context = internet_conditions_context(event_midpoint)
+    replay = incident_replay(selected, phases, scope, recovery, phase_attribution, health_dimensions, internet_context)
     payload = {
         "artifact_type": "completed_investigation_snapshot" if historical and selected else "current_investigation",
         "schema_version": 2,
@@ -1512,6 +1742,7 @@ def build_automatic_investigation(
         "freshness": freshness(generated_at, telemetry_latest_at, evidence_latest_at),
         "incident_record": incident,
         "incident_phases": phases,
+        "incident_replay": replay,
         "selected_event": selected,
         "operator_brief": brief,
         "impact_assessment": (health_dimensions or {}).get("user_impact") if isinstance(health_dimensions, dict) else None,

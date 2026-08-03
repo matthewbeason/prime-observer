@@ -41,6 +41,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "Before the incident",
             "During the incident",
             "Recovery",
+            "Incident replay",
             "What changed",
             "What stayed healthy",
             "What returned to normal",
@@ -75,6 +76,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "data.evidence_buckets",
             "data.incident_record",
             "data.incident_phases",
+            "data?.incident_replay",
             "row.phase_summary",
         ):
             self.assertIn(field, self.html)
@@ -120,6 +122,8 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("Persistence", self.html)
         self.assertIn("timelineMilestones", self.html)
         self.assertIn("Raw phase windows", self.html)
+        self.assertIn("renderIncidentReplay(data)", self.html)
+        self.assertIn("renderTimelineMilestones(data)", self.html)
 
     def test_mobile_layout_covers_phase_sections(self):
         self.assertIn("@media (max-width: 640px)", self.html)
