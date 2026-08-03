@@ -13,13 +13,17 @@ class InvestigationViewLayoutTest(unittest.TestCase):
     def test_operator_first_section_order(self):
         section_ids = [
             'id="incidentHeroSection"',
+            'id="incidentStorySection"',
+            'id="beforePhaseSection"',
+            'id="duringPhaseSection"',
+            'id="afterPhaseSection"',
+            'id="timelineSection"',
             'id="assistantReviewSection"',
             'id="currentStatusSection"',
             'id="summarySection"',
             'id="dependencySection"',
             'id="attributionSection"',
             'id="recommendedActionsSection"',
-            'id="timelineSection"',
             'id="evidenceQualitySection"',
             'id="coreEvidenceSection"',
             'id="historySection"',
@@ -33,6 +37,13 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         for text in (
             "Summary",
             "Current incident",
+            "Incident story",
+            "Before the incident",
+            "During the incident",
+            "Recovery",
+            "What changed",
+            "What stayed healthy",
+            "What returned to normal",
             "Selected interval",
             "Current status",
             "What is affected details",
@@ -63,6 +74,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "data.evidence_argument",
             "data.evidence_buckets",
             "data.incident_record",
+            "data.incident_phases",
             "row.phase_summary",
         ):
             self.assertIn(field, self.html)
@@ -107,6 +119,12 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("Isolated excursions stay separate", self.html)
         self.assertIn("Persistence", self.html)
         self.assertIn("timelineMilestones", self.html)
+        self.assertIn("Raw phase windows", self.html)
+
+    def test_mobile_layout_covers_phase_sections(self):
+        self.assertIn("@media (max-width: 640px)", self.html)
+        self.assertIn("@media (max-width: 520px)", self.html)
+        self.assertIn("incident-phase-section", self.html)
 
     def test_buckets_are_condensed_by_default(self):
         self.assertIn("Stable buckets remain collapsed by default", self.html)
@@ -166,9 +184,11 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("routing event", self.html)
 
     def test_investigation_top_summary_avoids_duplicate_primary_conclusions(self):
-        top = self.html[self.html.index('id="assistantReviewSection"'):self.html.index('id="timelineSection"')]
+        top = self.html[self.html.index('id="incidentHeroSection"'):self.html.index('id="assistantReviewSection"')]
 
-        self.assertIn("Current situation", top)
+        self.assertIn("Before the incident", top)
+        self.assertIn("During the incident", top)
+        self.assertIn("Recovery", top)
         self.assertIn('renderMetricCard("User-facing impact"', self.html)
         self.assertIn('renderMetricCard("What is affected"', self.html)
         self.assertIn('renderMetricCard("Likely issue"', self.html)

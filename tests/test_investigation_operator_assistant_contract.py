@@ -80,6 +80,61 @@ globalThis.fetch = async () => ({{ok: false, status: 404, json: async () => ({{}
                 "lifecycle_state": "recovering",
                 "affected_targets": ["45.90.30.134"],
             },
+            "incident_record": {
+                "title": "Resolver path degradation",
+                "status": "recovering",
+                "confidence": "high",
+                "narrative": "Resolver probes were healthy before the incident, degraded during it, and recovery has started but is not confirmed.",
+                "affected_services": ["Resolver probes"],
+                "healthy_comparisons": ["Internet probes"],
+                "likely_issue": "DNS provider path",
+            },
+            "incident_phases": {
+                "before": {
+                    "available": True,
+                    "start": "2026-07-20T03:00:00Z",
+                    "end": "2026-07-20T03:10:00Z",
+                    "status": "healthy",
+                    "headline": "Affected service was healthy before the incident.",
+                    "summary": "Before the incident, resolver probes stayed below sustained degradation thresholds.",
+                    "affected_services": ["Resolver probes"],
+                    "healthy_comparisons": ["Internet probes"],
+                    "representative_metrics": {"sample_count": 6, "typical_p95_ms": 28, "p90_p95_ms": 34, "sustained_bad_count": 0},
+                    "maximum_excursions": {"max_p95_ms": 42, "max_loss_pct": 0, "isolated_excursion_bucket_count": 0, "turbulence_bucket_count": 0},
+                    "evidence_refs": [],
+                    "limitations": [],
+                },
+                "during": {
+                    "available": True,
+                    "start": "2026-07-20T03:11:00Z",
+                    "end": "2026-07-20T03:18:00Z",
+                    "status": "degraded",
+                    "headline": "Resolver probes became degraded.",
+                    "summary": "Persistence was confirmed and DNS and web checks continued to work.",
+                    "affected_services": ["Resolver probes"],
+                    "healthy_comparisons": ["Internet probes"],
+                    "representative_metrics": {"sample_count": 8, "typical_p95_ms": 176, "p90_p95_ms": 260, "sustained_bad_count": 2},
+                    "maximum_excursions": {"max_p95_ms": 320, "max_loss_pct": 0, "isolated_excursion_bucket_count": 1, "turbulence_bucket_count": 0},
+                    "evidence_refs": [],
+                    "limitations": [],
+                },
+                "after": {
+                    "available": True,
+                    "start": "2026-07-20T03:19:00Z",
+                    "end": "2026-07-20T03:23:00Z",
+                    "status": "recovery_started",
+                    "headline": "Recovery started but is not confirmed.",
+                    "summary": "Healthy samples have persisted; about 7 minute(s) remain before confirmation.",
+                    "affected_services": ["Resolver probes"],
+                    "healthy_comparisons": [],
+                    "representative_metrics": {"sample_count": 5, "typical_p95_ms": 30, "p90_p95_ms": 35, "sustained_bad_count": 0},
+                    "maximum_excursions": {"max_p95_ms": 40, "max_loss_pct": 0, "isolated_excursion_bucket_count": 0, "turbulence_bucket_count": 0},
+                    "evidence_refs": [],
+                    "limitations": ["Recovery has not been confirmed."],
+                    "returned_to_normal": True,
+                    "remaining_stable_seconds": 420,
+                },
+            },
             "operator_brief": {
                 "headline": "Resolver probe degradation is recovering.",
                 "summary": "Resolver probes degraded while comparison groups stayed healthier.",
@@ -304,6 +359,74 @@ console.log(JSON.stringify({
         self.assertIn("likely issue", rendered["clean"])
         self.assertIn("local evidence", rendered["clean"])
         self.assertEqual(rendered["app"], "DNS and web checks are working.")
+
+    def test_incident_phases_render_without_browser_semantic_inference(self):
+        body = f"""
+renderIncidentPhases({json.dumps(self.investigation_payload())});
+console.log(JSON.stringify({{
+  story: document.getElementById("incidentStoryBody").innerHTML,
+  before: document.getElementById("beforePhaseBody").innerHTML,
+  during: document.getElementById("duringPhaseBody").innerHTML,
+  after: document.getElementById("afterPhaseBody").innerHTML,
+}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("Affected service was healthy before the incident", rendered["before"])
+        self.assertIn("Resolver probes became degraded", rendered["during"])
+        self.assertIn("Recovery started but is not confirmed", rendered["after"])
+        self.assertIn("What stayed healthy", rendered["story"])
+        self.assertIn("typical p95 176 ms", rendered["during"])
+        self.assertIn("max p95 320 ms", rendered["during"])
+
+    def test_old_artifacts_without_incident_phases_do_not_fail(self):
+        payload = self.investigation_payload()
+        payload.pop("incident_phases")
+        body = f"""
+renderIncidentPhases({json.dumps(payload)});
+console.log(JSON.stringify({{
+  beforeDisplay: document.getElementById("beforePhaseSection").style.display,
+  duringDisplay: document.getElementById("duringPhaseSection").style.display,
+  story: document.getElementById("incidentStoryBody").innerHTML,
+}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["beforeDisplay"], "none")
+        self.assertEqual(rendered["duringDisplay"], "none")
+        self.assertIn("older artifact", rendered["story"])
+
+    def test_active_incident_without_recovery_hides_after_section(self):
+        payload = self.investigation_payload()
+        payload["incident_phases"].pop("after")
+        body = f"""
+renderIncidentPhases({json.dumps(payload)});
+console.log(JSON.stringify({{afterDisplay: document.getElementById("afterPhaseSection").style.display}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["afterDisplay"], "none")
+
+    def test_current_and_historical_views_render_phase_story(self):
+        current = self.investigation_payload()
+        historical = json.loads(json.dumps(current))
+        body = f"""
+globalThis.fetch = async (url) => {{
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  if (url === "./investigations/event-history.json") return {{ok: true, json: async () => ({json.dumps(historical)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await loadInvestigation(INVESTIGATION_URL, "investigation.json", "current");
+  const currentStory = document.getElementById("duringPhaseBody").innerHTML;
+  await loadInvestigation("./investigations/event-history.json", "investigations/event-history.json", "incident");
+  console.log(JSON.stringify({{currentStory, historicalStory: document.getElementById("duringPhaseBody").innerHTML}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("Resolver probes became degraded", rendered["currentStory"])
+        self.assertIn("Resolver probes became degraded", rendered["historicalStory"])
 
     def test_material_limitations_are_secondary_disclosures(self):
         review = {

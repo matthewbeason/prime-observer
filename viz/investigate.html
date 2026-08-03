@@ -234,6 +234,37 @@
       <div id="incidentHeroCards" class="card-grid"></div>
     </section>
 
+    <section id="incidentStorySection" class="section" style="display:none;">
+      <div class="section-kicker">Incident story</div>
+      <h2>What changed?</h2>
+      <div id="incidentStoryBody" class="summary-list"></div>
+    </section>
+
+    <section id="beforePhaseSection" class="section incident-phase-section" style="display:none;">
+      <div class="section-kicker">Before the incident</div>
+      <h2 id="beforePhaseHeadline">Before the incident</h2>
+      <div id="beforePhaseBody" class="summary-list"></div>
+    </section>
+
+    <section id="duringPhaseSection" class="section incident-phase-section" style="display:none;">
+      <div class="section-kicker">During the incident</div>
+      <h2 id="duringPhaseHeadline">During the incident</h2>
+      <div id="duringPhaseBody" class="summary-list"></div>
+    </section>
+
+    <section id="afterPhaseSection" class="section incident-phase-section" style="display:none;">
+      <div class="section-kicker">Recovery</div>
+      <h2 id="afterPhaseHeadline">Recovery</h2>
+      <div id="afterPhaseBody" class="summary-list"></div>
+    </section>
+
+    <section id="timelineSection" class="section">
+      <div class="section-kicker">Timeline</div>
+      <h2>How did the incident evolve?</h2>
+      <p class="section-note">Milestones use existing lifecycle evidence only. Representative values remain separate from maximum excursions.</p>
+      <div id="timelineMilestones" class="card-grid" style="margin-bottom:14px;"></div>
+    </section>
+
     <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
       <div class="section-header">
         <div>
@@ -331,16 +362,6 @@
       <div id="assistantReviewNextSteps" class="stack"></div>
     </section>
 
-    <section id="timelineSection" class="section">
-      <div class="section-kicker">Timeline</div>
-      <h2>How did the incident evolve?</h2>
-      <p class="section-note">Milestones use existing lifecycle evidence only. Representative p95 remains separate from maximum excursion.</p>
-      <div id="timelineMilestones" class="card-grid" style="margin-bottom:14px;"></div>
-      <div class="wide table-wide">
-        <table id="periodTable"></table>
-      </div>
-    </section>
-
     <section id="evidenceQualitySection" class="section">
       <details class="disclosure">
         <summary>Confidence and limits <span class="small">Confidence, persistence, corroboration, contradictions, and stale or missing evidence</span></summary>
@@ -377,6 +398,12 @@
     <section id="rawDetailSection" class="section">
       <div class="section-kicker">Technical details</div>
       <h2>Details for deeper inspection</h2>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Raw phase windows <span class="small">Technical before, during, and recovery table</span></summary>
+        <div class="disclosure-body wide table-wide">
+          <table id="periodTable"></table>
+        </div>
+      </details>
       <details class="disclosure" style="margin-top:14px;">
         <summary>Raw WAN buckets <span class="small">Stable buckets remain collapsed by default</span></summary>
         <div class="disclosure-body">
@@ -905,6 +932,87 @@
         renderMetricCard("User-facing impact", record.user_facing_impact || "Unknown", "From deterministic impact and application evidence.", "tone-watch"),
         renderMetricCard("Likely issue", record.likely_issue || "Unknown", "Shown only when supported by local evidence.", record.likely_issue && record.likely_issue !== "Unknown" ? "tone-accent" : "tone-muted"),
       ].join("");
+    }
+
+    function metricText(metrics){
+      if (!metrics || typeof metrics !== "object") return "No representative metrics reported.";
+      const parts = [];
+      if (metrics.sample_count !== undefined) parts.push(`${fmt(metrics.sample_count)} sample(s)`);
+      if (metrics.typical_p95_ms !== null && metrics.typical_p95_ms !== undefined) parts.push(`typical p95 ${fmt(metrics.typical_p95_ms, " ms")}`);
+      if (metrics.p90_p95_ms !== null && metrics.p90_p95_ms !== undefined) parts.push(`p90 p95 ${fmt(metrics.p90_p95_ms, " ms")}`);
+      if (metrics.sustained_bad_count !== undefined) parts.push(`${fmt(metrics.sustained_bad_count)} sustained bad sample(s)`);
+      return parts.length ? parts.join(" · ") : "No representative metrics reported.";
+    }
+
+    function excursionText(excursions){
+      if (!excursions || typeof excursions !== "object") return "No maximum excursions reported.";
+      const parts = [];
+      if (excursions.max_p95_ms !== null && excursions.max_p95_ms !== undefined) parts.push(`max p95 ${fmt(excursions.max_p95_ms, " ms")}`);
+      if (excursions.max_loss_pct !== null && excursions.max_loss_pct !== undefined) parts.push(`max loss ${fmt(excursions.max_loss_pct, "%")}`);
+      if (excursions.isolated_excursion_bucket_count !== undefined) parts.push(`${fmt(excursions.isolated_excursion_bucket_count)} isolated excursion bucket(s)`);
+      if (excursions.turbulence_bucket_count !== undefined) parts.push(`${fmt(excursions.turbulence_bucket_count)} turbulence bucket(s)`);
+      return parts.length ? parts.join(" · ") : "No maximum excursions reported.";
+    }
+
+    function renderIncidentStory(data){
+      const record = data?.incident_record && typeof data.incident_record === "object" && !Array.isArray(data.incident_record)
+        ? data.incident_record
+        : null;
+      const phases = data?.incident_phases && typeof data.incident_phases === "object" && !Array.isArray(data.incident_phases)
+        ? data.incident_phases
+        : null;
+      const section = document.getElementById("incidentStorySection");
+      if (!record && !phases){
+        section.style.display = "none";
+        return;
+      }
+      section.style.display = "";
+      const rows = [];
+      if (record?.narrative) rows.push(renderSummaryItem("Incident summary", record.narrative, ""));
+      if (phases?.during?.headline) rows.push(renderSummaryItem("What changed", phases.during.headline, phases.during.summary || ""));
+      if (phases?.during?.healthy_comparisons?.length) rows.push(renderSummaryItem("What stayed healthy", phases.during.healthy_comparisons.join(", "), ""));
+      if (phases?.after?.headline) rows.push(renderSummaryItem("What returned to normal", phases.after.headline, phases.after.summary || ""));
+      if (!phases) rows.push(renderSummaryItem("Phase story", "This older artifact does not include Python-owned incident phase story fields.", ""));
+      document.getElementById("incidentStoryBody").innerHTML = rows.length
+        ? rows.join("")
+        : '<div class="empty-note">This older artifact does not include Python-owned incident phase story fields.</div>';
+    }
+
+    function renderIncidentPhase(phaseKey, sectionId, headlineId, bodyId){
+      return function(phases){
+        const phase = phases?.[phaseKey];
+        const section = document.getElementById(sectionId);
+        if (!phase || (phaseKey === "after" && !phase.available)){
+          section.style.display = "none";
+          return;
+        }
+        section.style.display = "";
+        document.getElementById(headlineId).textContent = phase.headline || statusLabel(phase.status);
+        const rows = [
+          renderSummaryItem("Headline", phase.headline || statusLabel(phase.status), ""),
+          renderSummaryItem("Status", healthLabel(phase.status), `${shortTime(phase.start)} to ${shortTime(phase.end)}`),
+          renderSummaryItem(phaseKey === "during" ? "What changed" : phaseKey === "after" ? "What returned to normal" : "Normal before", phase.summary || "No phase summary reported.", ""),
+          renderSummaryItem("Affected services", (phase.affected_services || []).join(", ") || "No affected service reported", ""),
+          renderSummaryItem("What stayed healthy", (phase.healthy_comparisons || []).join(", ") || "Healthy comparison evidence was limited.", ""),
+          renderSummaryItem("Representative values", metricText(phase.representative_metrics), "Representative values stay separate from maximum excursions."),
+          renderSummaryItem("Maximum excursions", excursionText(phase.maximum_excursions), "These are peaks, not the representative phase condition."),
+        ];
+        if (phaseKey === "after"){
+          rows.push(renderSummaryItem("Recovery support", phase.returned_to_normal ? "Returned to normal" : "Not fully normal", phase.remaining_stable_seconds ? `${Math.ceil(phase.remaining_stable_seconds / 60)} minute(s) remain before confirmation.` : ""));
+        }
+        for (const limitation of (phase.limitations || [])) rows.push(renderSummaryItem("Limitation", limitation, ""));
+        document.getElementById(bodyId).innerHTML = rows.join("");
+      };
+    }
+
+    function renderIncidentPhases(data){
+      const phases = data?.incident_phases && typeof data.incident_phases === "object" && !Array.isArray(data.incident_phases)
+        ? data.incident_phases
+        : null;
+      renderIncidentStory(data);
+      renderIncidentPhase("before", "beforePhaseSection", "beforePhaseHeadline", "beforePhaseBody")(phases);
+      renderIncidentPhase("during", "duringPhaseSection", "duringPhaseHeadline", "duringPhaseBody")(phases);
+      renderIncidentPhase("after", "afterPhaseSection", "afterPhaseHeadline", "afterPhaseBody")(phases);
     }
 
     function setMainSectionsVisible(visible){
@@ -1616,6 +1724,7 @@
       if (heading) heading.textContent = isCurrent ? "Current incident" : "Completed incident";
       document.getElementById("environmentalContextSection").style.display = "none";
       renderIncidentHero(data, isIncident ? "incident" : "current");
+      renderIncidentPhases(data);
       renderSummary(data);
       renderMultidimensionalHealth(data);
       renderPeriodTable(data);

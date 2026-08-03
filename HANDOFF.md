@@ -61,6 +61,9 @@ Repository-backed recent milestones:
   explicit (`view=current`, `view=interval`, `view=incident`) and adds an
   additive Python-owned `incident_record` story to newly generated automatic
   investigations
+- post-`v0.9.0` Incident Intelligence Phase 2 adds additive Python-owned
+  `incident_phases` for Before, During, and optional Recovery story sections;
+  the browser renders these fields without inferring phase semantics
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -119,8 +122,8 @@ The repository currently says to live with `v0.9.0` for several days before
 expanding functionality.
 
 The current uncommitted work should be completed by validating Incident
-Intelligence Phase 1 before committing. Direct links/bookmarks for current,
-selected-interval, and historical investigation entry points are explicit:
+Intelligence Phase 2 before any commit. Direct links/bookmarks for current,
+selected-interval, and historical investigation entry points remain explicit:
 `?view=current`, `?view=interval&start=<ISO>&end=<ISO>`, and
 `?view=incident&event=<event-id>`. Legacy `?event=<event-id>` links remain
 supported. Event replay, comparison, recurrence, and similarity detection remain

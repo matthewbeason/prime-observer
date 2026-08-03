@@ -1160,15 +1160,184 @@ def lifecycle_story(status):
     return "No sustained incident is currently selected."
 
 
-def incident_record(selected_event, windows, scope, recovery, attribution, health_dimensions):
-    degradation = phase_summary_metrics((windows or {}).get("degradation", {}))
-    status = selected_event.get("lifecycle_state") if selected_event else "no_sustained_incident"
-    affected_services = [target_label(selected_event.get("target_class"))] if selected_event else []
-    healthy_comparisons = [
+def metric_summary(window):
+    metrics = phase_summary_metrics(window)
+    return {
+        "sample_count": metrics.get("sample_count", 0),
+        "duration_minutes": metrics.get("duration_minutes"),
+        "typical_p95_ms": metrics.get("typical_p95_ms"),
+        "p75_p95_ms": metrics.get("p75_p95_ms"),
+        "p90_p95_ms": metrics.get("p90_p95_ms"),
+        "raw_bad_count": metrics.get("raw_bad_count", 0),
+        "sustained_bad_count": metrics.get("sustained_bad_count", 0),
+        "sustained_bad_bucket_count": metrics.get("sustained_bad_bucket_count", 0),
+        "stable_bucket_count": metrics.get("stable_bucket_count", 0),
+    }
+
+
+def maximum_excursions(window):
+    metrics = phase_summary_metrics(window)
+    return {
+        "max_p95_ms": metrics.get("max_p95_ms"),
+        "max_loss_pct": metrics.get("max_loss_pct"),
+        "isolated_excursion_bucket_count": metrics.get("isolated_excursion_bucket_count", 0),
+        "turbulence_bucket_count": metrics.get("turbulence_bucket_count", 0),
+    }
+
+
+def healthy_comparison_labels(scope):
+    return [
         target_label(item.get("target_class"))
         for item in (scope or {}).get("unaffected_comparison_groups", [])
         if isinstance(item, dict) and item.get("target_class")
     ]
+
+
+def before_incident_phase(selected_event, windows, scope):
+    baseline = (windows or {}).get("baseline", {})
+    metrics = phase_summary_metrics(baseline)
+    available = bool(baseline.get("available"))
+    sample_count = metrics.get("sample_count", 0)
+    limitations = []
+    if not available or sample_count < 2:
+        limitations.append("Pre-incident comparison is limited.")
+    if not selected_event:
+        limitations.append("No sustained incident was selected, so pre-incident comparison is contextual only.")
+    if not available:
+        status = "limited"
+        headline = "Pre-incident comparison is limited."
+        summary = "No relevant pre-incident telemetry was available before the selected incident."
+    elif baseline.get("assessment_code") == "baseline_unstable" or metrics.get("sustained_bad_count", 0) > 0 or metrics.get("raw_bad_count", 0) > 0:
+        status = "elevated"
+        headline = "Affected service was already elevated before the incident."
+        summary = f"Before the incident, {target_label(selected_event.get('target_class')).lower()} already had elevated or abnormal samples, so this is not treated as a healthy baseline."
+    elif sample_count < 2:
+        status = "limited"
+        headline = "Pre-incident comparison is limited."
+        summary = f"Only {sample_count} pre-incident affected-service sample(s) were available, so normal behavior is weakly supported."
+    else:
+        status = "healthy"
+        headline = "Affected service was healthy before the incident."
+        summary = f"Before the incident, {target_label(selected_event.get('target_class')).lower()} stayed below sustained degradation thresholds."
+    return {
+        "available": available,
+        "start": baseline.get("start"),
+        "end": baseline.get("end"),
+        "status": status,
+        "headline": headline,
+        "summary": summary,
+        "affected_services": [target_label(selected_event.get("target_class"))] if selected_event else [],
+        "healthy_comparisons": healthy_comparison_labels(scope),
+        "representative_metrics": metric_summary(baseline),
+        "maximum_excursions": maximum_excursions(baseline),
+        "evidence_refs": [{"field": "windows.baseline", "reason": "pre-incident comparison window"}],
+        "limitations": limitations,
+    }
+
+
+def during_incident_phase(selected_event, windows, scope, attribution, health_dimensions):
+    degradation = (windows or {}).get("degradation", {})
+    metrics = phase_summary_metrics(degradation)
+    likely = supported_likely_issue(attribution)
+    app = application_story(health_dimensions)
+    if selected_event:
+        headline = f"{target_label(selected_event.get('target_class'))} became degraded."
+        summary = " ".join([
+            f"Beginning at {selected_event.get('first_anomalous_at')}, abnormal samples appeared and persistence was confirmed at {selected_event.get('confirmed_at')}.",
+            f"The phase is degraded because {metrics.get('sustained_bad_count', 0)} sustained bad sample(s) appeared across {metrics.get('sustained_bad_bucket_count', 0)} affected bucket(s).",
+            app,
+            f"The likely issue is {likely.lower()}." if likely else "The likely issue is not yet localized from available evidence.",
+        ])
+    else:
+        headline = "No sustained incident was selected."
+        summary = "No during-incident phase is available because no sustained event met the selection criteria."
+    limitations = []
+    if not healthy_comparison_labels(scope):
+        limitations.append("Healthy comparison evidence was limited.")
+    return {
+        "available": bool(degradation.get("available")) and bool(selected_event),
+        "start": degradation.get("start"),
+        "end": degradation.get("end"),
+        "status": "degraded" if selected_event else "not_available",
+        "headline": headline,
+        "summary": summary,
+        "affected_services": [target_label(selected_event.get("target_class"))] if selected_event else [],
+        "healthy_comparisons": healthy_comparison_labels(scope),
+        "representative_metrics": metric_summary(degradation),
+        "maximum_excursions": maximum_excursions(degradation),
+        "evidence_refs": [
+            {"field": "selected_event", "reason": "first anomaly and persistence confirmation"},
+            {"field": "windows.degradation", "reason": "during-incident metrics and excursions"},
+            {"field": "health_dimensions.application_experience", "reason": "user-facing DNS and HTTPS checks"},
+            {"field": "health_dimensions.attribution", "reason": "likely issue when supported"},
+        ],
+        "limitations": limitations,
+    }
+
+
+def after_incident_phase(selected_event, windows, recovery):
+    if not selected_event or not selected_event.get("recovery_candidate_at"):
+        return None
+    recovery_window = (windows or {}).get("recovery", {})
+    metrics = phase_summary_metrics(recovery_window)
+    state = selected_event.get("lifecycle_state")
+    if state == "complete":
+        status = "recovery_confirmed"
+        headline = "Recovery was confirmed."
+        summary = f"{target_label(selected_event.get('target_class'))} returned to healthy samples and remained stable through the required recovery window."
+    elif selected_event.get("recovery_started_at"):
+        status = "recovery_started"
+        remaining = recovery.get("remaining_stable_seconds") if isinstance(recovery, dict) else None
+        remaining_text = f" About {int(remaining // 60)} minute(s) remain before confirmation." if isinstance(remaining, int) and remaining > 0 else " Confirmation still requires the stable recovery window to complete."
+        headline = "Recovery started but is not confirmed."
+        summary = f"Healthy samples have persisted since {selected_event.get('recovery_started_at')}.{remaining_text}"
+    else:
+        status = "recovery_candidate"
+        headline = "Recovery candidate observed."
+        summary = f"A healthy sample appeared at {selected_event.get('recovery_candidate_at')}, but recovery persistence has not been satisfied."
+    limitations = []
+    if state != "complete":
+        limitations.append("Recovery has not been confirmed.")
+    return {
+        "available": bool(recovery_window.get("available")),
+        "start": recovery_window.get("start"),
+        "end": recovery_window.get("end"),
+        "status": status,
+        "headline": headline,
+        "summary": summary,
+        "affected_services": [target_label(selected_event.get("target_class"))],
+        "healthy_comparisons": [],
+        "representative_metrics": metric_summary(recovery_window),
+        "maximum_excursions": maximum_excursions(recovery_window),
+        "evidence_refs": [
+            {"field": "selected_event.recovery_candidate_at", "reason": "first healthy sample after anomaly"},
+            {"field": "recovery_progress", "reason": "stable recovery duration and remaining confirmation time"},
+            {"field": "windows.recovery", "reason": "post-anomaly recovery window"},
+        ],
+        "limitations": limitations,
+        "returned_to_normal": metrics.get("raw_bad_count", 0) == 0 and metrics.get("sustained_bad_count", 0) == 0,
+        "remaining_abnormal": metrics.get("raw_bad_count", 0) > 0 or metrics.get("sustained_bad_count", 0) > 0,
+        "healthy_duration_seconds": recovery.get("healthy_observation_seconds") if isinstance(recovery, dict) else None,
+        "remaining_stable_seconds": recovery.get("remaining_stable_seconds") if isinstance(recovery, dict) else None,
+    }
+
+
+def incident_phases(selected_event, windows, scope, recovery, attribution, health_dimensions):
+    phases = {
+        "before": before_incident_phase(selected_event, windows, scope),
+        "during": during_incident_phase(selected_event, windows, scope, attribution, health_dimensions),
+    }
+    after = after_incident_phase(selected_event, windows, recovery)
+    if after:
+        phases["after"] = after
+    return phases
+
+
+def incident_record(selected_event, windows, scope, recovery, attribution, health_dimensions, phases=None):
+    degradation = phase_summary_metrics((windows or {}).get("degradation", {}))
+    status = selected_event.get("lifecycle_state") if selected_event else "no_sustained_incident"
+    affected_services = [target_label(selected_event.get("target_class"))] if selected_event else []
+    healthy_comparisons = healthy_comparison_labels(scope)
     likely = supported_likely_issue(attribution)
     started = selected_event.get("first_anomalous_at") if selected_event else None
     latest = (
@@ -1181,18 +1350,24 @@ def incident_record(selected_event, windows, scope, recovery, attribution, healt
         first_sentence = f"Beginning at {started}, Prime Observer detected sustained degradation on {target_label(selected_event.get('target_class')).lower()}."
     else:
         first_sentence = "Prime Observer did not select a sustained network incident from the available deterministic evidence."
-    comparison_sentence = (
+    before = (phases or {}).get("before", {})
+    during = (phases or {}).get("during", {})
+    after = (phases or {}).get("after")
+    comparison_sentence = before.get("headline") or (
         f"{', '.join(healthy_comparisons)} remained healthier during the incident."
-        if healthy_comparisons else
-        "Healthy comparison evidence was limited."
+        if healthy_comparisons else "Healthy comparison evidence was limited."
     )
+    during_sentence = during.get("headline") or "During-incident evidence is unavailable."
+    after_sentence = after.get("headline") if after else "Recovery has not started."
     likely_sentence = f"The issue appears most consistent with {likely.lower()}." if likely else "The likely issue is not yet localized from available evidence."
     narrative = " ".join([
         first_sentence,
         comparison_sentence,
+        during_sentence,
         application_story(health_dimensions),
         incident_impact_text(health_dimensions) + ".",
         likely_sentence,
+        after_sentence,
         lifecycle_story(status),
     ])
     return {
@@ -1300,7 +1475,9 @@ def build_automatic_investigation(
     episodes = episode_summary(selected, secondary_context, observations)
     evidence = evidence_argument(selected, windows, periods, scope, recovery)
     brief = operator_brief(selected, windows, periods, recovery, attribution)
-    incident = incident_record(selected, windows, scope, recovery, (health_dimensions or {}).get("attribution") if isinstance(health_dimensions, dict) else attribution, health_dimensions)
+    phase_attribution = (health_dimensions or {}).get("attribution") if isinstance(health_dimensions, dict) else attribution
+    phases = incident_phases(selected, windows, scope, recovery, phase_attribution, health_dimensions)
+    incident = incident_record(selected, windows, scope, recovery, phase_attribution, health_dimensions, phases)
     event_start = periods["during"].get("start")
     event_end = periods["during"].get("end")
     event_midpoint = midpoint(parse_ts(event_start), parse_ts(event_end)) or telemetry_latest_at
@@ -1334,6 +1511,7 @@ def build_automatic_investigation(
         ),
         "freshness": freshness(generated_at, telemetry_latest_at, evidence_latest_at),
         "incident_record": incident,
+        "incident_phases": phases,
         "selected_event": selected,
         "operator_brief": brief,
         "impact_assessment": (health_dimensions or {}).get("user_impact") if isinstance(health_dimensions, dict) else None,

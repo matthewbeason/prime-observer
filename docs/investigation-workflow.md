@@ -106,6 +106,10 @@ The automatic schema is `schema_version: 2` and uses:
 - `incident_record` for the Python-owned deterministic incident story, title,
   timing, affected services, healthy comparisons, likely issue when supported,
   user-facing impact, confidence, and evidence references
+- `incident_phases` for Python-owned Before, During, and optional Recovery story
+  sections with status, headline, summary, affected services, healthy
+  comparisons, representative metrics, maximum excursions, evidence references,
+  and limitations
 - `selected_event` for the selected confirmed event
 - `windows.baseline`, `windows.degradation`, and `windows.recovery`
 - `timeline` rows with Python-generated assessment labels, summaries, tones,
@@ -125,6 +129,20 @@ semantic churn.
 
 Existing completed snapshots are not rewritten for Phase 2. Only newly created
 snapshots can include the additive health-dimensions fields.
+
+Incident phase semantics are intentionally operator-facing:
+
+- `before` is the relevant pre-incident comparison window. It reports whether the
+  affected service was healthy, elevated, or limited before the incident. It does
+  not call the window a healthy baseline unless the available evidence supports
+  that conclusion.
+- `during` starts at the first anomaly. It explains what changed, when
+  persistence was confirmed, what stayed healthy, representative values, maximum
+  excursions, current application checks, and likely issue when supported.
+- `after` is emitted only when recovery evidence exists. It distinguishes a
+  recovery candidate, recovery started but not confirmed, and confirmed recovery.
+  If recovery has not started, the phase is omitted and the incident narrative
+  says so.
 
 Event selection is deterministic:
 
@@ -331,10 +349,10 @@ The page accepts future URL parameters:
 http://localhost:8000/investigate.html?start=2026-05-30T17:30:00-07:00&end=2026-05-30T18:00:00-07:00
 ```
 
-For the first implementation, the URL parameters are displayed as the requested
-window while the evidence still comes from `viz/investigation.json`. A future
-Olivaw integration can generate the JSON first, then link to the page with the
-same start/end parameters.
+For selected intervals, the URL parameters are displayed as the requested window
+without loading `viz/investigation.json` as substitute evidence. A future Olivaw
+integration can generate interval-scoped JSON first, then link to the page with
+the same start/end parameters.
 
 Explicit Investigation entry points are:
 

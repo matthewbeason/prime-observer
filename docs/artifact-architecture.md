@@ -297,12 +297,13 @@ Stage ownership:
   `periods`, `observation_references`, `events`, `navigation`,
   `event_neighborhoods`, `timeline_samples`, `dns_context`, `provenance`,
   `notes`
-- Optional fields: `incident_record`; `internet_conditions_context`; observation
-  references inside event details; empty evidence sections when no samples are
-  present; automatic `message` when no sustained incident is present; Phase 2
-  adds `health_dimensions`, `impact_assessment`, `dependency_state`, and
-  `deterministic_operator_interpretation` additively for current artifacts and for
-  new snapshots only
+- Optional fields: `incident_record`; `incident_phases`;
+  `internet_conditions_context`; observation references inside event details;
+  empty evidence sections when no samples are present; automatic `message` when
+  no sustained incident is present; Phase 2 adds `health_dimensions`,
+  `impact_assessment`, `dependency_state`, and
+  `deterministic_operator_interpretation` additively for current artifacts and
+  for new snapshots only
 - Unavailable behavior: no dedicated unavailable artifact; the script still
   writes a valid investigation payload and uses `status: "no_samples"` when no
   telemetry matches the selected source window. Automatic mode emits a valid
@@ -325,6 +326,17 @@ operator-facing story fields: `incident_id`, `title`, `incident_type`,
 renders these fields but does not infer or rewrite them. Older schema 2 artifacts
 and existing immutable snapshots without `incident_record` continue to render
 through the established fallback sections.
+
+`incident_phases` is additive and Python-owned. It contains `before`, `during`,
+and optional `after` phase objects with `available`, `start`, `end`, `status`,
+`headline`, `summary`, `affected_services`, `healthy_comparisons`,
+`representative_metrics`, `maximum_excursions`, `evidence_refs`, and
+`limitations`. `before` describes the pre-incident comparison window without
+calling it healthy unless the evidence supports that. `during` starts at the
+first anomaly and explains persistence, affected services, healthy comparisons,
+application checks, and likely issue when supported. `after` is present only when
+recovery candidate evidence exists and distinguishes candidate, started, and
+confirmed recovery states.
 
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected

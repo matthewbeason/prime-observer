@@ -73,13 +73,18 @@ Current watch period:
   prevents selected interval links from silently rendering the current incident,
   and adds a deterministic Python-owned `incident_record` story to newly
   generated automatic investigations.
+- Incident Intelligence Phase 2 adds Python-owned Before, During, and optional
+  Recovery incident phase story fields and renders them ahead of technical
+  detail without changing thresholds, attribution, impact, collectors, or
+  OpenRouter behavior.
 
 ## Next Logical Milestone
 
 Direct links/bookmarks for current, selected-interval, and completed incident
 views are now explicit. The selected interval view is a safe request state until
-interval-scoped evidence generation is implemented. The next planned capability
-after this redesign is Needs Matthew Review.
+interval-scoped evidence generation is implemented. Incident phase storytelling
+is additive over existing artifacts. The next planned capability after this
+redesign is Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate

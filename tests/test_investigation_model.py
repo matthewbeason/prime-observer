@@ -142,6 +142,9 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertIn("dns provider path", record["narrative"].lower())
         self.assertEqual(record["likely_issue"], "DNS provider path")
         self.assertTrue(record["evidence_refs"])
+        self.assertIn("incident_phases", payload)
+        self.assertIn(payload["incident_phases"]["before"]["headline"], record["narrative"])
+        self.assertIn(payload["incident_phases"]["during"]["headline"], record["narrative"])
 
     def test_incident_record_uses_unknown_for_unsupported_likely_issue(self):
         payload = self.module.build_automatic_investigation(
@@ -158,6 +161,96 @@ class InvestigationModelTest(unittest.TestCase):
         record = payload["incident_record"]
         self.assertEqual(record["likely_issue"], "Unknown")
         self.assertIn("not yet localized", record["narrative"])
+
+    def test_incident_phases_show_healthy_before_degraded_during_recovered_after(self):
+        rows = [self.row(0), self.row(1), self.row(2, p95=180, raw=True), self.row(3, p95=181, raw=True, sustained=True)]
+        rows.extend(self.row(minute) for minute in (4, 5, 12, 19))
+
+        payload = self.build(rows)
+        phases = payload["incident_phases"]
+
+        self.assertEqual(phases["before"]["status"], "healthy")
+        self.assertEqual(phases["during"]["status"], "degraded")
+        self.assertEqual(phases["after"]["status"], "recovery_confirmed")
+        self.assertIn("returned to healthy samples", phases["after"]["summary"])
+
+    def test_incident_phases_do_not_call_elevated_before_healthy(self):
+        payload = self.build([
+            self.row(0, p95=180, raw=True),
+            self.row(1),
+            self.row(2, p95=180, raw=True),
+            self.row(3, p95=181, raw=True, sustained=True),
+        ])
+
+        before = payload["incident_phases"]["before"]
+        self.assertEqual(before["status"], "elevated")
+        self.assertIn("not treated as a healthy baseline", before["summary"])
+
+    def test_incident_phases_explain_limited_pre_incident_samples(self):
+        payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
+
+        before = payload["incident_phases"]["before"]
+        self.assertEqual(before["status"], "limited")
+        self.assertIn("Pre-incident comparison is limited.", before["limitations"])
+        self.assertIn("Only 1 pre-incident", before["summary"])
+
+    def test_active_incident_has_no_after_phase_without_recovery(self):
+        payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
+
+        self.assertEqual(payload["selected_event"]["lifecycle_state"], "active")
+        self.assertNotIn("after", payload["incident_phases"])
+        self.assertIn("Recovery has not started.", payload["incident_record"]["narrative"])
+
+    def test_recovery_candidate_phase_is_not_confirmed(self):
+        payload = self.build([
+            self.row(0, p95=180, raw=True),
+            self.row(1, p95=181, raw=True, sustained=True),
+            self.row(2),
+        ])
+
+        after = payload["incident_phases"]["after"]
+        self.assertEqual(after["status"], "recovery_candidate")
+        self.assertIn("persistence has not been satisfied", after["summary"])
+        self.assertIn("Recovery has not been confirmed.", after["limitations"])
+
+    def test_recovery_started_phase_reports_remaining_confirmation_time(self):
+        payload = self.build([
+            self.row(0, p95=180, raw=True),
+            self.row(1, p95=181, raw=True, sustained=True),
+            self.row(2),
+            self.row(3),
+        ])
+
+        after = payload["incident_phases"]["after"]
+        self.assertEqual(after["status"], "recovery_started")
+        self.assertGreater(after["remaining_stable_seconds"], 0)
+        self.assertIn("remain before confirmation", after["summary"])
+
+    def test_representative_metrics_differ_from_maximum_excursions(self):
+        payload = self.build([
+            self.row(0),
+            self.row(1),
+            self.row(2, p95=180, raw=True),
+            self.row(3, p95=260, raw=True, sustained=True),
+            self.row(4, p95=181, raw=True, sustained=True),
+        ])
+
+        during = payload["incident_phases"]["during"]
+        self.assertNotEqual(during["representative_metrics"]["typical_p95_ms"], during["maximum_excursions"]["max_p95_ms"])
+
+    def test_incident_phases_preserve_healthy_comparisons(self):
+        payload = self.build([
+            self.row(0, host="1.1.1.1", target_class="internet_probe"),
+            self.row(1, host="1.1.1.1", target_class="internet_probe"),
+            self.row(0),
+            self.row(1),
+            self.row(2, p95=180, raw=True),
+            self.row(2, host="1.1.1.1", target_class="internet_probe"),
+            self.row(3, p95=181, raw=True, sustained=True),
+            self.row(3, host="1.1.1.1", target_class="internet_probe"),
+        ])
+
+        self.assertIn("Internet probes", payload["incident_phases"]["during"]["healthy_comparisons"])
 
     def test_baseline_ends_before_first_anomaly(self):
         payload = self.build([
