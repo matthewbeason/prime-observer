@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
@@ -30,6 +31,12 @@ class FetchApsPowerContextTest(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def capture_stderr(self, func, *args, **kwargs):
+        stream = io.StringIO()
+        with mock.patch("sys.stderr", new=stream):
+            result = func(*args, **kwargs)
+        return result, stream.getvalue()
 
     def test_build_payload_reports_current_outages(self):
         config = {
@@ -135,10 +142,11 @@ class FetchApsPowerContextTest(unittest.TestCase):
 
     def test_main_writes_unavailable_artifact_on_failure(self):
         with mock.patch.object(self.module, "build_payload", side_effect=urllib.error.URLError("down")):
-            rc = self.module.main()
+            rc, stderr = self.capture_stderr(self.module.main)
 
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(rc, 0)
+        self.assertIn("APS power context fetch failed: <urlopen error down>", stderr)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["summary"], "Unable to retrieve current APS power context.")
         self.assertEqual(payload["provider"], "aps")

@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
@@ -31,6 +32,12 @@ class FetchNextDnsSummaryTest(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def capture_stdout(self, func, *args, **kwargs):
+        stream = io.StringIO()
+        with mock.patch("sys.stdout", new=stream):
+            result = func(*args, **kwargs)
+        return result, stream.getvalue()
 
     def config(self):
         return {
@@ -115,10 +122,12 @@ class FetchNextDnsSummaryTest(unittest.TestCase):
         config = self.config()
         config["NEXTDNS_PROFILE_ID"] = ""
         with mock.patch.object(self.module, "load_config", return_value=config):
-            rc = self.module.main()
+            rc, stdout = self.capture_stdout(self.module.main)
 
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(rc, 2)
+        self.assertIn("Wrote unavailable NextDNS summary", stdout)
+        self.assertIn("missing configuration", stdout)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["error"]["kind"], "configuration")
         self.assertIsNone(payload["summary"])
@@ -126,10 +135,11 @@ class FetchNextDnsSummaryTest(unittest.TestCase):
     def test_api_failure_writes_unavailable_summary(self):
         with mock.patch.object(self.module, "load_config", return_value=self.config()):
             with mock.patch.object(self.module, "build_summary", side_effect=urllib.error.URLError("down")):
-                rc = self.module.main()
+                rc, stdout = self.capture_stdout(self.module.main)
 
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(rc, 1)
+        self.assertIn("Wrote unavailable NextDNS summary", stdout)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["error"]["kind"], "network_error")
         self.assertIsNone(payload["summary"])

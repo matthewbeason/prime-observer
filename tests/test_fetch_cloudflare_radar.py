@@ -51,6 +51,13 @@ class FetchCloudflareRadarTest(unittest.TestCase):
             func(*args, **kwargs)
         return stream.getvalue()
 
+    def capture_output(self, func, *args, **kwargs):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with mock.patch("sys.stdout", new=stdout), mock.patch("sys.stderr", new=stderr):
+            result = func(*args, **kwargs)
+        return result, stdout.getvalue(), stderr.getvalue()
+
     def test_build_payload_normalizes_current_disruptions(self):
         now = self.module.parse_ts("2026-06-29T18:00:00Z")
 
@@ -404,10 +411,12 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         config["CLOUDFLARE_API_TOKEN"] = ""
 
         with mock.patch.object(self.module, "load_config", return_value=config):
-            rc = self.module.main()
+            rc, stdout, stderr = self.capture_output(self.module.main)
 
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(rc, 0)
+        self.assertIn("Internet Conditions configuration", stdout)
+        self.assertIn("Cloudflare Radar token missing. Wrote unavailable summary", stderr)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
         self.assertEqual(payload["schema_version"], 2)
@@ -504,10 +513,12 @@ class FetchCloudflareRadarTest(unittest.TestCase):
     def test_api_failure_writes_unavailable_summary(self):
         with mock.patch.object(self.module, "load_config", return_value=self.config()):
             with mock.patch.object(self.module, "build_payload", side_effect=urllib.error.URLError("down")):
-                rc = self.module.main()
+                rc, stdout, stderr = self.capture_output(self.module.main)
 
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(rc, 0)
+        self.assertIn("Internet Conditions configuration", stdout)
+        self.assertIn("Cloudflare Radar fetch failed: <urlopen error down>", stderr)
         self.assertEqual(payload["status"], "unavailable")
         self.assertEqual(payload["summary"], "Unable to retrieve current Internet conditions.")
         self.assertEqual(payload["scope"]["label"], "United States context")

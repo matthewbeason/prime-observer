@@ -1,5 +1,6 @@
 import datetime as dt
 import importlib.util
+import io
 import json
 import os
 import plistlib
@@ -56,6 +57,13 @@ class OperatorAssistantWorkerTest(unittest.TestCase):
             "APP_TITLE": "Prime Observer",
         }
         self.module.producer.load_config = lambda: dict(self.config)
+        original_run_once = self.module.run_once
+
+        def captured_run_once(*args, **kwargs):
+            with mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()):
+                return original_run_once(*args, **kwargs)
+
+        self.module.run_once = captured_run_once
         self.now = dt.datetime(2026, 7, 20, 5, 0, tzinfo=dt.timezone.utc)
 
     def tearDown(self):

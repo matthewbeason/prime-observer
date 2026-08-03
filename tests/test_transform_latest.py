@@ -1,10 +1,12 @@
 import csv
 import datetime as dt
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +46,14 @@ class TransformLatestTest(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def run_main_capturing_output(self):
+        stream = io.StringIO()
+        with mock.patch("sys.stdout", new=stream):
+            self.module.main()
+        output = stream.getvalue()
+        self.assertIn("Wrote", output)
+        return output
 
     def write_rows(self, rows):
         path = self.data_dir / "bakeoff_20260615.csv"
@@ -136,7 +146,7 @@ class TransformLatestTest(unittest.TestCase):
             self.telemetry_row((now - dt.timedelta(minutes=2)).isoformat(), "192.168.1.1", 8),
         ])
 
-        self.module.main()
+        self.run_main_capturing_output()
 
         with self.module.OUT.open("r", newline="") as f:
             rows = list(csv.DictReader(f))
@@ -205,7 +215,7 @@ class TransformLatestTest(unittest.TestCase):
             self.telemetry_row((now - dt.timedelta(minutes=6)).isoformat(), "192.168.1.1", 8),
         ])
 
-        self.module.main()
+        self.run_main_capturing_output()
 
         attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
@@ -243,7 +253,7 @@ class TransformLatestTest(unittest.TestCase):
             self.telemetry_row((bucket_base + dt.timedelta(minutes=7)).isoformat(), "192.168.1.1", 8),
         ])
 
-        self.module.main()
+        self.run_main_capturing_output()
 
         attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
@@ -269,7 +279,7 @@ class TransformLatestTest(unittest.TestCase):
         self.write_rows(rows)
         self.write_application_experience(now)
 
-        self.module.main()
+        self.run_main_capturing_output()
 
         dashboard_health = json.loads(self.module.DASHBOARD_HEALTH_OUT.read_text())
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())

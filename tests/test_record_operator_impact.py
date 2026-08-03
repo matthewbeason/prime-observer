@@ -1,5 +1,6 @@
 import datetime as dt
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
@@ -33,6 +34,12 @@ class RecordOperatorImpactTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def capture_stdout(self, func, *args, **kwargs):
+        stream = io.StringIO()
+        with mock.patch("sys.stdout", new=stream):
+            result = func(*args, **kwargs)
+        return result, stream.getvalue()
+
     def write_investigation(self, incident_id="event-test"):
         self.module.INVESTIGATION.write_text(json.dumps({"selected_event": {"id": incident_id}}))
 
@@ -46,17 +53,19 @@ class RecordOperatorImpactTest(unittest.TestCase):
         self.assertIn("full_outage", values)
 
     def test_no_active_investigation_degrades_safely(self):
-        result = self.module.main(["--impact", "none_observed"])
+        result, stdout = self.capture_stdout(self.module.main, ["--impact", "none_observed"])
 
         self.assertEqual(result, 2)
+        self.assertIn("Current investigation artifact does not exist.", stdout)
         self.assertFalse(self.module.OUT.exists())
 
     def test_records_none_observed_for_current_incident(self):
         self.write_investigation("event-current")
 
-        result = self.module.main(["--impact", "none_observed", "--note", " Everything normal.  "])
+        result, stdout = self.capture_stdout(self.module.main, ["--impact", "none_observed", "--note", " Everything normal.  "])
 
         self.assertEqual(result, 0)
+        self.assertIn("Recorded none_observed operator impact feedback", stdout)
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(payload["incident_id"], "event-current")
         self.assertEqual(payload["impact_state"], "none_observed")
@@ -66,17 +75,19 @@ class RecordOperatorImpactTest(unittest.TestCase):
     def test_records_all_supported_impacts_with_explicit_incident(self):
         for state in sorted(self.module.ALLOWED_IMPACTS):
             with self.subTest(state=state):
-                result = self.module.main(["--incident-id", "event-explicit", "--impact", state])
+                result, stdout = self.capture_stdout(self.module.main, ["--incident-id", "event-explicit", "--impact", state])
                 self.assertEqual(result, 0)
+                self.assertIn(f"Recorded {state} operator impact feedback", stdout)
                 payload = json.loads(self.module.OUT.read_text())
                 self.assertEqual(payload["impact_state"], state)
 
     def test_clearing_feedback_writes_atomic_clear_payload(self):
         self.write_investigation("event-current")
 
-        result = self.module.main(["--clear"])
+        result, stdout = self.capture_stdout(self.module.main, ["--clear"])
 
         self.assertEqual(result, 0)
+        self.assertIn("Cleared operator impact feedback", stdout)
         payload = json.loads(self.module.OUT.read_text())
         self.assertTrue(payload["cleared"])
         self.assertEqual(payload["impact_state"], "unknown")
@@ -86,7 +97,7 @@ class RecordOperatorImpactTest(unittest.TestCase):
         self.write_investigation("event-current")
         long_note = "x" * 600
 
-        self.module.main(["--impact", "minor_slowness", "--note", long_note])
+        self.capture_stdout(self.module.main, ["--impact", "minor_slowness", "--note", long_note])
 
         payload = json.loads(self.module.OUT.read_text())
         self.assertEqual(len(payload["note"]), self.module.MAX_NOTE_CHARS)

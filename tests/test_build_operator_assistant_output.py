@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import os
 import tempfile
@@ -49,6 +50,19 @@ class BuildOperatorAssistantOutputTest(unittest.TestCase):
             "HTTP_REFERER": "",
             "APP_TITLE": "Prime Observer",
         }
+        original_build_output_result = self.module.build_output_result
+        original_main = self.module.main
+
+        def captured_build_output_result(*args, **kwargs):
+            with mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()):
+                return original_build_output_result(*args, **kwargs)
+
+        def captured_main(*args, **kwargs):
+            with mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()):
+                return original_main(*args, **kwargs)
+
+        self.module.build_output_result = captured_build_output_result
+        self.module.main = captured_main
 
     def tearDown(self):
         self.tmp.cleanup()
