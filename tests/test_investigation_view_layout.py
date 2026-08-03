@@ -44,6 +44,8 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "Incident replay",
             "What changed",
             "What stayed healthy",
+            "Application checks",
+            "Incident overlap",
             "What returned to normal",
             "Selected interval",
             "Current status",
@@ -157,7 +159,23 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("?view=incident&event=", self.html)
         self.assertIn("view=current", self.html)
         self.assertIn('view === "interval"', self.html)
+        self.assertIn('const INTERVAL_SUMMARY_URL = "./interval_summary.json";', self.html)
+        self.assertIn('loadIntervalSummary(route.params)', self.html)
         self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
+
+    def test_interval_view_consumes_python_generated_summary(self):
+        for field in (
+            "data?.overall_condition",
+            "data?.application_summary?.state",
+            "data?.incident_overlap?.items",
+            "data?.baseline_comparison?.adaptive_baseline_state",
+            "data?.metrics",
+            "intervalSummaryMatches(data, params)",
+        ):
+            self.assertIn(field, self.html)
+        self.assertNotIn("inferIntervalCondition", self.html)
+        self.assertNotIn("calculateIncidentOverlap", self.html)
+        self.assertNotIn("classifyInterval", self.html)
 
     def test_browser_remains_local_renderer_only(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)

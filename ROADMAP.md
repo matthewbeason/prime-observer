@@ -84,14 +84,18 @@ Current watch period:
   `viz/baseline_history.json`, preserving raw telemetry semantics while allowing
   resolver adaptive classification to compare current behavior with compact,
   versioned historical norms.
+- Temporal Memory Phase 1 adds one Python-owned deterministic selected-interval
+  summary in `viz/interval_summary.json`, rendered only when route start/end
+  match and without browser-side interval inference.
 
 ## Next Logical Milestone
 
 Direct links/bookmarks for current, selected-interval, and completed incident
-views are now explicit. The selected interval view is a safe request state until
-interval-scoped evidence generation is implemented. Incident phase storytelling
-and deterministic replay are additive over existing artifacts. The next planned
-capability after this redesign is Needs Matthew Review.
+views are now explicit. The selected interval view can render one matching
+Python-generated interval summary and otherwise remains a safe request state.
+Incident phase storytelling, deterministic replay, adaptive baseline memory, and
+the first interval summary artifact are additive over existing artifacts. The
+next planned capability after this redesign is Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate

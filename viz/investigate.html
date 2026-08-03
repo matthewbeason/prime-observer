@@ -208,14 +208,32 @@
         <div>
           <div class="section-kicker">Selected interval</div>
           <h2>Selected interval evidence</h2>
-          <p id="intervalRequestSummary" class="assistant-assessment">Exact interval evidence is not currently generated.</p>
+          <p id="intervalRequestSummary" class="assistant-assessment">Loading deterministic interval evidence.</p>
         </div>
         <div class="pill-group"><span class="pill tone-watch">Selected interval</span></div>
       </div>
       <div class="card-grid">
         <div class="card"><h3>Start</h3><div class="value" id="intervalRequestStart">—</div></div>
         <div class="card"><h3>End</h3><div class="value" id="intervalRequestEnd">—</div></div>
+        <div class="card"><h3>Condition</h3><div class="value" id="intervalCondition">—</div></div>
+        <div class="card"><h3>Confidence</h3><div class="value" id="intervalConfidence">—</div></div>
       </div>
+      <div class="summary-layout" style="margin-top:14px;">
+        <div class="card context-block"><h3>What changed</h3><div id="intervalAffectedServices" class="summary-list"></div></div>
+        <div class="card context-block"><h3>What stayed healthy</h3><div id="intervalHealthyServices" class="summary-list"></div></div>
+      </div>
+      <div class="summary-layout" style="margin-top:14px;">
+        <div class="card context-block"><h3>Application checks</h3><div id="intervalApplicationChecks" class="summary-list"></div></div>
+        <div class="card context-block"><h3>Incident overlap</h3><div id="intervalIncidentOverlap" class="summary-list"></div></div>
+      </div>
+      <details class="disclosure" style="margin-top:14px;" open>
+        <summary>Metrics <span class="small">Python-generated deterministic interval metrics</span></summary>
+        <div class="disclosure-body wide table-medium"><table id="intervalMetricsTable"></table></div>
+      </details>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Technical details <span class="small">Evidence references and baseline comparison</span></summary>
+        <div id="intervalTechnicalDetails" class="disclosure-body summary-list"></div>
+      </details>
       <div class="history-toolbar" style="margin-top:14px;">
         <a class="current-investigation-button" href="./investigate.html?view=current">Open current incident</a>
         <a class="current-investigation-button" href="./index.html">Return to dashboard</a>
@@ -488,6 +506,7 @@
 
   <script>
     const INVESTIGATION_URL = "./investigation.json";
+    const INTERVAL_SUMMARY_URL = "./interval_summary.json";
     const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";
     const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
     const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
@@ -1022,21 +1041,89 @@
       }
     }
 
-    function renderIntervalRequest(params){
+    function sameInstant(a, b){
+      const left = Date.parse(a || "");
+      const right = Date.parse(b || "");
+      return Number.isFinite(left) && Number.isFinite(right) && left === right;
+    }
+
+    function intervalSummaryMatches(data, params){
+      const start = params.get("start") || params.get("event_start") || "";
+      const end = params.get("end") || params.get("event_end") || "";
+      return sameInstant(data?.start, start) && sameInstant(data?.end, end);
+    }
+
+    function renderIntervalList(items, emptyText){
+      return (items || []).length
+        ? items.map(item => renderSummaryItem(item, "", "")).join("")
+        : `<div class="empty-note">${emptyText}</div>`;
+    }
+
+    function renderIntervalMetricsTable(metrics){
+      const rows = [
+        ["Gateway state", healthLabel(metrics?.gateway?.state), fmt(metrics?.gateway?.p95_latency_ms, " ms"), fmt(metrics?.gateway?.loss_rate_pct, "% loss")],
+        ["Resolver state", healthLabel(metrics?.resolver?.state), fmt(metrics?.resolver?.p95_latency_ms, " ms"), fmt(metrics?.resolver?.loss_rate_pct, "% loss")],
+        ["Internet state", healthLabel(metrics?.internet?.state), fmt(metrics?.internet?.p95_latency_ms, " ms"), fmt(metrics?.internet?.loss_rate_pct, "% loss")],
+        ["Application state", healthLabel(metrics?.application?.state), `DNS ${fmt(metrics?.dns_success)}`, `HTTPS ${fmt(metrics?.https_success)}`],
+        ["Adaptive baseline", healthLabel(metrics?.adaptive_baseline_state), "Timeouts", fmt(metrics?.timeout_count)],
+      ];
+      document.getElementById("intervalMetricsTable").innerHTML = `<thead><tr><th>Metric</th><th>State</th><th>Latency</th><th>Detail</th></tr></thead><tbody>${rows.map(row => `<tr>${row.map(value => `<td>${value}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    }
+
+    function renderIntervalSummaryArtifact(data, params){
       const start = params.get("start") || params.get("event_start") || "";
       const end = params.get("end") || params.get("event_end") || "";
       setMainSectionsVisible(false);
       const interval = document.getElementById("intervalRequestSection");
       interval.style.display = "";
       document.getElementById("status").classList.remove("error");
-      document.getElementById("status").textContent = "Selected interval · exact interval evidence is not currently generated";
+      document.getElementById("status").textContent = "Selected interval · deterministic interval summary";
       document.getElementById("modePill").textContent = "Selected interval";
-      document.getElementById("intervalRequestStart").textContent = fmt(start);
-      document.getElementById("intervalRequestEnd").textContent = fmt(end);
-      document.getElementById("intervalRequestSummary").textContent = "Prime Observer received this exact selected interval, but no interval-scoped investigation artifact has been generated yet. The current incident is available separately and is not being shown as a substitute for this interval.";
+      document.getElementById("intervalRequestStart").textContent = fmt(data?.start || start);
+      document.getElementById("intervalRequestEnd").textContent = fmt(data?.end || end);
+      document.getElementById("intervalCondition").textContent = healthLabel(data?.overall_condition);
+      document.getElementById("intervalConfidence").textContent = healthLabel(data?.confidence);
+      document.getElementById("intervalRequestSummary").textContent = usefulText(data?.summary) || "No deterministic interval summary is available.";
+      document.getElementById("intervalAffectedServices").innerHTML = renderIntervalList(data?.affected_services, "No changed services detected.");
+      document.getElementById("intervalHealthyServices").innerHTML = renderIntervalList(data?.healthy_services, "No healthy comparison services confirmed.");
+      document.getElementById("intervalApplicationChecks").innerHTML = [
+        renderSummaryItem("Application state", healthLabel(data?.application_summary?.state), ""),
+        renderSummaryItem("DNS success", fmt(data?.application_summary?.dns_success), ""),
+        renderSummaryItem("HTTPS success", fmt(data?.application_summary?.https_success), ""),
+      ].join("");
+      const overlaps = data?.incident_overlap?.items || [];
+      document.getElementById("intervalIncidentOverlap").innerHTML = overlaps.length
+        ? overlaps.map(item => renderSummaryItem(item.target_class || "Incident", item.relation || "overlap", `${shortTime(item.overlap_start)} to ${shortTime(item.overlap_end)}`)).join("")
+        : '<div class="empty-note">No incident overlaps this interval.</div>';
+      renderIntervalMetricsTable(data?.metrics || {});
+      document.getElementById("intervalTechnicalDetails").innerHTML = [
+        renderSummaryItem("Likely issue", data?.likely_issue || "Unknown", ""),
+        renderSummaryItem("Baseline comparison", healthLabel(data?.baseline_comparison?.adaptive_baseline_state), `Source: ${(data?.baseline_comparison?.resolver_members || []).map(item => item.baseline_source).filter(Boolean).join(", ") || "unavailable"}`),
+        renderSummaryItem("Coverage", `${fmt(data?.coverage?.sample_count)} samples`, data?.coverage?.source_path || ""),
+        ...(data?.evidence_refs || []).map(ref => renderSummaryItem(ref.path || "Evidence", ref.reason || "", "")),
+      ].join("");
       const heading = document.getElementById("investigationHeading");
       if (heading) heading.textContent = "Selected interval";
       if (heading && typeof heading.focus === "function") heading.focus({preventScroll: true});
+    }
+
+    function renderIntervalRequest(params){
+      renderIntervalSummaryArtifact({
+        start: params.get("start") || params.get("event_start") || "",
+        end: params.get("end") || params.get("event_end") || "",
+        overall_condition: "unavailable",
+        confidence: "low",
+        summary: "Prime Observer received this exact selected interval, but no matching interval_summary.json artifact has been generated yet. The current incident is available separately and is not being shown as a substitute for this interval.",
+        affected_services: [],
+        healthy_services: [],
+        application_summary: {state: "unknown", dns_success: null, https_success: null},
+        incident_overlap: {items: []},
+        metrics: {},
+        coverage: {sample_count: 0},
+        baseline_comparison: {adaptive_baseline_state: "unknown", resolver_members: []},
+        evidence_refs: [],
+      }, params);
+      document.getElementById("status").textContent = "Selected interval · interval summary is not available for this exact window";
     }
 
     function restoreInvestigationSections(){
@@ -1638,7 +1725,7 @@
       const deepLink = document.getElementById("deepLink");
       deepLink.style.display = "block";
       deepLink.innerHTML =
-        `Requested URL window: <span class="mono">${fmt(start)}</span> to <span class="mono">${fmt(end)}</span>. Generate matching evidence with <span class="mono">bin/build_investigation.py</span>.`;
+        `Requested URL window: <span class="mono">${fmt(start)}</span> to <span class="mono">${fmt(end)}</span>. Matching interval evidence is read from <span class="mono">viz/interval_summary.json</span>.`;
     }
 
     async function fetchOptionalJson(url){
@@ -1818,6 +1905,19 @@
       renderInvestigation(data, sourceLabel, isCurrent ? "current" : "incident");
     }
 
+    async function loadIntervalSummary(params){
+      try{
+        const response = await fetch(INTERVAL_SUMMARY_URL, {cache: "no-store"});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!intervalSummaryMatches(data, params)) throw new Error("interval_summary.json does not match requested interval");
+        markHistorySelection(null);
+        renderIntervalSummaryArtifact(data, params);
+      } catch (err){
+        renderIntervalRequest(params);
+      }
+    }
+
     function routeFromLocation(catalog){
       const params = new URLSearchParams(window.location.search);
       const legacyEventId = params.get("event");
@@ -1833,7 +1933,7 @@
     async function applyRoute(catalog){
       const route = routeFromLocation(catalog);
       if (route.view === "interval"){
-        renderIntervalRequest(route.params);
+        await loadIntervalSummary(route.params);
         return;
       }
       if (route.view === "incident" && route.event?.snapshot_path){

@@ -376,8 +376,20 @@ published atomically. If missing, malformed, stale, incompatible, insufficient,
 or guardrail-blocked, health evaluation falls back to in-window adaptive baseline
 behavior. Historical investigation snapshots are not rewritten.
 
+Temporal Memory Phase 1 adds generated `viz/interval_summary.json` for one
+selected interval. It is produced by Python during the automatic transform and
+contains schema/model versions, generated time, interval start/end/duration,
+current-or-historical classification, coverage, overall condition, user impact,
+application summary, likely issue, affected services, healthy services, incident
+overlap, baseline comparison, confidence, deterministic summary text, evidence
+references, and interval metrics. The browser only renders this artifact when
+its `start` and `end` exactly match the requested interval route. It does not
+infer interval health, issue type, affected scope, overlap, or narrative in
+JavaScript.
+
 Investigation URL semantics are explicit. `?view=current` loads the mutable
-current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected
+current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a matching
+`viz/interval_summary.json` when available; otherwise it displays a safe selected
 interval request and does not load `viz/investigation.json` as a substitute.
 `?view=incident&event=<event-id>` loads an immutable snapshot through the
 catalog. Legacy `?event=<event-id>` links remain supported when the catalog

@@ -67,11 +67,28 @@ Automatic mode writes:
 
 ```text
 viz/investigation.json
+viz/interval_summary.json
 viz/investigation_catalog.json
 viz/investigations/<event-id>.json, once for each completed event
 viz/operator_assistant_input.json, only when deterministic investigation evidence changes
 viz/operator_assistant_generation_state.json, when interpretation generation is pending
 ```
+
+Temporal Memory Phase 1 adds `viz/interval_summary.json`, a Python-generated
+summary for one selected interval. It is independent of incident selection and
+may report no incident overlap, one overlap, multiple overlaps, or partial
+overlap. It includes interval start/end/duration, coverage, overall condition,
+user impact, application checks, likely issue, affected and healthy services,
+baseline comparison, confidence, deterministic narrative, evidence references,
+and metrics for latency, jitter, loss, timeouts, DNS, HTTPS, gateway, resolver,
+Internet, application, and adaptive baseline state.
+
+`?view=interval&start=<ISO>&end=<ISO>` now attempts to load
+`viz/interval_summary.json`. The browser validates that the artifact start/end
+match the requested interval and renders only artifact-provided interval fields.
+If the artifact is missing, malformed, or for another interval, the page keeps
+the safe selected-interval request state and still does not show the current
+incident as a substitute.
 
 `viz/investigation.json` remains the mutable current investigation only. When an
 event first reaches `complete`, the Python producer writes a separate historical

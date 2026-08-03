@@ -99,6 +99,8 @@ Current artifact flow:
   evidence for impact-v2 corroboration
 - `bin/record_operator_impact.py` records bounded local operator feedback for
   the current investigation incident
+- `bin/interval_summary.py` builds one deterministic selected-interval summary
+  during automatic transform
 - `viz/index.html` and `viz/investigate.html` consume generated local files
 
 Current projection state:
@@ -110,6 +112,8 @@ Current projection state:
   projection for deterministic semantics Prime Observer owns
 - `viz/baseline_history.json` is compact generated durable baseline memory keyed
   by phase, target class, and host/member identity
+- `viz/interval_summary.json` is the generated deterministic summary for one
+  selected interval, rendered only when route start/end match the artifact
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten
@@ -130,13 +134,15 @@ Current projection state:
 The repository currently says to live with `v0.9.0` for several days before
 expanding functionality.
 
-The current uncommitted work should be completed by validating Incident
-Intelligence Phase 3 before any commit. Direct links/bookmarks for current,
-selected-interval, and historical investigation entry points remain explicit:
-`?view=current`, `?view=interval&start=<ISO>&end=<ISO>`, and
-`?view=incident&event=<event-id>`. Legacy `?event=<event-id>` links remain
-supported. Event comparison, recurrence, and similarity detection remain future
-work.
+The current uncommitted work implements Temporal Memory Phase 1. Direct
+links/bookmarks for current, selected-interval, and historical investigation
+entry points remain explicit: `?view=current`,
+`?view=interval&start=<ISO>&end=<ISO>`, and
+`?view=incident&event=<event-id>`. Selected interval view uses matching
+Python-generated `viz/interval_summary.json` evidence when available and keeps a
+safe request state otherwise. Legacy `?event=<event-id>` links remain supported.
+Event comparison, recurrence, similarity detection, and multiple stored interval
+summaries remain future work.
 
 Generated JSON and CSV artifacts remain canonical. No database is needed at the
 current local scale; any future PostgreSQL or Supabase work should be an optional

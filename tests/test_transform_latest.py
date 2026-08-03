@@ -39,6 +39,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.OBSERVATIONS_OUT = self.viz_dir / "observations.json"
         self.module.DASHBOARD_HEALTH_OUT = self.viz_dir / "dashboard_health.json"
         self.module.BASELINE_HISTORY_OUT = self.viz_dir / "baseline_history.json"
+        self.module.INTERVAL_SUMMARY_OUT = self.viz_dir / "interval_summary.json"
         self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
         self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
         self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
@@ -200,6 +201,7 @@ class TransformLatestTest(unittest.TestCase):
         observations = json.loads(self.module.OBSERVATIONS_OUT.read_text())
         dashboard_health = json.loads(self.module.DASHBOARD_HEALTH_OUT.read_text())
         investigation = json.loads(self.module.INVESTIGATION_OUT.read_text())
+        interval_summary = json.loads(self.module.INTERVAL_SUMMARY_OUT.read_text())
         investigation_catalog = json.loads((self.viz_dir / "investigation_catalog.json").read_text())
         self.assertEqual(observations["schema_version"], 1)
         self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
@@ -220,6 +222,10 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("during", investigation["incident_phases"])
         self.assertIn("incident_replay", investigation)
         self.assertIn("milestones", investigation["incident_replay"])
+        self.assertEqual(interval_summary["schema_version"], 1)
+        self.assertEqual(interval_summary["model_version"], "prime_observer.interval_summary.v1")
+        self.assertIn("overall_condition", interval_summary)
+        self.assertIn("metrics", interval_summary)
         self.assertEqual(investigation["schema_version"], 2)
         self.assertEqual(investigation["mode"], "automatic")
         self.assertEqual(investigation["artifact_type"], "current_investigation")
@@ -513,6 +519,7 @@ class TransformLatestTest(unittest.TestCase):
 
         self.assertIn("APPLICATION_EXPERIENCE_IN", source)
         self.assertIn("load_application_experience", source)
+        self.assertIn("build_interval_summary", source)
         self.assertIn("OPERATOR_IMPACT_FEEDBACK_IN", source)
         self.assertIn("load_operator_impact_feedback", source)
         self.assertNotIn("socket.", source)
@@ -571,7 +578,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("adaptive_baseline_state", dashboard_html)
         self.assertIn("No active incident is detected", dashboard_html)
         self.assertNotIn("incident_eligible", dashboard_html)
-        self.assertNotIn("adaptive_baseline", investigation_html)
+        self.assertIn("adaptive_baseline_state", investigation_html)
+        self.assertNotIn("incident_eligible", investigation_html)
 
     def test_dashboard_health_projection_matches_python_classification(self):
         base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)

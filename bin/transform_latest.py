@@ -40,6 +40,7 @@ from investigation_model import (
 from build_operator_assistant_input import build_from_path as build_assistant_input_from_path
 from build_operator_assistant_input import pending_generation_state
 from build_operator_assistant_input import write_json as write_assistant_input_json
+from interval_summary import build_interval_summary, latest_bucket_interval
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -49,6 +50,7 @@ ATTRIBUTION_OUT = VIZ_DIR / "network_attribution.json"
 OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
 DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
 BASELINE_HISTORY_OUT = VIZ_DIR / "baseline_history.json"
+INTERVAL_SUMMARY_OUT = VIZ_DIR / "interval_summary.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
@@ -1367,6 +1369,18 @@ def main():
     wan_series_marked = mark_persistent_wan_bad(wan_series)
     incident_runs = find_sustained_wan_incidents(wan_series_marked)
     incidents = [classify_incident(run, lan_series) for run in incident_runs]
+    interval_start, interval_end = latest_bucket_interval(rows_out, generated_at=now)
+    interval_summary = build_interval_summary(
+        rows=rows_out,
+        start=interval_start,
+        end=interval_end,
+        generated_at=now,
+        incidents=incidents,
+        health_dimensions=health_dimensions,
+        application_experience=application_experience,
+        source_path=f"data/{src.name}",
+    )
+    write_json_atomic(INTERVAL_SUMMARY_OUT, interval_summary)
     turbulence_buckets = [bucket for bucket in classify_buckets(wan_series_marked) if bucket.get("is_turbulence")]
     attribution_observations = build_attribution_observations(
         attribution,
@@ -1427,6 +1441,7 @@ def main():
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")
+    print(f"Wrote interval summary artifact to {INTERVAL_SUMMARY_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
     print(

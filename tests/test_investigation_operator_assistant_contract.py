@@ -605,9 +605,81 @@ globalThis.fetch = async (url) => {
         rendered = json.loads(self.run_node(body))
 
         self.assertNotIn(INVESTIGATION_URL := "./investigation.json", rendered["fetched"])
+        self.assertIn("./interval_summary.json", rendered["fetched"])
         self.assertEqual(rendered["mode"], "Selected interval")
         self.assertEqual(rendered["start"], "2026-08-02T10:00:00.000Z")
         self.assertEqual(rendered["end"], "2026-08-02T10:15:00.000Z")
+        self.assertIn("not being shown as a substitute", rendered["summary"])
+
+    def test_interval_view_renders_matching_interval_summary_artifact(self):
+        interval = {
+            "schema_version": 1,
+            "model_version": "prime_observer.interval_summary.v1",
+            "generated_at": "2026-08-02T10:16:00Z",
+            "start": "2026-08-02T10:00:00.000Z",
+            "end": "2026-08-02T10:15:00.000Z",
+            "overall_condition": "elevated_but_stable",
+            "confidence": "high",
+            "summary": "Between 10:00 AM and 10:15 AM, resolver latency was elevated but stable.",
+            "affected_services": ["Resolver probes"],
+            "healthy_services": ["Gateway", "Application checks"],
+            "application_summary": {"state": "working", "dns_success": True, "https_success": True},
+            "incident_overlap": {"count": 0, "items": []},
+            "metrics": {"gateway": {"state": "healthy", "p95_latency_ms": 8, "loss_rate_pct": 0}, "resolver": {"state": "elevated", "p95_latency_ms": 176, "loss_rate_pct": 0}, "internet": {"state": "healthy", "p95_latency_ms": 30, "loss_rate_pct": 0}, "application": {"state": "working"}, "adaptive_baseline_state": "elevated_but_stable", "dns_success": True, "https_success": True, "timeout_count": 0},
+            "baseline_comparison": {"adaptive_baseline_state": "elevated_but_stable", "resolver_members": [{"baseline_source": "durable"}]},
+            "coverage": {"sample_count": 12, "source_path": "data/test.csv"},
+            "evidence_refs": [{"path": "viz/latest.csv", "reason": "Telemetry rows within requested interval."}],
+            "likely_issue": "Established degraded resolver baseline",
+        }
+        body = f"""
+window.location.search = "?view=interval&start=2026-08-02T10:00:00.000Z&end=2026-08-02T10:15:00.000Z";
+const fetched = [];
+globalThis.fetch = async (url) => {{
+  fetched.push(url);
+  if (url === INTERVAL_SUMMARY_URL) return {{ok: true, json: async () => ({json.dumps(interval)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{
+    fetched,
+    status: document.getElementById("status").textContent,
+    mode: document.getElementById("modePill").textContent,
+    condition: document.getElementById("intervalCondition").textContent,
+    summary: document.getElementById("intervalRequestSummary").textContent,
+    affected: document.getElementById("intervalAffectedServices").innerHTML,
+    healthy: document.getElementById("intervalHealthyServices").innerHTML,
+    metrics: document.getElementById("intervalMetricsTable").innerHTML,
+  }}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertNotIn("./investigation.json", rendered["fetched"])
+        self.assertEqual(rendered["mode"], "Selected interval")
+        self.assertIn("deterministic interval summary", rendered["status"])
+        self.assertEqual(rendered["condition"], "Elevated But Stable")
+        self.assertIn("resolver latency was elevated", rendered["summary"])
+        self.assertIn("Resolver probes", rendered["affected"])
+        self.assertIn("Gateway", rendered["healthy"])
+        self.assertIn("Adaptive baseline", rendered["metrics"])
+
+    def test_interval_view_falls_back_when_summary_does_not_match_requested_interval(self):
+        interval = {"start": "2026-08-02T11:00:00.000Z", "end": "2026-08-02T11:15:00.000Z"}
+        body = f"""
+window.location.search = "?view=interval&start=2026-08-02T10:00:00.000Z&end=2026-08-02T10:15:00.000Z";
+globalThis.fetch = async (url) => {{
+  if (url === INTERVAL_SUMMARY_URL) return {{ok: true, json: async () => ({json.dumps(interval)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{status: document.getElementById("status").textContent, summary: document.getElementById("intervalRequestSummary").textContent}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("not available for this exact window", rendered["status"])
         self.assertIn("not being shown as a substitute", rendered["summary"])
 
     def test_explicit_current_view_loads_current_artifact(self):
