@@ -67,6 +67,10 @@ Repository-backed recent milestones:
 - post-`v0.9.0` Incident Intelligence Phase 3 adds additive Python-owned
   `incident_replay` milestones so Investigation can render deterministic replay
   without browser-side inference or historical similarity
+- post-`v0.9.0` Adaptive Baseline Phase C adds generated durable baseline memory
+  in `viz/baseline_history.json`; transform learns compact per-target summaries
+  across recent telemetry files and health dimensions prefer valid durable
+  resolver baselines before falling back to in-window evidence
 
 Recent commits before `v0.9.0` show this sequence:
 
@@ -104,6 +108,8 @@ Current projection state:
   export
 - `viz/observations.json` is the repository-described authoritative Observation
   projection for deterministic semantics Prime Observer owns
+- `viz/baseline_history.json` is compact generated durable baseline memory keyed
+  by phase, target class, and host/member identity
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten

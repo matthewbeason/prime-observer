@@ -48,6 +48,7 @@ OUT      = VIZ_DIR / "latest.csv"
 ATTRIBUTION_OUT = VIZ_DIR / "network_attribution.json"
 OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
 DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
+BASELINE_HISTORY_OUT = VIZ_DIR / "baseline_history.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
@@ -63,6 +64,14 @@ WINDOW = dt.timedelta(hours=WINDOW_HOURS)
 # is over.
 TELEMETRY_PATTERN = "bakeoff_*.csv"
 BASELINE_FILE_COUNT = 10
+BASELINE_HISTORY_SCHEMA_VERSION = 1
+BASELINE_HISTORY_MODEL_VERSION = "prime_observer.baseline_history.v1"
+BASELINE_HISTORY_MIN_SAMPLES = 24
+BASELINE_HISTORY_MIN_SOURCE_FILES = 2
+BASELINE_HISTORY_MAX_VERSIONS = 5
+BASELINE_HISTORY_STALE_DAYS = 21
+BASELINE_CHANGE_DELTA_PCT = 10.0
+BASELINE_HISTORY_RECENT_SAMPLES = 3
 
 TARGET_COLUMNS = ("target_label", "target_class")
 BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct", "baseline_sample_count")
@@ -121,6 +130,29 @@ def median(values):
     return (vals[mid - 1] + vals[mid]) / 2.0
 
 
+def percentile(values, pct):
+    vals = sorted(v for v in values if v is not None)
+    if not vals:
+        return None
+    if len(vals) == 1:
+        return vals[0]
+    pos = (len(vals) - 1) * (pct / 100.0)
+    lower = int(pos)
+    upper = min(lower + 1, len(vals) - 1)
+    weight = pos - lower
+    return vals[lower] + ((vals[upper] - vals[lower]) * weight)
+
+
+def rounded(value, digits=1):
+    if value is None:
+        return None
+    return round(value, digits)
+
+
+def iso(value):
+    return value.isoformat() if isinstance(value, dt.datetime) else None
+
+
 def compute_hourly_wan_baseline():
     """Return hourly WAN p95 medians and sample counts using recent telemetry history."""
     by_hour = defaultdict(list)
@@ -165,6 +197,278 @@ def compute_hourly_wan_baseline():
     sample_counts = {hour: len(vals) for hour, vals in by_hour.items()}
 
     return baseline, sample_counts, used_files
+
+
+def baseline_target_key(sample):
+    member = sample.get("member_id") or sample.get("host") or "unknown"
+    return "|".join([
+        str(sample.get("phase") or "FIBER"),
+        str(sample.get("target_class") or "unknown_probe"),
+        str(member),
+    ])
+
+
+def baseline_identity(sample):
+    return {
+        "phase": sample.get("phase"),
+        "target_class": sample.get("target_class"),
+        "host": sample.get("host"),
+        "member_id": sample.get("member_id"),
+        "role": sample.get("role"),
+        "endpoint": sample.get("endpoint") or sample.get("host"),
+        "provider": sample.get("provider"),
+    }
+
+
+def telemetry_sample_from_row(row, source_name):
+    row = dict(row)
+    row = apply_target_fields(row)
+    t = parse_ts(row.get("ts", ""))
+    if t is None:
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=dt.timezone.utc)
+    host = (row.get("host") or "").strip()
+    p95 = parse_float(row.get("p95_ms"), None)
+    if not host or p95 is None:
+        return None
+    meta = target_metadata(host)
+    sent = parse_float(row.get("sent"), None)
+    received = parse_float(row.get("received"), None)
+    timeout = bool(sent and received is not None and received <= 0)
+    return {
+        "t": t,
+        "source_file": source_name,
+        "phase": str(row.get("phase_label") or "FIBER").strip().upper(),
+        "host": host,
+        "target_class": meta.get("target_class") or row.get("target_class") or "unknown_probe",
+        "member_id": meta.get("member_id") or host,
+        "role": meta.get("role"),
+        "endpoint": meta.get("endpoint") or host,
+        "provider": meta.get("provider"),
+        "p95": p95,
+        "jitter": parse_float(row.get("jitter_ms"), 0.0) or 0.0,
+        "loss": parse_float(row.get("loss_pct"), 0.0) or 0.0,
+        "timeout": timeout,
+    }
+
+
+def baseline_samples_from_files():
+    samples = []
+    used_files = []
+    for src in recent_baseline_files():
+        file_count = 0
+        try:
+            with src.open("r", newline="") as f:
+                for row in csv.DictReader(f):
+                    sample = telemetry_sample_from_row(row, src.name)
+                    if sample is None:
+                        continue
+                    samples.append(sample)
+                    file_count += 1
+        except Exception as exc:
+            print(f"Warning: skipped durable baseline source {src.name}: {exc}")
+            continue
+        if file_count:
+            used_files.append(src.name)
+    return samples, used_files
+
+
+def load_baseline_history(path):
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("schema_version") != BASELINE_HISTORY_SCHEMA_VERSION:
+        return None
+    if not isinstance(payload.get("targets"), dict):
+        return None
+    return payload
+
+
+def app_checks_healthy(application_experience):
+    if not isinstance(application_experience, dict) or not application_experience.get("is_current"):
+        return False
+    failures = (application_experience.get("failure_counts") or {}).get("total") or 0
+    https = application_experience.get("https_transaction") if isinstance(application_experience.get("https_transaction"), dict) else {}
+    dns = application_experience.get("dns_transactions") if isinstance(application_experience.get("dns_transactions"), list) else []
+    system_ok = any(item.get("role") == "system" and item.get("success") and not item.get("timeout") for item in dns if isinstance(item, dict))
+    direct_ok = any(item.get("role") != "system" and item.get("success") and not item.get("timeout") for item in dns if isinstance(item, dict))
+    return failures == 0 and bool(https.get("success")) and not https.get("timeout") and system_ok and direct_ok
+
+
+def observed_impact_safe(operator_impact_feedback):
+    if not isinstance(operator_impact_feedback, dict):
+        return True
+    return operator_impact_feedback.get("impact_state") in {None, "unknown", "none_observed", "minor_slowness"}
+
+
+def target_stats(samples):
+    if not samples:
+        return {
+            "window": {"start": None, "end": None},
+            "sample_count": 0,
+            "median": None,
+            "p75": None,
+            "p90": None,
+            "p95": None,
+            "jitter_range": {"min": None, "max": None},
+            "loss_rate": None,
+            "timeout_rate": None,
+        }
+    p95 = [sample["p95"] for sample in samples]
+    jitter = [sample["jitter"] for sample in samples]
+    loss = [sample["loss"] for sample in samples]
+    timeouts = [sample for sample in samples if sample.get("timeout")]
+    start = min(sample["t"] for sample in samples)
+    end = max(sample["t"] for sample in samples)
+    return {
+        "window": {"start": iso(start), "end": iso(end)},
+        "sample_count": len(samples),
+        "median": rounded(percentile(p95, 50), 1),
+        "p75": rounded(percentile(p95, 75), 1),
+        "p90": rounded(percentile(p95, 90), 1),
+        "p95": rounded(percentile(p95, 95), 1),
+        "jitter_range": {"min": rounded(min(jitter), 1), "max": rounded(max(jitter), 1)},
+        "loss_rate": rounded(sum(loss) / len(loss), 3) if loss else None,
+        "timeout_rate": rounded(len(timeouts) / len(samples), 4) if samples else None,
+    }
+
+
+def baseline_guardrail_status(samples, *, application_experience, operator_impact_feedback):
+    breaches = []
+    loss_breach_rate = len([sample for sample in samples if sample["loss"] > WAN_BAD["loss"]]) / len(samples) if samples else 0.0
+    if loss_breach_rate >= 0.1:
+        breaches.append("packet_loss_above_threshold")
+    if any(sample.get("timeout") for sample in samples):
+        breaches.append("timeout")
+    target_class = samples[0].get("target_class") if samples else None
+    if target_class == "resolver_probe" and not app_checks_healthy(application_experience):
+        breaches.append("application_checks_unhealthy")
+    if not observed_impact_safe(operator_impact_feedback):
+        breaches.append("reported_major_or_confirmed_impact")
+    p95_values = [sample["p95"] for sample in samples]
+    if len(p95_values) >= BASELINE_HISTORY_MIN_SAMPLES:
+        older = percentile(p95_values[:-BASELINE_HISTORY_RECENT_SAMPLES] or p95_values, 50)
+        recent = percentile(p95_values[-BASELINE_HISTORY_RECENT_SAMPLES:], 50)
+        if older and recent and ((recent - older) / older) * 100.0 >= 35.0:
+            breaches.append("rapid_worsening")
+    return {"status": "breached" if breaches else "clear", "breaches": breaches}
+
+
+def baseline_change(previous, stats):
+    if not previous:
+        return "accepted", "Initial durable baseline learned from historical telemetry."
+    previous_median = previous.get("median")
+    current_median = stats.get("median")
+    if previous_median and current_median:
+        delta = ((current_median - previous_median) / previous_median) * 100.0
+        if abs(delta) >= BASELINE_CHANGE_DELTA_PCT:
+            direction = "higher" if delta > 0 else "lower"
+            return "changed", f"Median p95 moved {abs(delta):.1f}% {direction} than previous accepted baseline."
+    return "retained", "Historical telemetry remains within previous accepted baseline range."
+
+
+def build_baseline_history(*, generated_at, previous_history=None, application_experience=None, operator_impact_feedback=None):
+    samples, used_files = baseline_samples_from_files()
+    grouped = defaultdict(list)
+    for sample in samples:
+        grouped[baseline_target_key(sample)].append(sample)
+    previous_targets = (previous_history or {}).get("targets") if isinstance(previous_history, dict) else {}
+    previous_targets = previous_targets if isinstance(previous_targets, dict) else {}
+    targets = {}
+    max_previous_version = 0
+    for target in previous_targets.values():
+        try:
+            max_previous_version = max(max_previous_version, int(target.get("baseline_version", 0)))
+        except Exception:
+            continue
+    next_version = max_previous_version + 1
+    blocked = {}
+    for key in sorted(set(grouped) | set(previous_targets)):
+        all_target_samples = sorted(grouped.get(key, []), key=lambda item: item["t"])
+        all_source_files = sorted({sample["source_file"] for sample in all_target_samples})
+        selected_source_files = set(all_source_files[-BASELINE_HISTORY_MIN_SOURCE_FILES:])
+        target_samples = [sample for sample in all_target_samples if sample["source_file"] in selected_source_files]
+        previous = previous_targets.get(key) if isinstance(previous_targets.get(key), dict) else None
+        if not target_samples:
+            if previous:
+                retained = dict(previous)
+                retained["baseline_change_status"] = "retained_no_current_evidence"
+                targets[key] = retained
+            continue
+        stats = target_stats(target_samples)
+        source_files = sorted({sample["source_file"] for sample in target_samples})
+        guardrail = baseline_guardrail_status(target_samples, application_experience=application_experience, operator_impact_feedback=operator_impact_feedback)
+        reasons = []
+        if stats["sample_count"] < BASELINE_HISTORY_MIN_SAMPLES:
+            reasons.append("insufficient_samples")
+        if len(source_files) < BASELINE_HISTORY_MIN_SOURCE_FILES:
+            reasons.append("insufficient_source_files")
+        if guardrail["status"] != "clear":
+            reasons.extend(guardrail["breaches"])
+        if reasons:
+            blocked[key] = {"identity": baseline_identity(target_samples[0]), "reasons": list(dict.fromkeys(reasons)), "sample_count": stats["sample_count"], "source_files": source_files}
+            if previous:
+                retained = dict(previous)
+                retained["baseline_change_status"] = "retained_guardrail_or_insufficient_evidence"
+                retained["blocked_update"] = {"guardrail_status": guardrail, "reasons": list(dict.fromkeys(reasons)), "sample_count": stats["sample_count"], "source_files": source_files}
+                targets[key] = retained
+            continue
+        status, explanation = baseline_change(previous, stats)
+        version = int(previous.get("baseline_version", 0)) if previous and status == "retained" else next_version
+        if not previous or status != "retained":
+            next_version += 1
+        history = list((previous or {}).get("version_history") or [])[-(BASELINE_HISTORY_MAX_VERSIONS - 1):]
+        if previous and status != "retained":
+            history.append({
+                "baseline_version": previous.get("baseline_version"),
+                "median": previous.get("median"),
+                "p95": previous.get("p95"),
+                "window": previous.get("window"),
+                "accepted_state": previous.get("accepted_state"),
+            })
+        targets[key] = {
+            "identity": baseline_identity(target_samples[0]),
+            "baseline_version": version,
+            "window": stats["window"],
+            "sample_count": stats["sample_count"],
+            "median": stats["median"],
+            "p75": stats["p75"],
+            "p90": stats["p90"],
+            "p95": stats["p95"],
+            "jitter_range": stats["jitter_range"],
+            "loss_rate": stats["loss_rate"],
+            "timeout_rate": stats["timeout_rate"],
+            "confidence": "high" if stats["sample_count"] >= BASELINE_HISTORY_MIN_SAMPLES * 2 else "medium",
+            "accepted_state": "elevated_but_stable" if (stats["median"] or 0) > WAN_BAD["p95"] else "within_target",
+            "previous_baseline_summary": None if not previous else {"baseline_version": previous.get("baseline_version"), "median": previous.get("median"), "p95": previous.get("p95"), "accepted_state": previous.get("accepted_state")},
+            "change_explanation": explanation,
+            "baseline_change_status": status,
+            "guardrail_status": guardrail,
+            "source_files": source_files,
+            "source_time_coverage": stats["window"],
+            "version_history": history[-BASELINE_HISTORY_MAX_VERSIONS:],
+        }
+    baseline_version = max((int(target.get("baseline_version", 0)) for target in targets.values()), default=max_previous_version)
+    return {
+        "schema_version": BASELINE_HISTORY_SCHEMA_VERSION,
+        "model_version": BASELINE_HISTORY_MODEL_VERSION,
+        "generated_at": iso(generated_at),
+        "baseline_version": baseline_version,
+        "targets": targets,
+        "blocked_targets": blocked,
+        "source_files": used_files,
+        "source_time_coverage": {
+            "start": iso(min((sample["t"] for sample in samples), default=None)),
+            "end": iso(max((sample["t"] for sample in samples), default=None)),
+        },
+        "retention": {"max_version_history_per_target": BASELINE_HISTORY_MAX_VERSIONS, "raw_samples_stored": False},
+    }
 
 
 def ensure_fieldnames(fieldnames):
@@ -1039,12 +1343,21 @@ def main():
     diagnostic_evidence = load_diagnostic_evidence(DIAGNOSTIC_EVIDENCE_IN, generated_at=now)
     application_experience = load_application_experience(APPLICATION_EXPERIENCE_IN, generated_at=now)
     operator_impact_feedback = load_operator_impact_feedback(OPERATOR_IMPACT_FEEDBACK_IN, current_incident_id=current_incident_id, generated_at=now)
+    previous_baseline_history = load_baseline_history(BASELINE_HISTORY_OUT)
+    baseline_history = build_baseline_history(
+        generated_at=now,
+        previous_history=previous_baseline_history,
+        application_experience=application_experience,
+        operator_impact_feedback=operator_impact_feedback,
+    )
+    write_json_atomic(BASELINE_HISTORY_OUT, baseline_history)
     health_dimensions = evaluate_health_dimensions(
         rows_out,
         generated_at=now,
         diagnostic_evidence=diagnostic_evidence,
         application_experience=application_experience,
         operator_impact_feedback=operator_impact_feedback,
+        baseline_history=baseline_history,
     )
     attribution = compute_network_attribution(rows_out, now, health_dimensions=health_dimensions)
     write_json_atomic(ATTRIBUTION_OUT, attribution)
@@ -1113,6 +1426,7 @@ def main():
     print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
+    print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
     print(

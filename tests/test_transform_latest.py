@@ -38,6 +38,7 @@ class TransformLatestTest(unittest.TestCase):
         self.module.ATTRIBUTION_OUT = self.viz_dir / "network_attribution.json"
         self.module.OBSERVATIONS_OUT = self.viz_dir / "observations.json"
         self.module.DASHBOARD_HEALTH_OUT = self.viz_dir / "dashboard_health.json"
+        self.module.BASELINE_HISTORY_OUT = self.viz_dir / "baseline_history.json"
         self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
         self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
         self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
@@ -75,6 +76,39 @@ class TransformLatestTest(unittest.TestCase):
             writer.writeheader()
             writer.writerows(rows)
         return path
+
+    def write_rows_file(self, name, rows):
+        path = self.data_dir / name
+        fields = [
+            "ts",
+            "phase_label",
+            "host",
+            "sent",
+            "received",
+            "loss_pct",
+            "avg_ms",
+            "p50_ms",
+            "p95_ms",
+            "max_ms",
+            "jitter_ms",
+        ]
+        with path.open("w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(rows)
+        return path
+
+    def baseline_history_rows(self, base, *, secondary=176, primary=35, loss=0, received="10"):
+        rows = []
+        for idx in range(12):
+            ts = (base + dt.timedelta(minutes=idx * 10)).isoformat()
+            rows.extend([
+                self.telemetry_row(ts, "192.168.1.1", 8),
+                self.telemetry_row(ts, "1.1.1.1", 30),
+                self.telemetry_row(ts, "45.90.28.134", primary),
+                {**self.telemetry_row(ts, "45.90.30.134", secondary, loss=loss), "received": received},
+            ])
+        return rows
 
     def telemetry_row(self, ts, host, p95, jitter=5, loss=0):
         return {
@@ -295,6 +329,160 @@ class TransformLatestTest(unittest.TestCase):
         episodes = [item for item in observations["observations"] if item["type"] == "episode"]
         self.assertTrue(episodes)
         self.assertEqual(episodes[0]["state"]["status"], "sustained_degradation")
+
+    def test_durable_baseline_history_created_for_separate_resolver_members(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=176, primary=35))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176, primary=35))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        secondary_key = "FIBER|resolver_probe|nextdns_secondary"
+        primary_key = "FIBER|resolver_probe|nextdns_primary"
+        self.assertEqual(history["schema_version"], 1)
+        self.assertIn(secondary_key, history["targets"])
+        self.assertIn(primary_key, history["targets"])
+        self.assertNotEqual(secondary_key, primary_key)
+        secondary = history["targets"][secondary_key]
+        self.assertEqual(secondary["accepted_state"], "elevated_but_stable")
+        self.assertEqual(secondary["sample_count"], 24)
+        self.assertEqual(secondary["guardrail_status"], {"status": "clear", "breaches": []})
+        self.assertFalse(history["retention"]["raw_samples_stored"])
+
+    def test_durable_baseline_version_increments_with_explanation(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": (now - dt.timedelta(hours=1)).isoformat(),
+            "baseline_version": 3,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "identity": {"phase": "FIBER", "target_class": "resolver_probe", "member_id": "nextdns_secondary", "host": "45.90.30.134"},
+                    "baseline_version": 3,
+                    "window": {"start": "2026-06-10T00:00:00+00:00", "end": "2026-06-11T00:00:00+00:00"},
+                    "sample_count": 24,
+                    "median": 150.0,
+                    "p95": 155.0,
+                    "accepted_state": "elevated_but_stable",
+                    "version_history": [],
+                }
+            },
+        }
+        self.module.BASELINE_HISTORY_OUT.write_text(json.dumps(previous))
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=176))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        secondary = history["targets"]["FIBER|resolver_probe|nextdns_secondary"]
+        self.assertGreater(secondary["baseline_version"], 3)
+        self.assertEqual(secondary["baseline_change_status"], "changed")
+        self.assertIn("Median p95 moved", secondary["change_explanation"])
+        self.assertEqual(secondary["previous_baseline_summary"]["baseline_version"], 3)
+        self.assertEqual(secondary["version_history"][0]["baseline_version"], 3)
+
+    def test_durable_baseline_blocks_update_for_insufficient_samples_loss_timeout_or_app_failure(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        cases = [
+            ("insufficient", [self.telemetry_row((now - dt.timedelta(minutes=idx)).isoformat(), "45.90.30.134", 176) for idx in range(4)], None, "insufficient_samples"),
+            ("loss", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176, loss=3), None, "packet_loss_above_threshold"),
+            ("timeout", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176, received="0"), None, "timeout"),
+            ("app", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176), "failed", "application_checks_unhealthy"),
+        ]
+        for name, rows, app_secondary, expected in cases:
+            with self.subTest(name=name):
+                self.tearDown()
+                self.setUp()
+                self.write_rows_file("bakeoff_20260614.csv", rows)
+                self.write_rows_file("bakeoff_20260615.csv", rows)
+                self.write_application_experience(now)
+                if app_secondary:
+                    payload = json.loads(self.module.APPLICATION_EXPERIENCE_IN.read_text())
+                    for item in payload["dns_transactions"]:
+                        if item.get("role") == "secondary":
+                            item["success"] = False
+                            item["failure_category"] = "dns_failure"
+                    payload["failure_counts"] = {"total": 1}
+                    self.module.APPLICATION_EXPERIENCE_IN.write_text(json.dumps(payload))
+                self.run_main_capturing_output()
+                history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+                blocked = history["blocked_targets"].get("FIBER|resolver_probe|nextdns_secondary")
+                self.assertIsNotNone(blocked)
+                self.assertIn(expected, blocked["reasons"])
+
+    def test_malformed_durable_baseline_falls_back_and_is_rewritten_atomically(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        self.module.BASELINE_HISTORY_OUT.write_text("{bad")
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=176))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        self.assertIn("FIBER|resolver_probe|nextdns_secondary", history["targets"])
+        self.assertFalse(self.module.BASELINE_HISTORY_OUT.with_suffix(".json.tmp").exists())
+
+    def test_durable_baseline_feeds_adaptive_classification_and_guardrails_still_override(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": now.isoformat(),
+            "baseline_version": 2,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "identity": {"phase": "FIBER", "target_class": "resolver_probe", "member_id": "nextdns_secondary", "host": "45.90.30.134"},
+                    "baseline_version": 2,
+                    "window": {"start": (now - dt.timedelta(days=3)).isoformat(), "end": (now - dt.timedelta(days=1)).isoformat()},
+                    "sample_count": 48,
+                    "median": 176.0,
+                    "p75": 177.0,
+                    "p90": 178.0,
+                    "p95": 179.0,
+                    "accepted_state": "elevated_but_stable",
+                    "baseline_change_status": "accepted",
+                    "change_explanation": "Initial durable baseline learned from historical telemetry.",
+                    "guardrail_status": {"status": "clear", "breaches": []},
+                    "version_history": [],
+                }
+            },
+        }
+        result = self.module.evaluate_health_dimensions(
+            self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176),
+            generated_at=now,
+            application_experience=json.loads(json.dumps({
+                "is_current": True,
+                "failure_counts": {"total": 0},
+                "dns_transactions": [
+                    {"role": "primary", "resolver_endpoint": "45.90.28.134", "success": True, "timeout": False},
+                    {"role": "secondary", "resolver_endpoint": "45.90.30.134", "success": True, "timeout": False},
+                    {"role": "system", "success": True, "timeout": False},
+                ],
+                "https_transaction": {"success": True, "timeout": False},
+            })),
+            baseline_history=previous,
+        )
+        adaptive = next(item for item in result["adaptive_baseline"]["resolver_members"] if item["member_id"] == "nextdns_secondary")
+        self.assertEqual(adaptive["baseline_source"], "durable")
+        self.assertEqual(adaptive["baseline_state"], "elevated_but_stable")
+        self.assertFalse(adaptive["incident_eligible"])
+        self.assertEqual(adaptive["durable_baseline_version"], 2)
+
+        worsening = self.module.evaluate_health_dimensions(
+            self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=260),
+            generated_at=now,
+            application_experience=result["application_experience"],
+            baseline_history=previous,
+        )
+        adaptive = next(item for item in worsening["adaptive_baseline"]["resolver_members"] if item["member_id"] == "nextdns_secondary")
+        self.assertTrue(adaptive["incident_eligible"])
+        self.assertIn(adaptive["baseline_state"], {"degraded_from_baseline", "anomalous"})
 
     def test_dashboard_consumes_observations_for_attribution_and_episode_projection_only(self):
         dashboard_html = INDEX_HTML_PATH.read_text()

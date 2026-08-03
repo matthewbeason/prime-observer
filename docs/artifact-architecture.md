@@ -365,6 +365,17 @@ may add `incident_suppressed`, `suppression_reason`, `adaptive_recovery`, and
 selected as an active incident or when an older event recovered into an accepted
 degraded baseline.
 
+Adaptive Baseline Phase C adds generated `viz/baseline_history.json` for durable
+per-target baseline memory. It contains schema/model versions, generated time,
+global baseline version, target entries keyed by `phase|target_class|member`,
+accepted windows, sample counts, p95 distribution summaries, jitter range,
+loss/timeout rates, confidence, accepted state, prior baseline summaries,
+guardrail status, source files, source time coverage, and limited version
+history. The artifact is compact, stores no raw telemetry duplicates, and is
+published atomically. If missing, malformed, stale, incompatible, insufficient,
+or guardrail-blocked, health evaluation falls back to in-window adaptive baseline
+behavior. Historical investigation snapshots are not rewritten.
+
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a safe selected
 interval request and does not load `viz/investigation.json` as a substitute.

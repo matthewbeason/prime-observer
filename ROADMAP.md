@@ -80,6 +80,10 @@ Current watch period:
 - Incident Intelligence Phase 3 adds Python-owned deterministic replay milestones
   for Investigation without animation, browser-side inference, historical
   similarity, or pattern matching.
+- Adaptive Baseline Phase C adds durable generated baseline memory in
+  `viz/baseline_history.json`, preserving raw telemetry semantics while allowing
+  resolver adaptive classification to compare current behavior with compact,
+  versioned historical norms.
 
 ## Next Logical Milestone
 

@@ -399,7 +399,14 @@ class BuildOperatorAssistantInputTest(unittest.TestCase):
         baseline = self.module.build_package(investigation, "viz/investigation.json")
         investigation["health_dimensions"]["adaptive_baseline"] = {
             "model_version": "prime_observer.adaptive_baseline.v1.phase_a",
-            "resolver_members": [{"member_id": "nextdns_secondary", "baseline_state": "elevated_but_stable", "incident_eligible": False}],
+            "resolver_members": [{
+                "member_id": "nextdns_secondary",
+                "baseline_state": "elevated_but_stable",
+                "incident_eligible": False,
+                "baseline_source": "durable",
+                "durable_baseline_version": 7,
+                "durable_learned_range": {"median": 176.0, "sample_count": 48},
+            }],
         }
         investigation["health_dimensions"]["dependency_groups"][0]["members"][0]["adaptive_baseline"] = {
             "baseline_state": "elevated_but_stable",

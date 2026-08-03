@@ -54,6 +54,7 @@ viz/operator_impact_feedback.json
 viz/network_attribution.json
 viz/observations.json
 viz/dashboard_health.json
+viz/baseline_history.json
 viz/investigation.json
 viz/investigation_index.json
 viz/investigation_catalog.json

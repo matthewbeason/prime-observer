@@ -12,6 +12,8 @@ from target_metadata import target_metadata
 HEALTH_DIMENSIONS_SCHEMA_VERSION = 1
 HEALTH_DIMENSIONS_MODEL_VERSION = "prime_observer.health_dimensions.v1"
 ADAPTIVE_BASELINE_MODEL_VERSION = "prime_observer.adaptive_baseline.v1.phase_a"
+BASELINE_HISTORY_SCHEMA_VERSION = 1
+BASELINE_HISTORY_STALE_DAYS = 21
 DIAGNOSTIC_EVIDENCE_MODEL_VERSION = "prime_observer.diagnostic_evidence.v1"
 APPLICATION_EXPERIENCE_MODEL_VERSION = "prime_observer.application_experience.v1"
 OPERATOR_IMPACT_FEEDBACK_MODEL_VERSION = "prime_observer.operator_impact_feedback.v1"
@@ -411,6 +413,39 @@ def rounded(value: float | None, digits: int = 1) -> float | None:
     return round(value, digits)
 
 
+def baseline_history_key(member: dict[str, Any]) -> str:
+    return "|".join([
+        str(member.get("phase") or "FIBER"),
+        str(member.get("target_class") or "resolver_probe"),
+        str(member.get("member_id") or member.get("host") or "unknown"),
+    ])
+
+
+def durable_baseline_for_member(baseline_history: dict[str, Any] | None, member: dict[str, Any], generated_at: dt.datetime) -> dict[str, Any] | None:
+    if not isinstance(baseline_history, dict):
+        return None
+    if baseline_history.get("schema_version") != BASELINE_HISTORY_SCHEMA_VERSION:
+        return None
+    generated = parse_ts(baseline_history.get("generated_at"))
+    if generated is None:
+        return None
+    age = generated_at - generated
+    if age < dt.timedelta(0) or age > dt.timedelta(days=BASELINE_HISTORY_STALE_DAYS):
+        return None
+    targets = baseline_history.get("targets") if isinstance(baseline_history.get("targets"), dict) else {}
+    baseline = targets.get(baseline_history_key(member))
+    if not isinstance(baseline, dict):
+        return None
+    guardrail = baseline.get("guardrail_status") if isinstance(baseline.get("guardrail_status"), dict) else {}
+    if guardrail.get("status") == "breached":
+        return None
+    if baseline.get("sample_count", 0) < ADAPTIVE_BASELINE_MIN_SAMPLES:
+        return None
+    enriched = dict(baseline)
+    enriched["age_minutes"] = int(age.total_seconds() // 60)
+    return enriched
+
+
 def direct_dns_success_for_member(application_experience: dict[str, Any] | None, diagnostics: list[dict[str, Any]], member: dict[str, Any]) -> bool:
     app = application_transaction_summary(application_experience)
     role = str(member.get("role") or "").lower()
@@ -469,7 +504,10 @@ def adaptive_baseline_guardrails(
     condition = member.get("technical_condition") or {}
     samples = member.get("samples") or []
     breaches = []
-    if any((sample.get("loss") or 0.0) > WAN_BAD["loss"] for sample in samples):
+    recent_samples = sorted(samples, key=lambda item: item.get("t"))[-ADAPTIVE_BASELINE_RECENT_SAMPLES:]
+    loss_values = [sample.get("loss") or 0.0 for sample in samples]
+    loss_breach_rate = len([loss for loss in loss_values if loss > WAN_BAD["loss"]]) / len(loss_values) if loss_values else 0.0
+    if any((sample.get("loss") or 0.0) > WAN_BAD["loss"] for sample in recent_samples) or loss_breach_rate >= 0.1:
         breaches.append("packet_loss_above_threshold")
     if app.get("current") and app.get("total_timeouts", 0) > 0:
         breaches.append("timeout")
@@ -479,12 +517,21 @@ def adaptive_baseline_guardrails(
         breaches.append("application_failure")
     if gateway.get("state") in {"degraded", "severe"}:
         breaches.append("gateway_degradation")
-    degraded_members = [item for item in members if condition_rank((item.get("technical_condition") or {}).get("state")) >= 2]
+    def recently_degraded(item):
+        condition = item.get("technical_condition") or {}
+        return (
+            (condition.get("recent_median_p95_ms") or 0.0) > WAN_BAD["p95"]
+            or (condition.get("recent_max_loss_pct") or 0.0) > WAN_BAD["loss"]
+        )
+
+    degraded_members = [item for item in members if recently_degraded(item)]
     if len(degraded_members) >= 2:
         breaches.append("both_resolver_members_degraded")
     if dependency.get("active_member") == member.get("member_id") and condition_rank(condition.get("state")) >= 2 and dependency.get("fallback_status") != "healthy":
         breaches.append("active_resolver_degraded_without_proven_healthy_fallback")
-    if internet.get("state") in {"degraded", "severe"} and condition_rank(condition.get("state")) >= 2:
+    internet_recent_bad = (internet.get("recent_median_p95_ms") or 0.0) > WAN_BAD["p95"] or (internet.get("recent_max_loss_pct") or 0.0) > WAN_BAD["loss"]
+    member_recent_bad = (condition.get("recent_median_p95_ms") or 0.0) > WAN_BAD["p95"] or (condition.get("recent_max_loss_pct") or 0.0) > WAN_BAD["loss"]
+    if internet_recent_bad and member_recent_bad:
         breaches.append("broad_correlated_resolver_and_internet_degradation")
     if worsening:
         breaches.append("rapid_worsening")
@@ -510,6 +557,7 @@ def adaptive_resolver_member_baseline(
     observed: dict[str, Any],
     application_experience: dict[str, Any] | None,
     diagnostics: list[dict[str, Any]],
+    durable_baseline: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     samples = sorted(member.get("samples") or [], key=lambda item: item.get("t"))
     p95_values = [sample.get("p95") for sample in samples if sample.get("p95") is not None]
@@ -528,7 +576,10 @@ def adaptive_resolver_member_baseline(
     recent_samples = samples[-ADAPTIVE_BASELINE_RECENT_SAMPLES:] if samples else []
     baseline_p95 = [sample.get("p95") for sample in baseline_samples if sample.get("p95") is not None]
     recent_p95 = [sample.get("p95") for sample in recent_samples if sample.get("p95") is not None]
-    baseline_median = percentile(baseline_p95, 50)
+    window_baseline_median = percentile(baseline_p95, 50)
+    durable_median = durable_baseline.get("median") if isinstance(durable_baseline, dict) else None
+    baseline_source = "durable" if durable_median else "window"
+    baseline_median = durable_median or window_baseline_median
     recent_median = percentile(recent_p95, 50)
     delta_pct = ((recent_median - baseline_median) / baseline_median) * 100.0 if baseline_median and recent_median is not None else None
     recent_spread_pct = None
@@ -536,14 +587,14 @@ def adaptive_resolver_member_baseline(
         recent_median_for_spread = percentile(recent_p95, 50) or 1.0
         recent_spread_pct = ((percentile(recent_p95, 75) or 0.0) - (percentile(recent_p95, 25) or 0.0)) / recent_median_for_spread * 100.0
     spread_pct = recent_spread_pct
-    enough_samples = len(samples) >= ADAPTIVE_BASELINE_MIN_SAMPLES and window_minutes >= ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES
+    enough_samples = (len(samples) >= ADAPTIVE_BASELINE_MIN_SAMPLES and window_minutes >= ADAPTIVE_BASELINE_MIN_WINDOW_MINUTES) or baseline_source == "durable"
     absolute_breached = any(
         (sample.get("p95") or 0.0) > WAN_BAD["p95"]
         or (sample.get("jitter") or 0.0) > WAN_BAD["jitter"]
         or (sample.get("loss") or 0.0) > WAN_BAD["loss"]
         for sample in samples
     )
-    elevated = bool(learned["median_p95_ms"] is not None and learned["median_p95_ms"] > WAN_BAD["p95"])
+    elevated = bool(recent_median is not None and recent_median > WAN_BAD["p95"])
     stable = bool(spread_pct is not None and spread_pct <= ADAPTIVE_BASELINE_STABLE_SPREAD_PCT)
     worsening = bool(delta_pct is not None and delta_pct >= ADAPTIVE_BASELINE_WORSENING_DELTA_PCT)
     improving = bool(delta_pct is not None and delta_pct <= -ADAPTIVE_BASELINE_WORSENING_DELTA_PCT)
@@ -607,13 +658,27 @@ def adaptive_resolver_member_baseline(
         confidence = "medium"
     return {
         "baseline_state": state,
-        "baseline_version": f"{member.get('member_id') or member.get('host') or 'resolver'}:{iso(start)}:{iso(end)}",
+        "baseline_source": baseline_source,
+        "baseline_version": str((durable_baseline or {}).get("baseline_version")) if baseline_source == "durable" else f"{member.get('member_id') or member.get('host') or 'resolver'}:{iso(start)}:{iso(end)}",
         "baseline_model_version": ADAPTIVE_BASELINE_MODEL_VERSION,
         "learned_range": learned,
+        "durable_baseline_version": (durable_baseline or {}).get("baseline_version") if baseline_source == "durable" else None,
+        "durable_baseline_age": {"minutes": (durable_baseline or {}).get("age_minutes")} if baseline_source == "durable" else None,
+        "baseline_change_status": (durable_baseline or {}).get("baseline_change_status") if baseline_source == "durable" else "window_only",
         "baseline_window": {"start": iso(start), "end": iso(end), "duration_minutes": window_minutes},
         "baseline_sample_count": len(samples),
+        "durable_learned_range": {
+            "median": (durable_baseline or {}).get("median"),
+            "p75": (durable_baseline or {}).get("p75"),
+            "p90": (durable_baseline or {}).get("p90"),
+            "p95": (durable_baseline or {}).get("p95"),
+            "sample_count": (durable_baseline or {}).get("sample_count"),
+            "window": (durable_baseline or {}).get("window"),
+            "change_explanation": (durable_baseline or {}).get("change_explanation"),
+        } if baseline_source == "durable" else None,
         "deviation_from_baseline": {
             "baseline_median_p95_ms": rounded(baseline_median, 1),
+            "window_baseline_median_p95_ms": rounded(window_baseline_median, 1),
             "recent_median_p95_ms": rounded(recent_median, 1),
             "delta_pct": rounded(delta_pct, 1),
             "spread_pct": rounded(spread_pct, 1),
@@ -621,6 +686,11 @@ def adaptive_resolver_member_baseline(
             "worsening_trend": worsening,
             "improving_trend": improving,
         },
+        "deviation_from_durable_baseline": {
+            "durable_median_p95_ms": rounded(durable_median, 1),
+            "recent_median_p95_ms": rounded(recent_median, 1),
+            "delta_pct": rounded(delta_pct, 1),
+        } if baseline_source == "durable" else None,
         "absolute_threshold_state": "breached" if absolute_breached else "within_target",
         "guardrail_breaches": guardrails,
         "incident_eligible": eligible,
@@ -717,6 +787,9 @@ def member_technical_condition(member: dict[str, Any], diagnostics: list[dict[st
     max_p95 = max_or_none([sample.get("p95") for sample in samples])
     max_jitter = max_or_none([sample.get("jitter") for sample in samples])
     max_loss = max_or_none([sample.get("loss") for sample in samples])
+    recent = sorted(samples, key=lambda item: item.get("t"))[-ADAPTIVE_BASELINE_RECENT_SAMPLES:]
+    recent_median_p95 = percentile([sample.get("p95") for sample in recent], 50)
+    recent_max_loss = max_or_none([sample.get("loss") for sample in recent])
     max_baseline_delta = max_or_none([sample.get("baseline_delta_pct") for sample in samples])
     current_dns = [item for item in diagnostics if item.get("is_current") and item.get("type") == "direct_dns_query_measurement" and diagnostic_matches(item, member)]
     dns_normal = False
@@ -761,6 +834,8 @@ def member_technical_condition(member: dict[str, Any], diagnostics: list[dict[st
         "max_p95_ms": round(max_p95, 1) if max_p95 is not None else None,
         "max_jitter_ms": round(max_jitter, 1) if max_jitter is not None else None,
         "max_loss_pct": round(max_loss, 2) if max_loss is not None else None,
+        "recent_median_p95_ms": round(recent_median_p95, 1) if recent_median_p95 is not None else None,
+        "recent_max_loss_pct": round(recent_max_loss, 2) if recent_max_loss is not None else None,
     }
 
 
@@ -883,6 +958,9 @@ def group_condition(samples: list[dict[str, Any]], *, target_class: str) -> dict
     raw_bad = [sample for sample in rows if sample.get("raw_bad")]
     sustained = [sample for sample in rows if sample.get("is_bad")]
     max_p95 = max_or_none([sample.get("p95") for sample in rows])
+    recent = sorted(rows, key=lambda item: item.get("t"))[-ADAPTIVE_BASELINE_RECENT_SAMPLES:]
+    recent_median_p95 = percentile([sample.get("p95") for sample in recent], 50)
+    recent_max_loss = max_or_none([sample.get("loss") for sample in recent])
     if sustained:
         state = "severe" if (max_p95 or 0.0) >= 240 else "degraded"
     elif raw_bad:
@@ -895,6 +973,8 @@ def group_condition(samples: list[dict[str, Any]], *, target_class: str) -> dict
         "sustained_bad_samples": len(sustained),
         "raw_bad_samples": len(raw_bad),
         "max_p95_ms": round(max_p95, 1) if max_p95 is not None else None,
+        "recent_median_p95_ms": round(recent_median_p95, 1) if recent_median_p95 is not None else None,
+        "recent_max_loss_pct": round(recent_max_loss, 2) if recent_max_loss is not None else None,
     }
 
 
@@ -1393,6 +1473,7 @@ def evaluate_health_dimensions(
     diagnostic_evidence: dict[str, Any] | None = None,
     application_experience: dict[str, Any] | None = None,
     operator_impact_feedback: dict[str, Any] | None = None,
+    baseline_history: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     diagnostics = [
         normalize_diagnostic_item(item, generated_at=generated_at)
@@ -1453,6 +1534,7 @@ def evaluate_health_dimensions(
             observed=observed_impact,
             application_experience=application_experience,
             diagnostics=diagnostics,
+            durable_baseline=durable_baseline_for_member(baseline_history, member, generated_at),
         )
     dependency = dependency_group_state(members, diagnostics)
     dependency["dependency_group_id"] = dependency_group_id
