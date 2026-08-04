@@ -283,6 +283,18 @@
       <div id="timelineMilestones" class="card-grid" style="margin-bottom:14px;"></div>
     </section>
 
+    <section id="similaritySection" class="section" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Seen before</div>
+          <h2>Historically similar incidents</h2>
+          <p id="similaritySummary" class="section-note supporting"></p>
+        </div>
+        <div id="similarityPills" class="pill-group"></div>
+      </div>
+      <div id="similarityMatches" class="stack"></div>
+    </section>
+
     <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
       <div class="section-header">
         <div>
@@ -507,6 +519,7 @@
   <script>
     const INVESTIGATION_URL = "./investigation.json";
     const INTERVAL_SUMMARY_URL = "./interval_summary.json";
+    const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";
     const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";
     const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
     const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
@@ -514,6 +527,7 @@
     const LOCAL_INVESTIGATION_URL = "http://localhost:8000/investigate.html";
     let assistantInputArtifact = null;
     let assistantReviewArtifact = null;
+    let incidentSimilarityArtifact = null;
 
     function fmt(value, suffix = ""){
       if (value === null || value === undefined || value === "") return "—";
@@ -1400,6 +1414,58 @@
       </details>`;
     }
 
+    function currentIncidentId(data){
+      return data?.selected_event?.id || data?.incident_record?.incident_id || null;
+    }
+
+    function similarityMatchesCurrent(similarity, data){
+      return Boolean(similarity?.current_incident?.incident_id && similarity.current_incident.incident_id === currentIncidentId(data));
+    }
+
+    function renderSimilarityBreakdown(match){
+      const rows = Array.isArray(match.similarity_breakdown) ? match.similarity_breakdown : [];
+      if (!rows.length) return '<div class="empty-note">No technical scoring breakdown reported.</div>';
+      return `<details class="disclosure" style="margin-top:12px;">
+        <summary>Technical scoring breakdown <span class="small">Python-generated weights</span></summary>
+        <div class="disclosure-body wide table-medium"><table>
+          <thead><tr><th>Dimension</th><th>Weight</th><th>Matched</th><th>Contribution</th></tr></thead>
+          <tbody>${rows.map(row => `<tr><td>${healthLabel(row.dimension)}</td><td>${fmt(row.weight)}</td><td>${row.matched ? "Yes" : "No"}</td><td>${fmt(row.contribution)}</td></tr>`).join("")}</tbody>
+        </table></div>
+      </details>`;
+    }
+
+    function renderIncidentSimilarity(data, similarity){
+      const section = document.getElementById("similaritySection");
+      if (!similarityMatchesCurrent(similarity, data)){
+        section.style.display = "none";
+        return;
+      }
+      const matches = Array.isArray(similarity.matches) ? similarity.matches : [];
+      section.style.display = "";
+      document.getElementById("similaritySummary").textContent = similarity.current_incident?.summary || "No historically similar completed incidents meet the deterministic similarity threshold.";
+      document.getElementById("similarityPills").innerHTML = [
+        renderChip("Pattern", healthLabel(similarity.current_incident?.pattern || "unknown_pattern"), matches.length ? "tone-accent" : "tone-muted"),
+        renderChip("Matches", `${fmt(matches.length)} similar`, matches.length ? "tone-watch" : "tone-muted"),
+      ].join("");
+      document.getElementById("similarityMatches").innerHTML = matches.length
+        ? matches.slice(0, 3).map(match => `<div class="card">
+          <div class="summary-item">
+            <div class="summary-label">${fmt(match.pattern)}</div>
+            <div class="summary-value">${fmt(match.score)}% match · ${fmt(match.incident_id)}</div>
+            <div class="summary-detail">${fmt(match.summary)}</div>
+          </div>
+          <div class="summary-list" style="margin-top:12px;">
+            ${renderSummaryItem("Why it matches", (match.matching_dimensions || []).slice(0, 4).join(", ") || "Limited matching evidence", "")}
+            ${renderSummaryItem("Important differences", (match.different_dimensions || []).slice(0, 4).join(", ") || "No major differences reported", "")}
+            ${renderSummaryItem("Previous recovery", match.previous_recovery || "Unknown", `Duration: ${fmt(match.previous_duration?.bucket || match.previous_duration?.minutes)}`)}
+            ${renderSummaryItem("Previous user impact", match.previous_user_impact || "Unknown", match.previous_operator_feedback ? `Feedback: ${fmt(match.previous_operator_feedback)}` : "")}
+            ${renderSummaryItem("Confidence", healthLabel(match.confidence), "Deterministic similarity score")}
+          </div>
+          ${renderSimilarityBreakdown(match)}
+        </div>`).join("")
+        : '<div class="empty-note">No historically similar completed incidents meet the deterministic similarity threshold.</div>';
+    }
+
     function renderIncidentReplay(data){
       const replay = data?.incident_replay && typeof data.incident_replay === "object" && !Array.isArray(data.incident_replay)
         ? data.incident_replay
@@ -1875,6 +1941,7 @@
       renderMultidimensionalHealth(data);
       renderPeriodTable(data);
       renderIncidentReplay(data);
+      renderIncidentSimilarity(data, isCurrent ? incidentSimilarityArtifact : null);
       renderEvidenceArgument(data);
       renderBucketSummary(data);
       renderBucketTable(data);
@@ -1901,6 +1968,7 @@
         : await fetch(url, {cache: "no-store"});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
+      if (isCurrent) incidentSimilarityArtifact = await fetchOptionalJson(INCIDENT_SIMILARITY_URL);
       markHistorySelection(isCurrent ? null : sourceLabel);
       renderInvestigation(data, sourceLabel, isCurrent ? "current" : "incident");
     }

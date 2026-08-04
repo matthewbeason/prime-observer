@@ -572,6 +572,11 @@
         <div class="value-inline" id="mobileApplicationExperienceValue">—</div>
         <div class="detail-line" id="mobileApplicationExperienceDetail">—</div>
         </div>
+        <div class="mobile-state-card span-2" id="mobileSimilarityCard" style="display:none;">
+        <h4>Seen before</h4>
+        <div class="value-inline" id="mobileSimilarityPattern">—</div>
+        <div class="detail-line" id="mobileSimilarityDetail">—</div>
+        </div>
         <div class="mobile-state-card span-2">
         <h4>Network condition</h4>
         <div class="value-inline" id="mobileTechnicalConditionValue">—</div>
@@ -633,6 +638,11 @@
         <div class="metric-pair"><span class="label">HTTPS transaction</span><span class="metric-value" id="applicationHttpsValue">—</span></div>
         <div class="metric-pair"><span class="label">Freshness</span><span class="metric-value" id="applicationExperienceFreshness">—</span></div>
       </div>
+    </div>
+    <div class="card" id="similarityCard" style="display:none;">
+      <h4><span>Seen before</span><span class="pill" id="similarityPill">history</span></h4>
+      <div class="value" id="similarityPattern">—</div>
+      <div class="legacy-disclosure" id="similarityDetail">—</div>
     </div>
   </div>
 
@@ -971,6 +981,7 @@
     const NETWORK_ATTRIBUTION_URL = "./network_attribution.json";
     const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
     const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
+    const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";
     const NEXTDNS_URL = "./nextdns_summary.json";
     const INTERNET_CONDITIONS_URL = "./internet_conditions.json";
     const APS_POWER_CONTEXT_URL = "./aps_power_context.json";
@@ -1088,8 +1099,13 @@
       const mobileUserImpactCard = document.getElementById("mobileUserImpactCard");
       const likelyCauseCard = document.getElementById("likelyCauseCard");
       const mobileLikelyCauseCard = document.getElementById("mobileLikelyCauseCard");
+      const similarityCard = document.getElementById("similarityCard");
+      const mobileSimilarityCard = document.getElementById("mobileSimilarityCard");
       if (mobileUserImpactCard && userImpactCard) mobileUserImpactCard.style.display = userImpactCard.style.display;
       if (mobileLikelyCauseCard && likelyCauseCard) mobileLikelyCauseCard.style.display = likelyCauseCard.style.display;
+      if (mobileSimilarityCard && similarityCard) mobileSimilarityCard.style.display = similarityCard.style.display;
+      copyValueState("similarityPattern", "mobileSimilarityPattern");
+      document.getElementById("mobileSimilarityDetail").textContent = document.getElementById("similarityDetail").textContent;
     }
 
     function copyValueState(sourceId, targetId){
@@ -2206,6 +2222,22 @@
     function setLegacyCompatibilityMode(enabled){
       const details = document.getElementById("legacyCompatibilityDetails");
       if (details) details.style.display = enabled ? "block" : "none";
+    }
+
+    function renderIncidentSimilarityDashboard(similarityPayload){
+      const card = document.getElementById("similarityCard");
+      if (!card) return;
+      const current = similarityPayload?.current_incident || null;
+      const matches = Array.isArray(similarityPayload?.matches) ? similarityPayload.matches : [];
+      const strongCount = Number(current?.strong_match_count || 0);
+      if (!current || strongCount <= 0 || !matches.length){
+        card.style.display = "none";
+        return;
+      }
+      card.style.display = "";
+      document.getElementById("similarityPattern").textContent = healthLabel(current.pattern || matches[0].pattern || "unknown_pattern");
+      document.getElementById("similarityDetail").textContent = `${strongCount} similar ${strongCount === 1 ? "incident" : "incidents"}`;
+      setPillText("similarityPill", "Seen before", "watch");
     }
 
     function renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload, assistantInputPayload, assistantReviewPayload){
@@ -3630,13 +3662,14 @@
 
     async function tick() {
       try {
-        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload] = await Promise.all([
+        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload] = await Promise.all([
           loadData(),
           loadDashboardHealthPayload(),
           loadObservationsPayload(),
           loadNetworkAttributionPayload(),
           loadOptionalJson(OPERATOR_ASSISTANT_INPUT_URL),
           loadOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL),
+          loadOptionalJson(INCIDENT_SIMILARITY_URL),
         ]);
         const dashboardHealth = normalizeDashboardHealthPayload(dashboardHealthPayload);
         const useHealthFallback = !dashboardHealth;
@@ -3673,6 +3706,7 @@
         const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
         const selectedEvidence = selectedBucket ? selectedBucketEvidence(selectedBucket, internetSeriesMarked, resolverSeriesMarked, lanSeries) : null;
+        renderIncidentSimilarityDashboard(incidentSimilarityPayload);
         const xDomain = resolveSharedChartDomain(
           [internetSeriesMarked, resolverSeriesMarked, lanSeries],
           compositeWanBuckets

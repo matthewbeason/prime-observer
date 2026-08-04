@@ -160,6 +160,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("view=current", self.html)
         self.assertIn('view === "interval"', self.html)
         self.assertIn('const INTERVAL_SUMMARY_URL = "./interval_summary.json";', self.html)
+        self.assertIn('const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";', self.html)
         self.assertIn('loadIntervalSummary(route.params)', self.html)
         self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
 
@@ -176,6 +177,19 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertNotIn("inferIntervalCondition", self.html)
         self.assertNotIn("calculateIncidentOverlap", self.html)
         self.assertNotIn("classifyInterval", self.html)
+
+    def test_similarity_view_consumes_python_generated_scores(self):
+        for field in (
+            "similarity.current_incident.incident_id",
+            "match.similarity_breakdown",
+            "match.matching_dimensions",
+            "match.different_dimensions",
+            "renderIncidentSimilarity(data, isCurrent ? incidentSimilarityArtifact : null)",
+        ):
+            self.assertIn(field, self.html)
+        self.assertNotIn("calculateSimilarity", self.html)
+        self.assertNotIn("scoreIncidentSimilarity", self.html)
+        self.assertNotIn("inferSimilarityPattern", self.html)
 
     def test_browser_remains_local_renderer_only(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)

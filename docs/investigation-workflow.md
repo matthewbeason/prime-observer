@@ -68,6 +68,7 @@ Automatic mode writes:
 ```text
 viz/investigation.json
 viz/interval_summary.json
+viz/incident_similarity.json
 viz/investigation_catalog.json
 viz/investigations/<event-id>.json, once for each completed event
 viz/operator_assistant_input.json, only when deterministic investigation evidence changes
@@ -89,6 +90,24 @@ match the requested interval and renders only artifact-provided interval fields.
 If the artifact is missing, malformed, or for another interval, the page keeps
 the safe selected-interval request state and still does not show the current
 incident as a substitute.
+
+Incident Intelligence Phase E adds `viz/incident_similarity.json`, a
+Python-generated deterministic comparison between the current investigation and
+completed incident snapshots. The model uses explainable weighted dimensions
+from generated investigation artifacts: affected services, target class,
+resolver members, gateway involvement, adaptive baseline state, likely issue,
+technical condition, user impact, application experience, dependency state,
+recovery behavior, duration bucket, external context, and guardrail profile.
+It does not use embeddings, LLM similarity, or browser inference. Missing legacy
+snapshot fields simply reduce confidence, and no match is emitted below the
+deterministic threshold or without a matching core cause dimension.
+
+The Investigation renderer shows a compact `Seen before` section for the current
+incident when `viz/incident_similarity.json` matches the current incident id. It
+renders best matches, why they match, important differences, previous duration,
+recovery, user impact, operator feedback, and a collapsed technical breakdown.
+Completed incident views do not render current-incident similarity as historical
+truth.
 
 `viz/investigation.json` remains the mutable current investigation only. When an
 event first reaches `complete`, the Python producer writes a separate historical

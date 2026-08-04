@@ -703,6 +703,73 @@ globalThis.fetch = async (url) => {{
         self.assertIn("Current incident", rendered["status"])
         self.assertEqual(rendered["mode"], "Current incident")
 
+    def test_current_view_renders_matching_similarity_artifact(self):
+        current = self.investigation_payload()
+        similarity = {
+            "schema_version": 1,
+            "model_version": "prime_observer.incident_similarity.v1",
+            "generated_at": "2026-07-20T03:24:41Z",
+            "current_incident": {"incident_id": "event-1", "pattern": "resolver_path_degradation", "summary": "This incident most closely matches one previous resolver-path degradation.", "strong_match_count": 1},
+            "matches": [{
+                "incident_id": "event-old",
+                "score": 86.5,
+                "pattern": "resolver_path_degradation",
+                "summary": "Previous resolver-path degradation with affected services and likely issue.",
+                "similarity_breakdown": [{"dimension": "affected_services", "weight": 16, "matched": True, "contribution": 16}],
+                "matching_dimensions": ["Affected Services", "Likely Issue"],
+                "different_dimensions": ["User Impact"],
+                "previous_duration": {"minutes": 420, "bucket": "long"},
+                "previous_recovery": "recovered",
+                "previous_user_impact": "none_observed",
+                "previous_operator_feedback": "operator_feedback",
+                "evidence_refs": [],
+                "confidence": "high",
+            }],
+        }
+        body = f"""
+window.location.search = "?view=current";
+const fetched = [];
+globalThis.fetch = async (url) => {{
+  fetched.push(url);
+  if (url === INVESTIGATION_URL) return {{ok: true, json: async () => ({json.dumps(current)})}};
+  if (url === INCIDENT_SIMILARITY_URL) return {{ok: true, json: async () => ({json.dumps(similarity)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{
+    fetched,
+    display: document.getElementById("similaritySection").style.display || "visible",
+    summary: document.getElementById("similaritySummary").textContent,
+    matches: document.getElementById("similarityMatches").innerHTML,
+  }}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn("./incident_similarity.json", rendered["fetched"])
+        self.assertEqual(rendered["display"], "visible")
+        self.assertIn("most closely matches", rendered["summary"])
+        self.assertIn("86.5% match", rendered["matches"])
+        self.assertIn("Technical scoring breakdown", rendered["matches"])
+
+    def test_completed_incident_view_does_not_render_current_similarity(self):
+        current = self.investigation_payload()
+        body = f"""
+globalThis.fetch = async (url) => {{
+  if (url === "./investigations/event-old.json") return {{ok: true, json: async () => ({json.dumps(current)})}};
+  if (url === INCIDENT_SIMILARITY_URL) throw new Error("completed view must not fetch current similarity");
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await loadInvestigation("./investigations/event-old.json", "event-old", "incident");
+  console.log(JSON.stringify({{display: document.getElementById("similaritySection").style.display}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["display"], "none")
+
     def test_historical_and_legacy_event_routes_load_snapshot(self):
         current = self.investigation_payload()
         historical = json.loads(json.dumps(current))

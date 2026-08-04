@@ -41,6 +41,7 @@ from build_operator_assistant_input import build_from_path as build_assistant_in
 from build_operator_assistant_input import pending_generation_state
 from build_operator_assistant_input import write_json as write_assistant_input_json
 from interval_summary import build_interval_summary, latest_bucket_interval
+from incident_similarity import build_incident_similarity, load_completed_snapshots
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -51,6 +52,7 @@ OBSERVATIONS_OUT = VIZ_DIR / "observations.json"
 DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
 BASELINE_HISTORY_OUT = VIZ_DIR / "baseline_history.json"
 INTERVAL_SUMMARY_OUT = VIZ_DIR / "interval_summary.json"
+INCIDENT_SIMILARITY_OUT = VIZ_DIR / "incident_similarity.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
@@ -1424,6 +1426,12 @@ def main():
         catalog_path=VIZ_DIR / "investigation_catalog.json",
         current_investigation=investigation,
     )
+    incident_similarity = build_incident_similarity(
+        current_investigation=investigation,
+        completed_snapshots=load_completed_snapshots(VIZ_DIR / "investigations"),
+        generated_at=now,
+    )
+    write_json_atomic(INCIDENT_SIMILARITY_OUT, incident_similarity)
     if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
         assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
         write_assistant_input_json(OPERATOR_ASSISTANT_INPUT_OUT, assistant_input)
@@ -1442,6 +1450,7 @@ def main():
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")
     print(f"Wrote interval summary artifact to {INTERVAL_SUMMARY_OUT}")
+    print(f"Wrote incident similarity artifact to {INCIDENT_SIMILARITY_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
     print(

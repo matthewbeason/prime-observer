@@ -387,6 +387,16 @@ its `start` and `end` exactly match the requested interval route. It does not
 infer interval health, issue type, affected scope, overlap, or narrative in
 JavaScript.
 
+Incident Intelligence Phase E adds generated `viz/incident_similarity.json` for
+deterministic current-incident similarity. It contains schema/model versions,
+generated time, `current_incident`, and scored `matches` against completed
+incident snapshots. Each match includes incident id, score, deterministic pattern
+label, summary, per-dimension weighted breakdown, matching and different
+dimensions, previous duration, recovery, user impact, operator feedback, evidence
+references, and confidence. Python owns all scoring and pattern labeling; the
+browser only renders the artifact and hides it when it does not match the current
+incident.
+
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a matching
 `viz/interval_summary.json` when available; otherwise it displays a safe selected
