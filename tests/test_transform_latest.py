@@ -575,7 +575,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("DNS Security", dashboard_html)
         self.assertIn("Normal ASN traffic does not prove a measured path is healthy", dashboard_html)
         self.assertNotIn("Limiting or corroborating context only", dashboard_html)
-        self.assertIn("Current situation", investigation_html)
+        self.assertIn("Current status", investigation_html)
         self.assertIn("User-facing impact", investigation_html)
         self.assertIn("Affected and healthy checks", investigation_html)
         self.assertIn("Confidence and limits", investigation_html)

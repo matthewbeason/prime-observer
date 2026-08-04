@@ -311,7 +311,7 @@ console.log(JSON.stringify({{assessment: document.getElementById("assistantRevie
         rendered = json.loads(self.run_node(body))
 
         self.assertEqual(rendered["assessment"], "")
-        self.assertEqual(rendered["nextSteps"], "")
+        self.assertIn("No immediate action", rendered["nextSteps"])
         self.assertNotIn("generation", rendered["assessment"].lower())
         self.assertNotIn("pending", rendered["assessment"].lower())
 
@@ -330,7 +330,7 @@ console.log(JSON.stringify({{nextSteps: document.getElementById("assistantReview
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertEqual(rendered["nextSteps"], "")
+        self.assertIn("No immediate action", rendered["nextSteps"])
         self.assertNotIn("COMPARE_RESOLVER_AND_INTERNET", rendered["nextSteps"])
 
     def test_concrete_intervention_is_rendered_when_required(self):
@@ -358,8 +358,8 @@ console.log(JSON.stringify({{display: document.getElementById("recommendedAction
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertEqual(rendered["display"], "none")
-        self.assertEqual(rendered["nextSteps"], "")
+        self.assertEqual(rendered["display"], "")
+        self.assertIn("No immediate action", rendered["nextSteps"])
 
     def test_operator_impact_copy_distinguishes_missing_and_reported_feedback(self):
         base = self.investigation_payload()
@@ -478,11 +478,11 @@ console.log(JSON.stringify({{html: document.getElementById("timelineMilestones")
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertEqual(rendered["cls"], "stack")
+        self.assertEqual(rendered["cls"], "brief-timeline")
         self.assertLess(rendered["html"].index("Resolver anomaly detected"), rendered["html"].index("Resolver degradation persisted"))
         self.assertLess(rendered["html"].index("Resolver degradation persisted"), rendered["html"].index("Recovery started"))
         self.assertIn("Latency increased on resolver probes", rendered["html"])
-        self.assertIn("Healthy comparisons", rendered["html"])
+        self.assertIn("Healthy", rendered["html"])
         self.assertIn("Confidence", rendered["html"])
         self.assertIn("selected_event.first_anomalous_at", rendered["html"])
         self.assertIn("Typical p95", rendered["html"])
@@ -497,7 +497,7 @@ console.log(JSON.stringify({{html: document.getElementById("timelineMilestones")
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertEqual(rendered["cls"], "card-grid")
+        self.assertEqual(rendered["cls"], "brief-timeline")
         self.assertIn("Sustained confirmation", rendered["html"])
 
     def test_current_and_historical_views_render_replay_without_openrouter(self):
@@ -742,6 +742,7 @@ globalThis.fetch = async (url) => {{
     display: document.getElementById("similaritySection").style.display || "visible",
     summary: document.getElementById("similaritySummary").textContent,
     matches: document.getElementById("similarityMatches").innerHTML,
+    technical: document.getElementById("similarityTechnicalDetails").innerHTML,
   }}));
 }})().catch(err => {{ console.error(err); process.exit(1); }});
 """
@@ -750,8 +751,8 @@ globalThis.fetch = async (url) => {{
         self.assertIn("./incident_similarity.json", rendered["fetched"])
         self.assertEqual(rendered["display"], "visible")
         self.assertIn("most closely matches", rendered["summary"])
-        self.assertIn("86.5% match", rendered["matches"])
-        self.assertIn("Technical scoring breakdown", rendered["matches"])
+        self.assertIn("86.5%", rendered["matches"])
+        self.assertIn("Technical scoring breakdown", rendered["technical"])
 
     def test_completed_incident_view_does_not_render_current_similarity(self):
         current = self.investigation_payload()

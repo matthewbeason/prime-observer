@@ -166,6 +166,13 @@
     .provider-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
     .provider-items{display:grid;gap:8px;margin-top:12px;}
     .provider-item{font-size:12px;line-height:1.5;color:var(--muted-strong);}
+    .brief-timeline{position:relative;display:grid;gap:10px;margin-left:8px;}
+    .brief-timeline::before{content:"";position:absolute;left:9px;top:10px;bottom:10px;width:2px;background:rgba(112,97,78,.16);}
+    .timeline-step{position:relative;padding-left:34px;}
+    .timeline-step::before{content:"";position:absolute;left:2px;top:18px;width:16px;height:16px;border-radius:999px;background:var(--surface-strong);border:2px solid var(--accent);box-shadow:0 0 0 4px rgba(45,111,145,.08);}
+    .timeline-step .card{padding:14px 16px;}
+    .timeline-step summary{padding:0;}
+    .brief-hidden{display:none !important;}
     #rawDetailSection .section-kicker,
     #rawDetailSection h2,
     #rawDetailSection h3{color:var(--muted-strong);}
@@ -194,8 +201,8 @@
   <div class="page-shell">
     <header class="page-header">
       <div>
-        <h1 id="investigationHeading" tabindex="-1">Prime Observer Investigation</h1>
-        <div class="subtitle">Plain-language diagnosis, action, affected services, timeline, and technical details from local evidence.</div>
+        <h1 id="investigationHeading" tabindex="-1">Incident Brief</h1>
+        <div class="subtitle">Concise status, evidence, history, recommendation, and replay from local artifacts.</div>
       </div>
       <span id="modePill" class="pill">Current Investigation</span>
     </header>
@@ -240,7 +247,62 @@
       </div>
     </section>
 
-    <section id="incidentHeroSection" class="section section-hero" style="display:none;">
+    <section id="currentStatusSection" class="section section-hero">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Current status</div>
+          <h2>What needs attention now?</h2>
+        </div>
+        <div id="currentStatusPills" class="pill-group"></div>
+      </div>
+      <div id="currentStatusCards" class="card-grid"></div>
+    </section>
+
+    <section id="incidentStorySection" class="section" style="display:none;">
+      <div class="section-kicker">What happened?</div>
+      <h2>What changed?</h2>
+      <div id="incidentStoryBody" class="summary-list"></div>
+    </section>
+
+    <section id="coreEvidenceSection" class="section">
+      <div class="section-kicker">Why we think this</div>
+      <h2>What supports this read?</h2>
+      <div class="panel-grid">
+        <div class="card"><h3>Supporting evidence</h3><div id="supportingEvidenceList" class="summary-list"></div></div>
+        <div class="card"><h3>Limits</h3><div id="limitingEvidenceList" class="summary-list"></div></div>
+      </div>
+    </section>
+
+    <section id="similaritySection" class="section" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Seen before</div>
+          <h2>Have we seen this pattern?</h2>
+          <p id="similaritySummary" class="section-note supporting"></p>
+        </div>
+        <div id="similarityPills" class="pill-group"></div>
+      </div>
+      <div id="similarityMatches" class="stack"></div>
+    </section>
+
+    <section id="recommendedActionsSection" class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">Recommendation</div>
+          <h2>What should I do?</h2>
+          <p class="section-note supporting">Only shows a concrete intervention when local evidence supports it.</p>
+        </div>
+      </div>
+      <div id="assistantReviewNextSteps" class="stack"></div>
+    </section>
+
+    <section id="timelineSection" class="section">
+      <div class="section-kicker">Timeline</div>
+      <h2>How did it unfold?</h2>
+      <div id="timelineMilestones" class="brief-timeline" style="margin-bottom:14px;"></div>
+    </section>
+
+    <section id="incidentHeroSection" class="section section-hero brief-hidden" style="display:none;">
       <div class="section-header">
         <div>
           <div class="section-kicker" id="incidentHeroKicker">Incident story</div>
@@ -252,50 +314,25 @@
       <div id="incidentHeroCards" class="card-grid"></div>
     </section>
 
-    <section id="incidentStorySection" class="section" style="display:none;">
-      <div class="section-kicker">Incident story</div>
-      <h2>What changed?</h2>
-      <div id="incidentStoryBody" class="summary-list"></div>
-    </section>
-
-    <section id="beforePhaseSection" class="section incident-phase-section" style="display:none;">
+    <section id="beforePhaseSection" class="section incident-phase-section brief-hidden" style="display:none;">
       <div class="section-kicker">Before the incident</div>
       <h2 id="beforePhaseHeadline">Before the incident</h2>
       <div id="beforePhaseBody" class="summary-list"></div>
     </section>
 
-    <section id="duringPhaseSection" class="section incident-phase-section" style="display:none;">
+    <section id="duringPhaseSection" class="section incident-phase-section brief-hidden" style="display:none;">
       <div class="section-kicker">During the incident</div>
       <h2 id="duringPhaseHeadline">During the incident</h2>
       <div id="duringPhaseBody" class="summary-list"></div>
     </section>
 
-    <section id="afterPhaseSection" class="section incident-phase-section" style="display:none;">
+    <section id="afterPhaseSection" class="section incident-phase-section brief-hidden" style="display:none;">
       <div class="section-kicker">Recovery</div>
       <h2 id="afterPhaseHeadline">Recovery</h2>
       <div id="afterPhaseBody" class="summary-list"></div>
     </section>
 
-    <section id="timelineSection" class="section">
-      <div class="section-kicker">Incident replay</div>
-      <h2>How Prime Observer experienced it</h2>
-      <p class="section-note">Ordered milestones are generated by Python from local evidence. This is deterministic replay, not animation.</p>
-      <div id="timelineMilestones" class="card-grid" style="margin-bottom:14px;"></div>
-    </section>
-
-    <section id="similaritySection" class="section" style="display:none;">
-      <div class="section-header">
-        <div>
-          <div class="section-kicker">Seen before</div>
-          <h2>Historically similar incidents</h2>
-          <p id="similaritySummary" class="section-note supporting"></p>
-        </div>
-        <div id="similarityPills" class="pill-group"></div>
-      </div>
-      <div id="similarityMatches" class="stack"></div>
-    </section>
-
-    <section id="assistantReviewSection" class="section section-hero assistant-review-section visible">
+    <section id="assistantReviewSection" class="section section-hero assistant-review-section visible brief-hidden">
       <div class="section-header">
         <div>
           <div class="section-kicker">Summary</div>
@@ -306,19 +343,7 @@
       </div>
     </section>
 
-    <section id="currentStatusSection" class="section">
-      <div class="section-header">
-        <div>
-          <div class="section-kicker">Current status</div>
-          <h2>Current situation</h2>
-          <p class="section-note supporting">Current state, user-facing impact, affected checks, likely issue, and DNS/web check results from local evidence.</p>
-        </div>
-        <div id="currentStatusPills" class="pill-group"></div>
-      </div>
-      <div id="currentStatusCards" class="card-grid"></div>
-    </section>
-
-    <section id="summarySection" class="section">
+    <section id="summarySection" class="section brief-hidden">
       <details class="disclosure">
       <summary>What is affected details <span class="small">Collapsed supporting evidence</span></summary>
       <div class="disclosure-body">
@@ -345,7 +370,7 @@
       </details>
     </section>
 
-    <section id="dependencySection" class="section">
+    <section id="dependencySection" class="section brief-hidden">
       <details class="disclosure">
       <summary>DNS resolver path details <span class="small">Path state and fallback details</span></summary>
       <div class="disclosure-body">
@@ -361,7 +386,7 @@
       </details>
     </section>
 
-    <section id="attributionSection" class="section">
+    <section id="attributionSection" class="section brief-hidden">
       <details class="disclosure">
       <summary>Likely issue details <span class="small">Confidence, limits, and unresolved alternatives</span></summary>
       <div class="disclosure-body">
@@ -381,18 +406,7 @@
       </details>
     </section>
 
-    <section id="recommendedActionsSection" class="section">
-      <div class="section-header">
-        <div>
-          <div class="section-kicker">What to do next</div>
-          <h2>Human intervention required</h2>
-          <p class="section-note supporting">Shown only when current evidence supports a specific physical or privileged action.</p>
-        </div>
-      </div>
-      <div id="assistantReviewNextSteps" class="stack"></div>
-    </section>
-
-    <section id="evidenceQualitySection" class="section">
+    <section id="evidenceQualitySection" class="section brief-hidden">
       <details class="disclosure">
         <summary>Confidence and limits <span class="small">Confidence, persistence, corroboration, contradictions, and stale or missing evidence</span></summary>
         <div class="disclosure-body">
@@ -402,18 +416,7 @@
       </details>
     </section>
 
-    <section id="coreEvidenceSection" class="section">
-      <div class="section-kicker">Why we think this</div>
-      <h2>What supports or limits the conclusion?</h2>
-      <div class="panel-grid">
-        <div class="card"><h3>Supporting evidence</h3><div id="supportingEvidenceList" class="summary-list"></div></div>
-        <div class="card"><h3>Limiting evidence</h3><div id="limitingEvidenceList" class="summary-list"></div></div>
-        <div class="card"><h3>Environmental context</h3><div id="againstBroaderImpactList" class="summary-list"></div></div>
-        <div class="card"><h3>Diagnostic checks</h3><div id="verificationStepsList" class="summary-list"></div></div>
-      </div>
-    </section>
-
-    <section id="historySection" class="section">
+    <section id="historySection" class="section brief-hidden">
       <div class="history-toolbar">
         <div>
       <div class="section-kicker">Investigation history</div>
@@ -448,6 +451,10 @@
           <div id="assistantReviewLimitations" class="assistant-list"></div>
         </div>
       </details>
+      <details class="disclosure" style="margin-top:14px;">
+        <summary>Similarity scoring <span class="small">Python-generated match weights</span></summary>
+        <div id="similarityTechnicalDetails" class="disclosure-body stack"></div>
+      </details>
       <div id="rawApplicationDetails" style="margin-top:14px;"></div>
       <details class="disclosure">
         <summary>Observation references <span class="small">Raw local observations</span></summary>
@@ -463,7 +470,7 @@
       </div>
     </section>
 
-    <section id="environmentalContextSection" class="section" style="display:none;">
+    <section id="environmentalContextSection" class="section brief-hidden" style="display:none;">
       <details class="disclosure">
         <summary>Provider context details <span class="small">Cloudflare Radar and APS source details copied from local evidence</span></summary>
         <div class="disclosure-body context-grid">
@@ -479,7 +486,7 @@
       </details>
     </section>
 
-    <section id="forensicTablesSection" class="section">
+    <section id="forensicTablesSection" class="section brief-hidden">
       <div class="section-kicker">Raw data</div>
       <h2>Raw tables</h2>
       <details class="disclosure">
@@ -1001,10 +1008,10 @@
       }
       section.style.display = "";
       const rows = [];
-      if (record?.narrative) rows.push(renderSummaryItem("Incident summary", record.narrative, ""));
-      if (phases?.during?.headline) rows.push(renderSummaryItem("What changed", phases.during.headline, phases.during.summary || ""));
+      if (phases?.during?.headline) rows.push(renderSummaryItem("Changed", phases.during.headline, phases.during.summary || record?.narrative || ""));
+      else if (record?.narrative) rows.push(renderSummaryItem("Summary", record.narrative, ""));
       if (phases?.during?.healthy_comparisons?.length) rows.push(renderSummaryItem("What stayed healthy", phases.during.healthy_comparisons.join(", "), ""));
-      if (phases?.after?.headline) rows.push(renderSummaryItem("What returned to normal", phases.after.headline, phases.after.summary || ""));
+      if (phases?.after?.headline) rows.push(renderSummaryItem("Recovery", phases.after.headline, ""));
       if (!phases) rows.push(renderSummaryItem("Phase story", "This older artifact does not include Python-owned incident phase story fields.", ""));
       document.getElementById("incidentStoryBody").innerHTML = rows.length
         ? rows.join("")
@@ -1221,7 +1228,7 @@
         renderMetricCard("User-facing impact", impactText, application?.is_current && (application.failure_counts?.total || 0) === 0 ? "DNS and web checks are working." : observedImpactDetail(observedImpact, feedback), healthTone("impact", estimatedImpact.state)),
         renderMetricCard("What is affected", scopeText, usefulText(data.operator_brief?.unaffected_scope) || "Healthy comparisons are in supporting evidence.", selected?.target_class ? "tone-warn" : "tone-ok"),
         renderMetricCard("Likely issue", causeSupported ? healthLabel(attribution.domain) : "Not localized", causeSupported ? attributionConfidenceDetail(attribution) : "Shown only when supported by local evidence.", causeSupported ? "tone-accent" : "tone-muted"),
-        renderMetricCard("DNS and web checks", applicationSummary(application), application?.generated_at ? `Evidence timestamp ${shortTime(application.generated_at)}` : "DNS and web check evidence is unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
+        renderMetricCard("DNS/web checks", applicationSummary(application), application?.generated_at ? `Updated ${shortTime(application.generated_at)}` : "Unavailable or stale.", application?.is_current && (application.failure_counts?.total || 0) > 0 ? "tone-watch" : application?.is_current ? "tone-ok" : "tone-muted"),
       ];
       if (actionNeeded) cards.push(renderMetricCard("Human intervention", action, "Shown only for physical or privileged action.", "tone-watch"));
 
@@ -1436,11 +1443,14 @@
 
     function renderIncidentSimilarity(data, similarity){
       const section = document.getElementById("similaritySection");
+      const technical = document.getElementById("similarityTechnicalDetails");
       if (!similarityMatchesCurrent(similarity, data)){
         section.style.display = "none";
+        if (technical) technical.innerHTML = '<div class="empty-note">No current-incident similarity artifact matched this incident.</div>';
         return;
       }
       const matches = Array.isArray(similarity.matches) ? similarity.matches : [];
+      const best = matches[0] || null;
       section.style.display = "";
       document.getElementById("similaritySummary").textContent = similarity.current_incident?.summary || "No historically similar completed incidents meet the deterministic similarity threshold.";
       document.getElementById("similarityPills").innerHTML = [
@@ -1448,22 +1458,28 @@
         renderChip("Matches", `${fmt(matches.length)} similar`, matches.length ? "tone-watch" : "tone-muted"),
       ].join("");
       document.getElementById("similarityMatches").innerHTML = matches.length
-        ? matches.slice(0, 3).map(match => `<div class="card">
+        ? `<div class="card">
           <div class="summary-item">
-            <div class="summary-label">${fmt(match.pattern)}</div>
-            <div class="summary-value">${fmt(match.score)}% match · ${fmt(match.incident_id)}</div>
-            <div class="summary-detail">${fmt(match.summary)}</div>
+            <div class="summary-label">Highest-confidence match</div>
+            <div class="summary-value">${fmt(best.score)}% · ${fmt(best.pattern)}</div>
+            <div class="summary-detail">${fmt(best.summary)}</div>
           </div>
           <div class="summary-list" style="margin-top:12px;">
-            ${renderSummaryItem("Why it matches", (match.matching_dimensions || []).slice(0, 4).join(", ") || "Limited matching evidence", "")}
-            ${renderSummaryItem("Important differences", (match.different_dimensions || []).slice(0, 4).join(", ") || "No major differences reported", "")}
-            ${renderSummaryItem("Previous recovery", match.previous_recovery || "Unknown", `Duration: ${fmt(match.previous_duration?.bucket || match.previous_duration?.minutes)}`)}
-            ${renderSummaryItem("Previous user impact", match.previous_user_impact || "Unknown", match.previous_operator_feedback ? `Feedback: ${fmt(match.previous_operator_feedback)}` : "")}
-            ${renderSummaryItem("Confidence", healthLabel(match.confidence), "Deterministic similarity score")}
+            ${renderSummaryItem("Why it matches", (best.matching_dimensions || []).slice(0, 3).join(", ") || "Limited matching evidence", "")}
+            ${renderSummaryItem("Important differences", (best.different_dimensions || []).slice(0, 3).join(", ") || "No major differences reported", "")}
           </div>
+        </div>`
+        : '<div class="empty-note">No historically similar completed incidents meet the deterministic similarity threshold.</div>';
+      if (technical) technical.innerHTML = matches.length
+        ? matches.map(match => `<div class="card">
+          ${renderSummaryItem(`${fmt(match.score)}% · ${fmt(match.incident_id)}`, fmt(match.pattern), `Confidence ${healthLabel(match.confidence)}`)}
+          ${renderSummaryItem("Why it matches", (match.matching_dimensions || []).join(", ") || "Limited matching evidence", "")}
+          ${renderSummaryItem("Important differences", (match.different_dimensions || []).join(", ") || "No major differences reported", "")}
+          ${renderSummaryItem("Previous recovery", match.previous_recovery || "Unknown", `Duration: ${fmt(match.previous_duration?.bucket || match.previous_duration?.minutes)}`)}
+          ${renderSummaryItem("Previous user impact", match.previous_user_impact || "Unknown", match.previous_operator_feedback ? `Feedback: ${fmt(match.previous_operator_feedback)}` : "")}
           ${renderSimilarityBreakdown(match)}
         </div>`).join("")
-        : '<div class="empty-note">No historically similar completed incidents meet the deterministic similarity threshold.</div>';
+        : '<div class="empty-note">No similarity matches were emitted by the deterministic model.</div>';
     }
 
     function renderIncidentReplay(data){
@@ -1475,25 +1491,23 @@
         renderTimelineMilestones(data);
         return;
       }
-      document.getElementById("timelineMilestones").className = "stack";
-      document.getElementById("timelineMilestones").innerHTML = milestones.map((milestone, idx) => `<div class="card">
-        <div class="summary-item">
-          <div class="summary-label">${shortTime(milestone.timestamp)}</div>
-          <div class="summary-value">${fmt(milestone.title)}</div>
-          <div class="summary-detail">${fmt(milestone.summary)}</div>
-        </div>
-        <div class="summary-list" style="margin-top:12px;">
-          ${renderSummaryItem("Affected services", (milestone.affected_services || []).join(", ") || "No affected service reported", "")}
-          ${renderSummaryItem("Healthy comparisons", (milestone.healthy_services || []).join(", ") || "Healthy comparison evidence was limited", "")}
-          ${renderSummaryItem("Likely issue", milestone.likely_issue || "Unknown", "What was believed at this point from local evidence.")}
-          ${renderSummaryItem("Confidence", healthLabel(milestone.confidence), `Step ${idx + 1} of ${milestones.length}`)}
-        </div>
-        ${renderReplayEvidence(milestone)}
+      document.getElementById("timelineMilestones").className = "brief-timeline";
+      document.getElementById("timelineMilestones").innerHTML = milestones.map((milestone, idx) => `<div class="timeline-step">
+        <details class="card" ${idx === 0 ? "open" : ""}>
+          <summary><span class="summary-label">${shortTime(milestone.timestamp)}</span><span class="summary-value">${fmt(milestone.title)}</span></summary>
+          <div class="summary-detail" style="margin-top:10px;">${fmt(milestone.summary)}</div>
+          <div class="summary-list" style="margin-top:12px;">
+            ${renderSummaryItem("Affected", (milestone.affected_services || []).join(", ") || "Not reported", "")}
+            ${renderSummaryItem("Healthy", (milestone.healthy_services || []).join(", ") || "Limited comparison evidence", "")}
+            ${renderSummaryItem("Confidence", healthLabel(milestone.confidence), `Step ${idx + 1} of ${milestones.length}`)}
+          </div>
+          ${renderReplayEvidence(milestone)}
+        </details>
       </div>`).join("");
     }
 
     function renderTimelineMilestones(data){
-      document.getElementById("timelineMilestones").className = "card-grid";
+      document.getElementById("timelineMilestones").className = "brief-timeline";
       const selected = data.selected_event || {};
       const details = selected.details || {};
       const episode = data.episode_summary || {};
@@ -1514,7 +1528,7 @@
         milestones.push(renderMetricCard("Recovery remaining", fmt(Math.ceil(recovery.remaining_stable_seconds / 60), " min"), `Healthy samples ${fmt(recovery.healthy_samples_since_last_anomaly)}`, "tone-watch"));
       }
       document.getElementById("timelineMilestones").innerHTML = milestones.length
-        ? milestones.join("")
+        ? milestones.map(item => `<div class="timeline-step">${item}</div>`).join("")
         : '<div class="empty-note">No lifecycle milestones are available in this artifact.</div>';
     }
 
@@ -1523,17 +1537,19 @@
       const dimensions = data.health_dimensions || {};
       const application = dimensions.application_experience || {};
       const fill = (id, items) => {
-        document.getElementById(id).innerHTML = (items || []).length
+        const target = document.getElementById(id);
+        if (!target) return;
+        target.innerHTML = (items || []).length
           ? items.map(item => renderSummaryItem("Evidence", cleanOperatorText(item), "")).join("")
           : '<div class="empty-note">No evidence items available.</div>';
       };
-      const supporting = [...(argument.supporting_evidence || data.operator_brief?.supporting_evidence || [])];
+      const supporting = [...(argument.supporting_evidence || data.operator_brief?.supporting_evidence || [])].slice(0, 3);
       if (application?.is_current) supporting.push(applicationSummary(application));
-      const limiting = [...(argument.limiting_evidence || data.operator_brief?.limiting_evidence || [])];
+      const limiting = [...(argument.limiting_evidence || data.operator_brief?.limiting_evidence || [])].slice(0, 3);
       for (const item of (application.limitations || [])) limiting.push(item);
       fill("supportingEvidenceList", supporting);
       fill("limitingEvidenceList", limiting);
-      const environmental = [...(argument.evidence_against_broader_impact || [])];
+      const environmental = [...(argument.evidence_against_broader_impact || [])].slice(0, 2);
       if (data.internet_conditions_context?.available){
         environmental.push(cleanOperatorText(data.internet_conditions_context.summary || "Internet Conditions context is supporting evidence only."));
       }
@@ -1905,10 +1921,10 @@
 
       const nextSteps = (assessment.next_steps || []).map(operatorNextStep).filter(step => step && isMeaningfulAction(step.action));
       const actionsSection = document.getElementById("recommendedActionsSection");
-      actionsSection.style.display = nextSteps.length ? "" : "none";
+      actionsSection.style.display = "";
       document.getElementById("assistantReviewNextSteps").innerHTML = nextSteps.length
         ? nextSteps.map((step, idx) => `<div class="card assistant-next-step"><div class="assistant-next-step-title">${idx + 1}. ${step.action}</div><div class="summary-detail">Why: ${step.reason}</div>${step.expectedObservation ? `<div class="summary-detail">Expected: ${cleanOperatorText(step.expectedObservation)}</div>` : ""}${step.assessmentChange ? `<div class="summary-detail">Assessment changes if: ${cleanOperatorText(step.assessmentChange)}</div>` : ""}</div>`).join("")
-        : "";
+        : '<div class="card"><div class="summary-value">No immediate action</div><div class="summary-detail">Continue monitoring. Prime Observer will update this brief when local evidence changes.</div></div>';
     }
 
     function investigationLoadErrorMessage(err){

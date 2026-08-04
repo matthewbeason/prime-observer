@@ -12,36 +12,25 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_operator_first_section_order(self):
         section_ids = [
-            'id="incidentHeroSection"',
-            'id="incidentStorySection"',
-            'id="beforePhaseSection"',
-            'id="duringPhaseSection"',
-            'id="afterPhaseSection"',
-            'id="timelineSection"',
-            'id="assistantReviewSection"',
             'id="currentStatusSection"',
-            'id="summarySection"',
-            'id="dependencySection"',
-            'id="attributionSection"',
-            'id="recommendedActionsSection"',
-            'id="evidenceQualitySection"',
+            'id="incidentStorySection"',
             'id="coreEvidenceSection"',
-            'id="historySection"',
+            'id="similaritySection"',
+            'id="recommendedActionsSection"',
+            'id="timelineSection"',
             'id="rawDetailSection"',
-            'id="forensicTablesSection"',
         ]
         indexes = [self.html.index(section_id) for section_id in section_ids]
         self.assertEqual(indexes, sorted(indexes))
 
     def test_primary_page_uses_operator_language(self):
         for text in (
-            "Summary",
+            "Incident Brief",
             "Current incident",
-            "Incident story",
-            "Before the incident",
-            "During the incident",
-            "Recovery",
-            "Incident replay",
+            "What needs attention now?",
+            "What happened?",
+            "Have we seen this pattern?",
+            "What should I do?",
             "What changed",
             "What stayed healthy",
             "Application checks",
@@ -49,13 +38,8 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "What returned to normal",
             "Selected interval",
             "Current status",
-            "What is affected details",
-            "DNS resolver path details",
-            "Likely issue details",
             "Timeline",
-            "Confidence and limits",
             "Why we think this",
-            "Investigation history",
             "Technical details",
         ):
             self.assertIn(text, self.html)
@@ -126,11 +110,13 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("Raw phase windows", self.html)
         self.assertIn("renderIncidentReplay(data)", self.html)
         self.assertIn("renderTimelineMilestones(data)", self.html)
+        self.assertIn("brief-timeline", self.html)
+        self.assertIn("timeline-step", self.html)
 
     def test_mobile_layout_covers_phase_sections(self):
         self.assertIn("@media (max-width: 640px)", self.html)
         self.assertIn("@media (max-width: 520px)", self.html)
-        self.assertIn("incident-phase-section", self.html)
+        self.assertIn("brief-hidden", self.html)
 
     def test_buckets_are_condensed_by_default(self):
         self.assertIn("Stable buckets remain collapsed by default", self.html)
@@ -203,7 +189,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "User-facing impact",
             "Reported symptoms",
             "User-facing impact",
-            "DNS and web checks",
+            "DNS/web checks",
             "Raw application transaction details",
             "Operator note:",
             "User-facing impact",
@@ -220,15 +206,15 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn("routing event", self.html)
 
     def test_investigation_top_summary_avoids_duplicate_primary_conclusions(self):
-        top = self.html[self.html.index('id="incidentHeroSection"'):self.html.index('id="assistantReviewSection"')]
+        top = self.html[self.html.index('id="currentStatusSection"'):self.html.index('id="rawDetailSection"')]
 
-        self.assertIn("Before the incident", top)
-        self.assertIn("During the incident", top)
-        self.assertIn("Recovery", top)
+        self.assertIn("What happened?", top)
+        self.assertIn("Why we think this", top)
+        self.assertIn("Recommendation", top)
         self.assertIn('renderMetricCard("User-facing impact"', self.html)
         self.assertIn('renderMetricCard("What is affected"', self.html)
         self.assertIn('renderMetricCard("Likely issue"', self.html)
-        self.assertIn('renderMetricCard("DNS and web checks"', self.html)
+        self.assertIn('renderMetricCard("DNS/web checks"', self.html)
         self.assertNotIn("Compare resolver paths", self.html)
         self.assertNotIn("Immediate recommendation", top)
         self.assertNotIn('id="operatorQuickFacts"', self.html)
