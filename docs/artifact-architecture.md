@@ -425,6 +425,28 @@ not summarize, score, infer recurrence, or call an LLM.
 - Generated: yes
 - Should be committed: no
 
+Temporal Workspace Phase 1 adds generated `viz/time_context.json` for the
+default selected time context. It contains schema/model versions, mode, start,
+end, optional selected/overlapping incident ids, incident overlap, external
+context overlap, and generated time. Python owns the generated default context.
+The dashboard can project heatmap selection into that same shape from existing
+Python-owned bucket and interval artifacts, but it does not classify interval
+health, infer incident overlap, call collectors, or invoke OpenRouter.
+
+### `viz/time_context.json`
+
+- Producer: `bin/transform_latest.py` via `bin/time_context.py`
+- Consumers: `viz/index.html`
+- Purpose: additive selected-time context record for the dashboard workspace
+- Required fields: `schema_version`, `model_version`, `mode`, `start`, `end`,
+  `overlaps_incident`, `overlaps_external_context`, and `generated_at`
+- Optional fields: `selected_incident_id`, `incident_id`
+- Unavailable behavior: dashboard falls back to a safe current context and keeps
+  existing dashboard and Investigation behavior
+- Authoritative: yes, for the generated default time context
+- Generated: yes
+- Should be committed: no
+
 Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a matching
 `viz/interval_summary.json` when available; otherwise it displays a safe selected

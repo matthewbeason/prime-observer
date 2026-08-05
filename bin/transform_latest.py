@@ -43,6 +43,7 @@ from build_operator_assistant_input import write_json as write_assistant_input_j
 from interval_summary import build_interval_summary, latest_bucket_interval
 from incident_similarity import build_incident_similarity, load_completed_snapshots
 from operational_learnings import build_operational_learnings
+from time_context import build_time_context
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -55,12 +56,15 @@ BASELINE_HISTORY_OUT = VIZ_DIR / "baseline_history.json"
 INTERVAL_SUMMARY_OUT = VIZ_DIR / "interval_summary.json"
 INCIDENT_SIMILARITY_OUT = VIZ_DIR / "incident_similarity.json"
 OPERATIONAL_LEARNINGS_OUT = VIZ_DIR / "operational_learnings.json"
+TIME_CONTEXT_OUT = VIZ_DIR / "time_context.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
 DIAGNOSTIC_EVIDENCE_IN = VIZ_DIR / "diagnostic_evidence.json"
 APPLICATION_EXPERIENCE_IN = VIZ_DIR / "application_experience.json"
 OPERATOR_IMPACT_FEEDBACK_IN = VIZ_DIR / "operator_impact_feedback.json"
+INTERNET_CONDITIONS_IN = VIZ_DIR / "internet_conditions.json"
+APS_POWER_CONTEXT_IN = VIZ_DIR / "aps_power_context.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
@@ -1286,6 +1290,14 @@ def write_json_atomic(path, data):
     tmp.replace(path)
 
 
+def load_optional_json(path):
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def main():
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1385,6 +1397,15 @@ def main():
         source_path=f"data/{src.name}",
     )
     write_json_atomic(INTERVAL_SUMMARY_OUT, interval_summary)
+    time_context = build_time_context(
+        mode="current",
+        start=interval_start,
+        end=interval_end,
+        generated_at=now,
+        incidents=incidents,
+        external_contexts=[load_optional_json(INTERNET_CONDITIONS_IN), load_optional_json(APS_POWER_CONTEXT_IN)],
+    )
+    write_json_atomic(TIME_CONTEXT_OUT, time_context)
     turbulence_buckets = [bucket for bucket in classify_buckets(wan_series_marked) if bucket.get("is_turbulence")]
     attribution_observations = build_attribution_observations(
         attribution,
@@ -1459,6 +1480,7 @@ def main():
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")
     print(f"Wrote interval summary artifact to {INTERVAL_SUMMARY_OUT}")
+    print(f"Wrote time context artifact to {TIME_CONTEXT_OUT}")
     print(f"Wrote incident similarity artifact to {INCIDENT_SIMILARITY_OUT}")
     print(f"Wrote operational learnings artifact to {OPERATIONAL_LEARNINGS_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")

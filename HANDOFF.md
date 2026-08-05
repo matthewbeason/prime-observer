@@ -105,6 +105,8 @@ Current artifact flow:
   snapshots using deterministic weighted scoring
 - `bin/operational_learnings.py` accumulates deterministic operational learning
   from repeated completed incidents and durable baseline history
+- `bin/time_context.py` emits the default selected-time context for the dashboard
+  workspace
 - `viz/index.html` and `viz/investigate.html` consume generated local files
 
 Current projection state:
@@ -123,6 +125,8 @@ Current projection state:
 - `viz/operational_learnings.json` is the generated operational learning artifact
   over repeated completed incidents and durable baselines, with Python-owned
   confidence and retirement handling
+- `viz/time_context.json` is the generated default time context used by the
+  dashboard when no heatmap interval is selected
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten

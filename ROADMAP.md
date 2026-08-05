@@ -96,6 +96,9 @@ Current watch period:
   from completed incidents and durable baselines, with confidence reduction or
   retirement for contradictory evidence and renderer-only dashboard/Investigation
   presentation.
+- Temporal Workspace Phase 1 adds Python-owned default selected-time context in
+  `viz/time_context.json` and makes heatmap selection update dashboard summary
+  context without removing existing dashboard charts or Investigation links.
 
 ## Next Logical Milestone
 
@@ -103,9 +106,9 @@ Direct links/bookmarks for current, selected-interval, and completed incident
 views are now explicit. The selected interval view can render one matching
 Python-generated interval summary and otherwise remains a safe request state.
 Incident phase storytelling, deterministic replay, adaptive baseline memory, the
-first interval summary and similarity artifacts, and Operational Learning Phase 1
-are additive over existing artifacts. The next planned capability after this
-redesign is Needs Matthew Review.
+first interval summary and similarity artifacts, Operational Learning Phase 1,
+and Temporal Workspace Phase 1 are additive over existing artifacts. The next
+planned capability after this redesign is Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate

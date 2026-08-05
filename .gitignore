@@ -58,6 +58,7 @@ viz/baseline_history.json
 viz/interval_summary.json
 viz/incident_similarity.json
 viz/operational_learnings.json
+viz/time_context.json
 viz/investigation.json
 viz/investigation_index.json
 viz/investigation_catalog.json

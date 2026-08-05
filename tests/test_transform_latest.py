@@ -42,11 +42,14 @@ class TransformLatestTest(unittest.TestCase):
         self.module.INTERVAL_SUMMARY_OUT = self.viz_dir / "interval_summary.json"
         self.module.INCIDENT_SIMILARITY_OUT = self.viz_dir / "incident_similarity.json"
         self.module.OPERATIONAL_LEARNINGS_OUT = self.viz_dir / "operational_learnings.json"
+        self.module.TIME_CONTEXT_OUT = self.viz_dir / "time_context.json"
         self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
         self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
         self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
         self.module.APPLICATION_EXPERIENCE_IN = self.viz_dir / "application_experience.json"
         self.module.OPERATOR_IMPACT_FEEDBACK_IN = self.viz_dir / "operator_impact_feedback.json"
+        self.module.INTERNET_CONDITIONS_IN = self.viz_dir / "internet_conditions.json"
+        self.module.APS_POWER_CONTEXT_IN = self.viz_dir / "aps_power_context.json"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -206,6 +209,7 @@ class TransformLatestTest(unittest.TestCase):
         interval_summary = json.loads(self.module.INTERVAL_SUMMARY_OUT.read_text())
         incident_similarity = json.loads(self.module.INCIDENT_SIMILARITY_OUT.read_text())
         operational_learnings = json.loads(self.module.OPERATIONAL_LEARNINGS_OUT.read_text())
+        time_context = json.loads(self.module.TIME_CONTEXT_OUT.read_text())
         investigation_catalog = json.loads((self.viz_dir / "investigation_catalog.json").read_text())
         self.assertEqual(observations["schema_version"], 1)
         self.assertEqual(observations["model_version"], "prime_observer.observation.v1")
@@ -238,6 +242,10 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(operational_learnings["model_version"], "prime_observer.operational_learnings.v1")
         self.assertEqual(operational_learnings["learning_version"], "operational_learning.phase_1")
         self.assertIn("insights", operational_learnings)
+        self.assertEqual(time_context["schema_version"], 1)
+        self.assertEqual(time_context["model_version"], "prime_observer.time_context.v1")
+        self.assertEqual(time_context["mode"], "current")
+        self.assertIn("overlaps_incident", time_context)
         self.assertEqual(investigation["schema_version"], 2)
         self.assertEqual(investigation["mode"], "automatic")
         self.assertEqual(investigation["artifact_type"], "current_investigation")
@@ -510,6 +518,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("./dashboard_health.json", dashboard_html)
         self.assertIn("./incident_similarity.json", dashboard_html)
         self.assertIn("./operational_learnings.json", dashboard_html)
+        self.assertIn("./time_context.json", dashboard_html)
         self.assertIn("./observations.json", dashboard_html)
         self.assertIn("./network_attribution.json", dashboard_html)
         self.assertIn("selectEpisodeObservations(observationsPayload)", dashboard_html)
@@ -541,6 +550,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("build_interval_summary", source)
         self.assertIn("build_incident_similarity", source)
         self.assertIn("build_operational_learnings", source)
+        self.assertIn("build_time_context", source)
         self.assertIn("OPERATOR_IMPACT_FEEDBACK_IN", source)
         self.assertIn("load_operator_impact_feedback", source)
         self.assertNotIn("socket.", source)
