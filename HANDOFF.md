@@ -103,6 +103,8 @@ Current artifact flow:
   during automatic transform
 - `bin/incident_similarity.py` compares the current investigation with completed
   snapshots using deterministic weighted scoring
+- `bin/operational_learnings.py` accumulates deterministic operational learning
+  from repeated completed incidents and durable baseline history
 - `viz/index.html` and `viz/investigate.html` consume generated local files
 
 Current projection state:
@@ -118,6 +120,9 @@ Current projection state:
   selected interval, rendered only when route start/end match the artifact
 - `viz/incident_similarity.json` is the generated current-incident similarity
   projection over completed snapshots, with Python-owned scores and explanations
+- `viz/operational_learnings.json` is the generated operational learning artifact
+  over repeated completed incidents and durable baselines, with Python-owned
+  confidence and retirement handling
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten
@@ -146,9 +151,11 @@ entry points remain explicit: `?view=current`,
 Python-generated `viz/interval_summary.json` evidence when available and keeps a
 safe request state otherwise. Current investigation can show deterministic
 `Seen before` similarity from `viz/incident_similarity.json`; completed incident
-views remain immutable evidence views. Legacy `?event=<event-id>` links remain
-supported. Recurrence detection and multiple stored interval summaries remain
-future work.
+views remain immutable evidence views. Operational Learning Phase 1 can show
+repeated deterministic lessons from completed incidents and durable baselines; it
+does not use LLM summarization or browser inference. Legacy
+`?event=<event-id>` links remain supported. Multiple stored interval summaries
+remain future work.
 
 Generated JSON and CSV artifacts remain canonical. No database is needed at the
 current local scale; any future PostgreSQL or Supabase work should be an optional

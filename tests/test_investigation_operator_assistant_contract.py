@@ -771,6 +771,42 @@ globalThis.fetch = async (url) => {{
 
         self.assertEqual(rendered["display"], "none")
 
+    def test_operational_learning_renderer_shows_three_non_retired_insights(self):
+        learnings = {
+            "schema_version": 1,
+            "model_version": "prime_observer.operational_learnings.v1",
+            "generated_at": "2026-08-05T12:00:00Z",
+            "learning_version": "operational_learning.phase_1",
+            "insights": [
+                {"id": "one", "category": "resolver_behavior", "title": "One", "summary": "First insight", "confidence": "medium", "supporting_incidents": ["a", "b"], "supporting_baselines": [], "times_observed": 2, "stability": "emerging"},
+                {"id": "two", "category": "recovery_behavior", "title": "Two", "summary": "Second insight", "confidence": "high", "supporting_incidents": ["c", "d"], "supporting_baselines": [], "times_observed": 4, "stability": "stable"},
+                {"id": "retired", "category": "resolver_behavior", "title": "Retired", "summary": "Old insight", "confidence": "retired", "supporting_incidents": ["x"], "supporting_baselines": [], "times_observed": 2, "stability": "retired"},
+                {"id": "three", "category": "baseline_learning", "title": "Three", "summary": "Third insight", "confidence": "medium", "supporting_incidents": [], "supporting_baselines": ["viz/baseline_history.json#resolver"], "times_observed": 2, "stability": "emerging"},
+                {"id": "four", "category": "gateway_behavior", "title": "Four", "summary": "Fourth insight", "confidence": "medium", "supporting_incidents": ["e", "f"], "supporting_baselines": [], "times_observed": 2, "stability": "emerging"},
+            ],
+        }
+        body = f"""
+renderOperationalLearnings({json.dumps(learnings)});
+console.log(JSON.stringify({{display: document.getElementById("operationalLearningSection").style.display || "visible", html: document.getElementById("operationalLearningList").innerHTML}}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["display"], "visible")
+        self.assertIn("One", rendered["html"])
+        self.assertIn("Two", rendered["html"])
+        self.assertIn("Three", rendered["html"])
+        self.assertNotIn("Retired", rendered["html"])
+        self.assertNotIn("Four", rendered["html"])
+
+    def test_missing_operational_learning_artifact_is_legacy_safe(self):
+        body = """
+renderOperationalLearnings(null);
+console.log(JSON.stringify({display: document.getElementById("operationalLearningSection").style.display}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertEqual(rendered["display"], "none")
+
     def test_historical_and_legacy_event_routes_load_snapshot(self):
         current = self.investigation_payload()
         historical = json.loads(json.dumps(current))

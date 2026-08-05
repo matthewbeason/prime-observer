@@ -644,6 +644,11 @@
       <div class="value" id="similarityPattern">—</div>
       <div class="legacy-disclosure" id="similarityDetail">—</div>
     </div>
+    <div class="card" id="operationalLearningCard" style="display:none;">
+      <h4><span>Operational learning</span><span class="pill" id="operationalLearningPill">history</span></h4>
+      <div class="value" style="font-size:20px;" id="operationalLearningTitle">—</div>
+      <div class="legacy-disclosure" id="operationalLearningDetail">—</div>
+    </div>
   </div>
 
   <div class="row dashboard-overview local-evidence-row" style="margin-top:16px;">
@@ -982,6 +987,7 @@
     const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
     const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
     const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";
+    const OPERATIONAL_LEARNINGS_URL = "./operational_learnings.json";
     const NEXTDNS_URL = "./nextdns_summary.json";
     const INTERNET_CONDITIONS_URL = "./internet_conditions.json";
     const APS_POWER_CONTEXT_URL = "./aps_power_context.json";
@@ -2238,6 +2244,22 @@
       document.getElementById("similarityPattern").textContent = healthLabel(current.pattern || matches[0].pattern || "unknown_pattern");
       document.getElementById("similarityDetail").textContent = `${strongCount} similar ${strongCount === 1 ? "incident" : "incidents"}`;
       setPillText("similarityPill", "Seen before", "watch");
+    }
+
+    function renderOperationalLearningDashboard(learningsPayload){
+      const card = document.getElementById("operationalLearningCard");
+      const insights = Array.isArray(learningsPayload?.insights)
+        ? learningsPayload.insights.filter(item => item && item.stability !== "retired" && item.confidence !== "retired")
+        : [];
+      if (!card || !insights.length){
+        if (card) card.style.display = "none";
+        return;
+      }
+      const insight = insights[0];
+      card.style.display = "";
+      document.getElementById("operationalLearningTitle").textContent = insight.title || "Operational learning";
+      document.getElementById("operationalLearningDetail").textContent = insight.summary || `Observed ${fmt1(insight.times_observed || insights.length)} times`;
+      setPillText("operationalLearningPill", healthLabel(insight.confidence || "medium"), insight.confidence === "high" ? "ok" : "watch");
     }
 
     function renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload, assistantInputPayload, assistantReviewPayload){
@@ -3662,7 +3684,7 @@
 
     async function tick() {
       try {
-        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload] = await Promise.all([
+        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload, operationalLearningsPayload] = await Promise.all([
           loadData(),
           loadDashboardHealthPayload(),
           loadObservationsPayload(),
@@ -3670,6 +3692,7 @@
           loadOptionalJson(OPERATOR_ASSISTANT_INPUT_URL),
           loadOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL),
           loadOptionalJson(INCIDENT_SIMILARITY_URL),
+          loadOptionalJson(OPERATIONAL_LEARNINGS_URL),
         ]);
         const dashboardHealth = normalizeDashboardHealthPayload(dashboardHealthPayload);
         const useHealthFallback = !dashboardHealth;
@@ -3707,6 +3730,7 @@
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
         const selectedEvidence = selectedBucket ? selectedBucketEvidence(selectedBucket, internetSeriesMarked, resolverSeriesMarked, lanSeries) : null;
         renderIncidentSimilarityDashboard(incidentSimilarityPayload);
+        renderOperationalLearningDashboard(operationalLearningsPayload);
         const xDomain = resolveSharedChartDomain(
           [internetSeriesMarked, resolverSeriesMarked, lanSeries],
           compositeWanBuckets

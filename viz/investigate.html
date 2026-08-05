@@ -285,6 +285,18 @@
       <div id="similarityMatches" class="stack"></div>
     </section>
 
+    <section id="operationalLearningSection" class="section" style="display:none;">
+      <div class="section-header">
+        <div>
+          <div class="section-kicker">What we've learned</div>
+          <h2>Operational learning</h2>
+          <p class="section-note supporting">Python-generated recurring lessons from completed incidents and durable baselines.</p>
+        </div>
+        <div id="operationalLearningPills" class="pill-group"></div>
+      </div>
+      <div id="operationalLearningList" class="stack"></div>
+    </section>
+
     <section id="recommendedActionsSection" class="section">
       <div class="section-header">
         <div>
@@ -527,6 +539,7 @@
     const INVESTIGATION_URL = "./investigation.json";
     const INTERVAL_SUMMARY_URL = "./interval_summary.json";
     const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";
+    const OPERATIONAL_LEARNINGS_URL = "./operational_learnings.json";
     const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";
     const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
     const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
@@ -535,6 +548,7 @@
     let assistantInputArtifact = null;
     let assistantReviewArtifact = null;
     let incidentSimilarityArtifact = null;
+    let operationalLearningsArtifact = null;
 
     function fmt(value, suffix = ""){
       if (value === null || value === undefined || value === "") return "—";
@@ -1482,6 +1496,36 @@
         : '<div class="empty-note">No similarity matches were emitted by the deterministic model.</div>';
     }
 
+    function activeOperationalInsights(learnings){
+      const insights = Array.isArray(learnings?.insights) ? learnings.insights : [];
+      return insights.filter(item => item && item.stability !== "retired" && item.confidence !== "retired").slice(0, 3);
+    }
+
+    function renderOperationalLearnings(learnings){
+      const section = document.getElementById("operationalLearningSection");
+      const insights = activeOperationalInsights(learnings);
+      if (!insights.length){
+        section.style.display = "none";
+        return;
+      }
+      section.style.display = "";
+      document.getElementById("operationalLearningPills").innerHTML = [
+        renderChip("Source", "Python artifact", "tone-accent"),
+        renderChip("Insights", String(insights.length), "tone-watch"),
+      ].join("");
+      document.getElementById("operationalLearningList").innerHTML = insights.map(insight => `<div class="card">
+        <div class="summary-item">
+          <div class="summary-label">${fmt(insight.category)}</div>
+          <div class="summary-value">${fmt(insight.title)}</div>
+          <div class="summary-detail">${fmt(insight.summary)}</div>
+        </div>
+        <div class="summary-list" style="margin-top:12px;">
+          ${renderSummaryItem("Confidence", healthLabel(insight.confidence), `Observed ${fmt(insight.times_observed)} times · ${healthLabel(insight.stability)}`)}
+          ${renderSummaryItem("Evidence", (insight.supporting_incidents || []).slice(0, 3).join(", ") || (insight.supporting_baselines || []).slice(0, 2).join(", ") || "No evidence reference listed", "")}
+        </div>
+      </div>`).join("");
+    }
+
     function renderIncidentReplay(data){
       const replay = data?.incident_replay && typeof data.incident_replay === "object" && !Array.isArray(data.incident_replay)
         ? data.incident_replay
@@ -1958,6 +2002,7 @@
       renderPeriodTable(data);
       renderIncidentReplay(data);
       renderIncidentSimilarity(data, isCurrent ? incidentSimilarityArtifact : null);
+      renderOperationalLearnings(operationalLearningsArtifact);
       renderEvidenceArgument(data);
       renderBucketSummary(data);
       renderBucketTable(data);
@@ -2033,13 +2078,15 @@
 
     async function main(){
       renderDeepLink();
-      const [catalog, assistantInput, assistantReview] = await Promise.all([
+      const [catalog, assistantInput, assistantReview, operationalLearnings] = await Promise.all([
         fetchOptionalJson(INVESTIGATION_CATALOG_URL),
         fetchOptionalJson(OPERATOR_ASSISTANT_INPUT_URL),
         fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL),
+        fetchOptionalJson(OPERATIONAL_LEARNINGS_URL),
       ]);
       assistantInputArtifact = assistantInput;
       assistantReviewArtifact = assistantReview;
+      operationalLearningsArtifact = operationalLearnings;
       renderHistory(catalog);
       const currentButton = document.getElementById("currentInvestigationButton");
       if (typeof currentButton.addEventListener === "function"){

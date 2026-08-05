@@ -91,16 +91,21 @@ Current watch period:
   similarity in `viz/incident_similarity.json`, using weighted explainable
   dimensions over completed snapshots without embeddings, LLM similarity, or
   browser-side inference.
+- Operational Learning Phase 1 adds Python-owned deterministic learning in
+  `viz/operational_learnings.json`, requiring repeated supporting observations
+  from completed incidents and durable baselines, with confidence reduction or
+  retirement for contradictory evidence and renderer-only dashboard/Investigation
+  presentation.
 
 ## Next Logical Milestone
 
 Direct links/bookmarks for current, selected-interval, and completed incident
 views are now explicit. The selected interval view can render one matching
 Python-generated interval summary and otherwise remains a safe request state.
-Incident phase storytelling, deterministic replay, adaptive baseline memory, and
-the first interval summary and similarity artifacts are additive over existing
-artifacts. The next planned capability after this redesign is Needs Matthew
-Review.
+Incident phase storytelling, deterministic replay, adaptive baseline memory, the
+first interval summary and similarity artifacts, and Operational Learning Phase 1
+are additive over existing artifacts. The next planned capability after this
+redesign is Needs Matthew Review.
 
 Before implementing additional external providers, the next conceptual
 architecture step is to clarify Environmental Context boundaries and evaluate

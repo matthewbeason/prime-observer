@@ -69,6 +69,7 @@ Automatic mode writes:
 viz/investigation.json
 viz/interval_summary.json
 viz/incident_similarity.json
+viz/operational_learnings.json
 viz/investigation_catalog.json
 viz/investigations/<event-id>.json, once for each completed event
 viz/operator_assistant_input.json, only when deterministic investigation evidence changes
@@ -108,6 +109,18 @@ renders best matches, why they match, important differences, previous duration,
 recovery, user impact, operator feedback, and a collapsed technical breakdown.
 Completed incident views do not render current-incident similarity as historical
 truth.
+
+Operational Learning Phase 1 adds `viz/operational_learnings.json`, a
+Python-generated deterministic learning artifact over completed incident snapshots
+and durable baseline history. It emits only repeated operational lessons; a single
+incident is insufficient. Current rules can describe repeated resolver behavior,
+recovery behavior, recurring deterministic patterns, baseline-supported resolver
+latency without observed user impact, and external context that coincided with
+multiple completed incidents. Newer contradictory evidence reduces confidence or
+retires an insight instead of silently replacing it. The Investigation renderer
+shows up to three active insights in `What we've learned`, and the dashboard can
+show one compact `Operational learning` card. Neither renderer creates insight
+text, scores confidence, infers recurrence, or uses LLM summarization.
 
 `viz/investigation.json` remains the mutable current investigation only. When an
 event first reaches `complete`, the Python producer writes a separate historical

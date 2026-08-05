@@ -42,6 +42,7 @@ from build_operator_assistant_input import pending_generation_state
 from build_operator_assistant_input import write_json as write_assistant_input_json
 from interval_summary import build_interval_summary, latest_bucket_interval
 from incident_similarity import build_incident_similarity, load_completed_snapshots
+from operational_learnings import build_operational_learnings
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -53,6 +54,7 @@ DASHBOARD_HEALTH_OUT = VIZ_DIR / "dashboard_health.json"
 BASELINE_HISTORY_OUT = VIZ_DIR / "baseline_history.json"
 INTERVAL_SUMMARY_OUT = VIZ_DIR / "interval_summary.json"
 INCIDENT_SIMILARITY_OUT = VIZ_DIR / "incident_similarity.json"
+OPERATIONAL_LEARNINGS_OUT = VIZ_DIR / "operational_learnings.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
 OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
 OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
@@ -1426,12 +1428,19 @@ def main():
         catalog_path=VIZ_DIR / "investigation_catalog.json",
         current_investigation=investigation,
     )
+    completed_snapshots = load_completed_snapshots(VIZ_DIR / "investigations")
     incident_similarity = build_incident_similarity(
         current_investigation=investigation,
-        completed_snapshots=load_completed_snapshots(VIZ_DIR / "investigations"),
+        completed_snapshots=completed_snapshots,
         generated_at=now,
     )
     write_json_atomic(INCIDENT_SIMILARITY_OUT, incident_similarity)
+    operational_learnings = build_operational_learnings(
+        completed_snapshots=completed_snapshots,
+        baseline_history=baseline_history,
+        generated_at=now,
+    )
+    write_json_atomic(OPERATIONAL_LEARNINGS_OUT, operational_learnings)
     if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
         assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
         write_assistant_input_json(OPERATOR_ASSISTANT_INPUT_OUT, assistant_input)
@@ -1451,6 +1460,7 @@ def main():
     print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")
     print(f"Wrote interval summary artifact to {INTERVAL_SUMMARY_OUT}")
     print(f"Wrote incident similarity artifact to {INCIDENT_SIMILARITY_OUT}")
+    print(f"Wrote operational learnings artifact to {OPERATIONAL_LEARNINGS_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
     print(

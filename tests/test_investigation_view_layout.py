@@ -16,6 +16,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             'id="incidentStorySection"',
             'id="coreEvidenceSection"',
             'id="similaritySection"',
+            'id="operationalLearningSection"',
             'id="recommendedActionsSection"',
             'id="timelineSection"',
             'id="rawDetailSection"',
@@ -30,6 +31,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
             "What needs attention now?",
             "What happened?",
             "Have we seen this pattern?",
+            "What we've learned",
             "What should I do?",
             "What changed",
             "What stayed healthy",
@@ -147,6 +149,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertIn('view === "interval"', self.html)
         self.assertIn('const INTERVAL_SUMMARY_URL = "./interval_summary.json";', self.html)
         self.assertIn('const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";', self.html)
+        self.assertIn('const OPERATIONAL_LEARNINGS_URL = "./operational_learnings.json";', self.html)
         self.assertIn('loadIntervalSummary(route.params)', self.html)
         self.assertIn('loadInvestigation(`./${button.dataset.snapshotPath}`', self.html)
 
@@ -176,6 +179,19 @@ class InvestigationViewLayoutTest(unittest.TestCase):
         self.assertNotIn("calculateSimilarity", self.html)
         self.assertNotIn("scoreIncidentSimilarity", self.html)
         self.assertNotIn("inferSimilarityPattern", self.html)
+
+    def test_operational_learning_consumes_python_generated_insights(self):
+        for field in (
+            "operationalLearningSection",
+            "operationalLearningsArtifact",
+            "insight.supporting_incidents",
+            "insight.supporting_baselines",
+            "renderOperationalLearnings(operationalLearningsArtifact)",
+        ):
+            self.assertIn(field, self.html)
+        self.assertNotIn("inferOperationalLearning", self.html)
+        self.assertNotIn("summarizeLearnings", self.html)
+        self.assertNotIn("calculateOperationalInsight", self.html)
 
     def test_browser_remains_local_renderer_only(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)
