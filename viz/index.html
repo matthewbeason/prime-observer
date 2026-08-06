@@ -142,6 +142,18 @@
       color:var(--ink);
       text-align:right;
     }
+    .time-note{
+      font-size:11px;
+      font-weight:600;
+      letter-spacing:.03em;
+      margin-top:6px;
+      padding:4px 8px;
+      border-radius:5px;
+      display:inline-block;
+    }
+    .time-note.ok{color:var(--ok);background:rgba(60,160,80,.08);}
+    .time-note.watch{color:var(--watch);background:rgba(200,140,0,.09);}
+    .time-note.neutral{color:var(--muted-strong);background:rgba(0,0,0,.04);}
     .dns-domain-pair{
       grid-template-columns:minmax(0, 110px) minmax(0, 1fr);
       align-items:start;
@@ -543,7 +555,7 @@
 
   <div class="row dashboard-overview phase3-row operator-assessment-row" style="margin-bottom:16px;">
     <div class="card operator-card" id="operatorAssessmentCard">
-      <h4><span>Current summary</span><span class="subtle" id="operatorAssessmentProvenance">local evidence</span></h4>
+      <h4><span id="operatorAssessmentTitle">Current Summary</span><span class="subtle" id="operatorAssessmentProvenance">local evidence</span></h4>
       <div class="operator-summary" id="operatorAssessmentHeadline">Awaiting current summary.</div>
       <div class="metric-stack" id="timeContextSummary" style="margin-top:12px;">
         <div class="metric-pair"><span class="label">What happened</span><span class="metric-value" id="timeContextHappened">Current evidence loading.</span></div>
@@ -647,12 +659,12 @@
       </div>
     </div>
     <div class="card" id="similarityCard" style="display:none;">
-      <h4><span>Seen before</span><span class="pill" id="similarityPill">history</span></h4>
+      <h4><span id="similarityCardTitle">Seen before</span><span class="pill" id="similarityPill">history</span></h4>
       <div class="value" id="similarityPattern">—</div>
       <div class="legacy-disclosure" id="similarityDetail">—</div>
     </div>
     <div class="card" id="operationalLearningCard" style="display:none;">
-      <h4><span>Operational learning</span><span class="pill" id="operationalLearningPill">history</span></h4>
+      <h4><span id="operationalLearningCardTitle">Operational learning</span><span class="pill" id="operationalLearningPill">history</span></h4>
       <div class="value" style="font-size:20px;" id="operationalLearningTitle">—</div>
       <div class="legacy-disclosure" id="operationalLearningDetail">—</div>
     </div>
@@ -760,6 +772,7 @@
           </details>
         </div>
         <div class="small" id="internetConditionsUnavailable" style="display:none;">Unable to retrieve current Internet conditions.</div>
+        <div id="internetConditionsTimeNote" class="time-note neutral" style="display:none;"></div>
       </div>
 
       <div class="card" style="min-width:240px; display:none;" id="powerInfrastructureCard">
@@ -784,6 +797,7 @@
             </div>
           </details>
         </div>
+        <div id="powerInfrastructureTimeNote" class="time-note neutral" style="display:none;"></div>
       </div>
     </div>
   </details>
@@ -874,7 +888,7 @@
     </div>
 
     <div class="viz-panel">
-      <div class="panel-kicker">Instrument Panel</div>
+      <div class="panel-kicker" id="wanInternetPanelKicker">Instrument Panel</div>
       <div class="section-title">
         <h3 id="wanInternetHeading">WAN — Internet probes p95 latency (ms)</h3>
         <div class="legend" id="wanInternetLegend">Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval</div>
@@ -883,7 +897,7 @@
     </div>
 
     <div class="viz-panel">
-      <div class="panel-kicker">Instrument Panel</div>
+      <div class="panel-kicker" id="wanResolverPanelKicker">Instrument Panel</div>
       <div class="section-title">
         <h3 id="wanResolverHeading">WAN — Resolver probes p95 latency (ms)</h3>
         <div class="legend" id="wanResolverLegend">NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval</div>
@@ -892,7 +906,7 @@
     </div>
 
     <div class="viz-panel">
-      <div class="panel-kicker">Local Path Instrument</div>
+      <div class="panel-kicker" id="lanPanelKicker">Local Path Instrument</div>
       <div class="section-title">
         <h3 id="lanHeading">LAN (Gateway) — p95 latency (ms)</h3>
         <div class="legend" id="lanLegend">Same path styling as WAN chart</div>
@@ -1281,14 +1295,128 @@
       const healthy = selected && opts.selectedEvidence
         ? [opts.selectedEvidence.internetSamples && !opts.selectedEvidence.internetRawBadSamples ? "Internet probes" : null, opts.selectedEvidence.resolverSamples && !opts.selectedEvidence.resolverRawBadSamples ? "Resolver probes" : null, opts.selectedEvidence.lanSamples && !opts.selectedEvidence.lanElevatedSamples ? "Router path" : null].filter(Boolean).join(", ") || "No healthy comparison in selected interval"
         : "Current healthy services shown below";
-      const externalEvents = externalEventsForContext(context, opts.internetConditionsPayload, opts.powerContextPayload);
+      // Read Python-provided external source list; do not compute overlap in the browser.
+      const extSources = Array.isArray(context?.overlapping_external_event_sources) ? context.overlapping_external_event_sources : null;
+      // Read Python-provided user impact when this is the generated interval; do not infer from sample counts.
+      const impactText = selected
+        ? (timeContextMatchesGenerated(opts.selectedBucket, opts.intervalSummaryPayload) && opts.intervalSummaryPayload?.user_impact
+            ? (opts.intervalSummaryPayload.user_impact === "none_detected" ? "No user-facing failure detected" : "Possible user impact")
+            : "Selected interval — see evidence below")
+        : "Current impact shown below";
       document.getElementById("operatorAssessmentProvenance").textContent = selected ? "selected time" : "current time";
       if (selected) document.getElementById("operatorAssessmentHeadline").textContent = happened;
       document.getElementById("timeContextHappened").textContent = happened;
       document.getElementById("timeContextHealthy").textContent = healthy;
-      document.getElementById("timeContextImpact").textContent = selected ? (opts.selectedEvidence?.internetSustainedBadSamples || opts.selectedEvidence?.resolverSustainedBadSamples ? "Possible" : "No user-facing failure detected by selected evidence") : "Current impact shown below";
-      document.getElementById("timeContextExternal").textContent = externalEvents.length ? externalEvents.join(", ") : "No relevant external events occurred.";
+      document.getElementById("timeContextImpact").textContent = impactText;
+      document.getElementById("timeContextExternal").textContent = extSources === null
+        ? (selected ? "External context not available for this interval." : "No external events loaded.")
+        : (extSources.length ? extSources.join(", ") : "No relevant external events occurred.");
       document.getElementById("timeContextPattern").textContent = selectedTimePatternText(context, opts.incidentSimilarityPayload, opts.operationalLearningsPayload);
+    }
+
+    function formatTimeRange(bucket){
+      if (!bucket?.t || !bucket?.t2) return null;
+      return `${toShortTime(bucket.t)} – ${toShortTime(bucket.t2)}`;
+    }
+
+    function applyDashboardTimeMode(bucket){
+      const range = formatTimeRange(bucket);
+      const title = document.getElementById("operatorAssessmentTitle");
+      if (title) title.textContent = range ? `Summary for ${range}` : "Current Summary";
+      [
+        ["wanInternetPanelKicker",  range ? `Instrument Panel · ${range}` : "Instrument Panel"],
+        ["wanResolverPanelKicker",  range ? `Instrument Panel · ${range}` : "Instrument Panel"],
+        ["lanPanelKicker",          range ? `Local Path Instrument · ${range}` : "Local Path Instrument"],
+      ].forEach(([id, text]) => { const el = document.getElementById(id); if (el) el.textContent = text; });
+      const simTitle = document.getElementById("similarityCardTitle");
+      if (simTitle) simTitle.textContent = range ? `Seen before · ${range}` : "Seen before";
+      const learnTitle = document.getElementById("operationalLearningCardTitle");
+      if (learnTitle) learnTitle.textContent = range ? `Relevant learning · ${range}` : "Operational learning";
+    }
+
+    function renderSimilarityForTimeContext(context, similarityPayload){
+      const card = document.getElementById("similarityCard");
+      if (!card) return;
+      const isSelected = context?.mode === "selected_interval";
+      if (!isSelected){ renderIncidentSimilarityDashboard(similarityPayload); return; }
+      const contextIncidentId = context?.incident_id || null;
+      const current = similarityPayload?.current_incident || null;
+      const matches = Array.isArray(similarityPayload?.matches) ? similarityPayload.matches : [];
+      const strongCount = Number(current?.strong_match_count || 0);
+      if (!contextIncidentId || !current || current.incident_id !== contextIncidentId || strongCount <= 0 || !matches.length){
+        card.style.display = "none"; return;
+      }
+      card.style.display = "";
+      document.getElementById("similarityPattern").textContent = healthLabel(current.pattern || matches[0].pattern || "unknown_pattern");
+      document.getElementById("similarityDetail").textContent = `${strongCount} similar ${strongCount === 1 ? "incident" : "incidents"}`;
+      setPillText("similarityPill", "Seen before", "watch");
+    }
+
+    function renderLearningsForTimeContext(context, learningsPayload){
+      const card = document.getElementById("operationalLearningCard");
+      if (!card) return;
+      const allInsights = Array.isArray(learningsPayload?.insights) ? learningsPayload.insights : [];
+      const isSelected = context?.mode === "selected_interval";
+      const ctxId = isSelected ? (context?.incident_id || null) : null;
+      const insights = allInsights.filter(item =>
+        item && item.stability !== "retired" && item.confidence !== "retired" &&
+        (!ctxId || (item.supporting_incidents || []).includes(ctxId))
+      );
+      if (!insights.length){ card.style.display = "none"; return; }
+      const insight = insights[0];
+      card.style.display = "";
+      document.getElementById("operationalLearningTitle").textContent = insight.title || "Operational learning";
+      document.getElementById("operationalLearningDetail").textContent = insight.summary || `Observed ${fmt1(insight.times_observed || insights.length)} times`;
+      setPillText("operationalLearningPill", healthLabel(insight.confidence || "medium"), insight.confidence === "high" ? "ok" : "watch");
+    }
+
+    function renderExternalContextTimeNote(context, internetConditions, powerContext){
+      const icNote = document.getElementById("internetConditionsTimeNote");
+      const piNote = document.getElementById("powerInfrastructureTimeNote");
+      const isSelected = context?.mode === "selected_interval";
+      if (!isSelected || !context?.start || !context?.end){
+        if (icNote) icNote.style.display = "none";
+        if (piNote) piNote.style.display = "none";
+        return;
+      }
+      // Only render when Python has computed the overlap list for this interval.
+      // Non-generated buckets do not have overlapping_external_event_sources;
+      // the browser must not compute overlap itself.
+      const sources = Array.isArray(context?.overlapping_external_event_sources) ? context.overlapping_external_event_sources : null;
+      if (sources === null){
+        if (icNote) icNote.style.display = "none";
+        if (piNote) piNote.style.display = "none";
+        return;
+      }
+      const start = parseTs(context.start);
+      const end = parseTs(context.end);
+      if (!start || !end){
+        if (icNote) icNote.style.display = "none";
+        if (piNote) piNote.style.display = "none";
+        return;
+      }
+      const rangeLabel = `${toShortTime(start)} – ${toShortTime(end)}`;
+      const icOverlap = sources.includes("Cloudflare Radar");
+      if (icNote){
+        icNote.textContent = icOverlap ? `During ${rangeLabel}: Cloudflare Radar event detected.` : `During ${rangeLabel}: No Cloudflare Radar events.`;
+        icNote.className = icOverlap ? "time-note watch" : "time-note ok";
+        icNote.style.display = "";
+      }
+      const piOverlap = sources.includes("APS");
+      if (piNote){
+        piNote.textContent = piOverlap ? `During ${rangeLabel}: APS event detected.` : `During ${rangeLabel}: No APS events.`;
+        piNote.className = piOverlap ? "time-note watch" : "time-note ok";
+        piNote.style.display = "";
+      }
+    }
+
+    function syncDashboardTimeContext(opts = {}){
+      const context = timeContextFromSelection(opts.selectedBucket, opts.timeContextPayload);
+      renderSelectedTimeContext(opts);
+      applyDashboardTimeMode(opts.selectedBucket);
+      renderSimilarityForTimeContext(context, opts.incidentSimilarityPayload);
+      renderLearningsForTimeContext(context, opts.learningsPayload || opts.operationalLearningsPayload);
+      renderExternalContextTimeNote(context, opts.internetConditionsPayload, opts.powerContextPayload);
     }
 
     function updateMobileDnsSummary(opts = {}){
@@ -1735,7 +1863,7 @@
         xDomain: currentVizState.xDomain
       });
       updateSelectedBucketPanel(currentVizState.selectedBucket, currentVizState.selectedEvidence);
-      renderSelectedTimeContext({
+      syncDashboardTimeContext({
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
         timeContextPayload: currentVizState.timeContextPayload,
@@ -3854,7 +3982,7 @@
         computeNoticeabilityForecast(noticeSummary, patternSummary);
         updateAttributionCard(attribution, attributionEvidence);
         renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload, assistantInputPayload, assistantReviewPayload);
-        renderSelectedTimeContext({
+        syncDashboardTimeContext({
           selectedBucket,
           selectedEvidence,
           timeContextPayload,

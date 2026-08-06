@@ -563,7 +563,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("payload.health_dimensions", dashboard_html)
         self.assertIn("payload.dependency_groups", dashboard_html)
         self.assertIn("refined_attribution", dashboard_html)
-        self.assertIn("Current summary", dashboard_html)
+        self.assertIn("Current Summary", dashboard_html)
         self.assertNotIn("Deterministic Operator Summary", dashboard_html)
         self.assertNotIn("id=\"operatorSummarySource\"", dashboard_html)
         self.assertIn("Router path", dashboard_html)

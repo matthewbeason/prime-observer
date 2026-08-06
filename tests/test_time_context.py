@@ -54,17 +54,58 @@ class TimeContextTest(unittest.TestCase):
 
     def test_external_context_overlap_is_recorded(self):
         payload = self.build(
-            external_contexts=[{"items": [{"started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}]}],
+            external_contexts=[{"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}]}],
         )
 
         self.assertTrue(payload["overlaps_external_context"])
 
     def test_external_context_non_overlap_is_ignored(self):
         payload = self.build(
-            external_contexts=[{"items": [{"started": "2026-08-05T10:00:00+00:00", "ended": "2026-08-05T10:10:00+00:00"}]}],
+            external_contexts=[{"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T10:00:00+00:00", "ended": "2026-08-05T10:10:00+00:00"}]}],
         )
 
         self.assertFalse(payload["overlaps_external_context"])
+
+    def test_overlapping_external_event_sources_names_sources(self):
+        payload = self.build(
+            external_contexts=[
+                {"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}]},
+                {"provider": "aps", "items": []},
+            ],
+        )
+
+        self.assertIn("overlapping_external_event_sources", payload)
+        self.assertEqual(payload["overlapping_external_event_sources"], ["Cloudflare Radar"])
+
+    def test_overlapping_external_event_sources_empty_when_no_overlap(self):
+        payload = self.build(
+            external_contexts=[
+                {"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T14:00:00+00:00", "ended": "2026-08-05T14:10:00+00:00"}]},
+                {"provider": "aps", "items": []},
+            ],
+        )
+
+        self.assertEqual(payload["overlapping_external_event_sources"], [])
+        self.assertFalse(payload["overlaps_external_context"])
+
+    def test_overlapping_external_event_sources_multiple_providers(self):
+        payload = self.build(
+            external_contexts=[
+                {"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T11:50:00+00:00", "ended": "2026-08-05T11:58:00+00:00"}]},
+                {"provider": "aps", "items": [{"started": "2026-08-05T11:52:00+00:00", "estimated_restoration_time": "2026-08-05T12:30:00+00:00"}]},
+            ],
+        )
+
+        sources = payload["overlapping_external_event_sources"]
+        self.assertIn("Cloudflare Radar", sources)
+        self.assertIn("APS", sources)
+
+    def test_unknown_provider_not_included_in_sources(self):
+        payload = self.build(
+            external_contexts=[{"provider": "unknown_provider", "items": [{"started": "2026-08-05T11:50:00+00:00", "ended": "2026-08-05T11:58:00+00:00"}]}],
+        )
+
+        self.assertEqual(payload["overlapping_external_event_sources"], [])
 
     def test_invalid_interval_falls_back_safely(self):
         payload = self.build(start="bad", end="also-bad")

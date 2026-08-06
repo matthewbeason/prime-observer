@@ -9,6 +9,32 @@ from pathlib import Path
 SCHEMA_VERSION = 1
 MODEL_VERSION = "prime_observer.time_context.v1"
 
+# Canonical labels for each external-context provider, keyed by the provider
+# field emitted by the respective fetch scripts.
+EXTERNAL_CONTEXT_SOURCE_LABELS = {
+    "cloudflare_radar": "Cloudflare Radar",
+    "aps": "APS",
+}
+
+
+def overlapping_external_sources(start_ts, end_ts, external_contexts):
+    """Return the list of external-context source labels whose events overlap [start_ts, end_ts)."""
+    seen: set = set()
+    sources = []
+    for payload in external_contexts or []:
+        if not isinstance(payload, dict):
+            continue
+        raw_provider = str(payload.get("provider") or "").strip().lower()
+        label = EXTERNAL_CONTEXT_SOURCE_LABELS.get(raw_provider)
+        if not label or label in seen:
+            continue
+        for item_start, item_end in external_event_windows(payload):
+            if interval_overlaps(start_ts, end_ts, item_start, item_end):
+                sources.append(label)
+                seen.add(label)
+                break
+    return sources
+
 
 def parse_ts(value):
     if isinstance(value, dt.datetime):
@@ -64,11 +90,8 @@ def build_time_context(*, start, end, generated_at, incidents=None, selected_inc
             overlapping_incident = incident
             break
 
-    external_overlap = False
-    for payload in external_contexts or []:
-        if any(interval_overlaps(start_ts, end_ts, item_start, item_end) for item_start, item_end in external_event_windows(payload)):
-            external_overlap = True
-            break
+    ext_sources = overlapping_external_sources(start_ts, end_ts, external_contexts)
+    external_overlap = bool(ext_sources)
 
     incident_id = None
     if isinstance(overlapping_incident, dict):
@@ -84,6 +107,7 @@ def build_time_context(*, start, end, generated_at, incidents=None, selected_inc
         "overlaps_incident": bool(overlapping_incident),
         "incident_id": incident_id,
         "overlaps_external_context": external_overlap,
+        "overlapping_external_event_sources": ext_sources,
         "generated_at": iso(generated_ts),
     }
 
