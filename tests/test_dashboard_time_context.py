@@ -59,8 +59,7 @@ class DashboardTimeContextTest(unittest.TestCase):
             "function selectedTimeSummaryText",
             "function formatTimeRange",
             "function renderExternalContextTimeNote",
-            "function renderSimilarityForTimeContext",
-            "function renderLearningsForTimeContext",
+            "function renderHistoricalPatterns",
         ]
         snippets = "\n\n".join(extract_function(self.html, signature) for signature in functions)
         script = textwrap.dedent(f"""
@@ -150,8 +149,10 @@ class DashboardTimeContextTest(unittest.TestCase):
     def test_section_identity_elements_present(self):
         for el_id in (
             "operatorAssessmentTitle",
-            "similarityCardTitle",
-            "operationalLearningCardTitle",
+            "historicalPatternsTitle",
+            "historicalPatternsCard",
+            "timeContextScope",
+            "timeContextCondition",
             "wanInternetPanelKicker",
             "wanResolverPanelKicker",
             "lanPanelKicker",
@@ -164,8 +165,7 @@ class DashboardTimeContextTest(unittest.TestCase):
         for fn in (
             "function formatTimeRange",
             "function applyDashboardTimeMode",
-            "function renderSimilarityForTimeContext",
-            "function renderLearningsForTimeContext",
+            "function renderHistoricalPatterns",
             "function renderExternalContextTimeNote",
             "function syncDashboardTimeContext",
         ):

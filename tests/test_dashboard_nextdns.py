@@ -126,10 +126,7 @@ class DashboardNextDnsTest(unittest.TestCase):
     def test_dashboard_renders_split_impact_and_application_experience(self):
         html = (ROOT / "viz" / "index.html").read_text()
 
-        self.assertIn("User-facing impact", html)
-        self.assertIn('id="observedImpactInline"', html)
-        self.assertIn('id="mobileObservedImpactInline"', html)
-        self.assertIn("DNS and web checks", html)
+        self.assertIn("DNS &amp; Web Health", html)
         self.assertIn('id="applicationExperienceCard"', html)
         self.assertIn('id="mobileApplicationExperienceCard"', html)
         self.assertIn('id="applicationSystemDnsValue"', html)
@@ -156,19 +153,18 @@ class DashboardNextDnsTest(unittest.TestCase):
         html = (ROOT / "viz" / "index.html").read_text()
 
         self.assertIn('class="row dashboard-overview primary-operator-row"', html)
-        self.assertIn('class="row dashboard-overview local-evidence-row"', html)
+        self.assertNotIn('class="row dashboard-overview local-evidence-row"', html)
         self.assertIn('class="mobile-state-grid"', html)
-        self.assertIn('id="mobileTechnicalConditionValue"', html)
-        self.assertIn('id="mobileUserImpactValue"', html)
-        self.assertIn('id="mobileAffectedScopeValue"', html)
         self.assertIn('id="mobileLikelyCauseValue"', html)
-        self.assertIn('id="supportingContextDetails"', html)
+        self.assertIn('id="mobileHistoricalPatternsCard"', html)
+        self.assertNotIn('id="supportingContextDetails"', html)
         self.assertIn('id="dnsCard"', html)
         self.assertIn('id="mobileDnsCard"', html)
         self.assertIn('id="mobilePrimaryDnsCard"', html)
         self.assertIn('id="mobileDnsDisclosure"', html)
         self.assertIn('id="mobileInternetConditionsCard"', html)
         self.assertIn('id="mobilePowerInfrastructureCard"', html)
+        self.assertIn('id="statusRouterPath"', html)
 
     def test_dashboard_trust_repair_hides_internal_or_empty_primary_text(self):
         html = (ROOT / "viz" / "index.html").read_text()
@@ -179,10 +175,8 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn("dimensions?.current_condition || dimensions?.technical_condition", html)
         self.assertIn("currentCondition: dashboardHealth?.healthDimensions?.current_condition || null", html)
         self.assertIn("bucketOverlapsCurrentWindow(bucket, currentVizState?.currentCondition)", html)
-        self.assertIn('document.getElementById("userImpactCard").style.display = estimatedState ? "" : "none";', html)
-        self.assertIn('document.getElementById("observedImpactInline").textContent = observedImpactDetail(observedImpact, feedback);', html)
+        self.assertIn('document.getElementById("whyUpstreamDisclosure").style.display = attributionSubstantive ? "" : "none";', html)
         self.assertIn('document.getElementById("likelyCauseCard").style.display = attributionSubstantive ? "" : "none";', html)
-        self.assertIn('document.getElementById("refinedAttributionCard").style.display = attributionSubstantive ? "" : "none";', html)
         self.assertIn("Likely issue is not yet localized", html)
         self.assertNotIn("No healthy comparison text emitted", html)
         self.assertNotIn("No action guidance emitted", html)
@@ -204,26 +198,41 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertNotIn("Active member", html)
         self.assertNotIn("No dependency member evidence", html)
 
-    def test_dashboard_supporting_context_remains_collapsed_and_available(self):
+    def test_external_context_and_dns_are_primary(self):
         html = (ROOT / "viz" / "index.html").read_text()
 
-        self.assertIn('<details class="supporting-context" id="supportingContextDetails">', html)
-        self.assertLess(html.index('id="supportingContextDetails"'), html.index('id="dnsCard"'))
-        self.assertLess(html.index('id="supportingContextDetails"'), html.index('id="dependencyStateCard"'))
-        self.assertLess(html.index('id="supportingContextDetails"'), html.index('id="refinedAttributionCard"'))
+        # supportingContextDetails removed — Internet/Power/DNS are now primary rows
+        self.assertNotIn('<details class="supporting-context" id="supportingContextDetails">', html)
+        self.assertNotIn('id="supportingContextDetails"', html)
+        self.assertIn('id="internetConditionsCard"', html)
+        self.assertIn('id="powerInfrastructureCard"', html)
+        self.assertIn('id="dnsCard"', html)
+        # Previously these cards were auto-collapsed; now they are always open
+        self.assertNotIn('supportingContextDetails', html)
         self.assertIn("Cloudflare Radar", html)
         self.assertIn("Power Infrastructure", html)
         self.assertIn("Normal ASN traffic does not prove a measured path is healthy", html)
-        self.assertIn('if (supportingContext) supportingContext.open = false;', html)
 
     def test_dashboard_primary_view_removes_duplicate_action_resolver_and_attribution_cards(self):
         html = (ROOT / "viz" / "index.html").read_text()
-        primary = html[html.index('id="operatorAssessmentCard"'):html.index('id="supportingContextDetails"')]
+        # Slice from Current Summary to the 24-hour history section
+        primary = html[html.index('id="operatorAssessmentCard"'):html.index('id="compareWrap"')]
 
-        self.assertIn("User-facing impact", primary)
-        self.assertIn("What is affected", primary)
         self.assertIn("Likely issue", primary)
-        self.assertIn("DNS and web checks", primary)
+        self.assertIn("DNS &amp; Web Health", primary)
+        self.assertIn("Historical Patterns", primary)
+        self.assertIn("Internet Conditions", primary)
+        self.assertIn("Power Infrastructure", primary)
+        self.assertIn("DNS Activity", primary)
+        # Removed standalone cards must not appear as their own card headings
+        self.assertNotIn('"userImpactCard"', primary)
+        self.assertNotIn('"affectedScopeCard"', primary)
+        self.assertNotIn('"technicalConditionCard"', primary)
+        self.assertNotIn('"evidenceQualityCard"', primary)
+        self.assertNotIn('"dependencyStateCard"', primary)
+        self.assertNotIn('"refinedAttributionCard"', primary)
+        self.assertNotIn('"similarityCard"', primary)
+        self.assertNotIn('"operationalLearningCard"', primary)
         self.assertNotIn("Technical Condition", primary)
         self.assertNotIn("Estimated User Impact", primary)
         self.assertNotIn("Affected Scope", primary)
