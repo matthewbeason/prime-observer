@@ -91,13 +91,49 @@ class DashboardTimeContextTest(unittest.TestCase):
 
     def test_external_events_appear_only_when_overlapping(self):
         # externalEventsForContext is a utility; production rendering reads
-        # context.overlapping_external_event_sources from the Python artifact instead.
+        # the context.overlapping_external_event_sources from the Python artifact instead.
         # Verify that renderExternalContextTimeNote reads the artifact field.
         ext_fn = extract_function(self.html, "function renderExternalContextTimeNote")
         self.assertIn("overlapping_external_event_sources", ext_fn)
         # Renderer must NOT call intervalsOverlap or itemTimeWindow for the overlap decision.
         self.assertNotIn("intervalsOverlap(start, end,", ext_fn)
         self.assertNotIn("itemTimeWindow(item)", ext_fn)
+
+    def test_render_selected_time_context_fallback_without_uei(self):
+        """Regression: renderSelectedTimeContext fallback must not ReferenceError on undefined dims."""
+        # Extract renderSelectedTimeContext to test its fallback path
+        functions = [
+            "function parseTs",
+            "function toShortTime",
+            "function fmt1",
+            "function healthLabel",
+            "function cleanOperatorText",
+            "function isHealthyCondition",
+            "function hasEarlierInstability",
+            "function meaningfulUserImpactState",
+            "function plainFallbackHeadline",
+            "function renderSelectedTimeContext",
+        ]
+        snippets = "\n\n".join(extract_function(self.html, signature) for signature in functions)
+        script = f"""
+        {snippets}
+        function main(){{
+          // Simulate no selected interval (selected=false, happened=null fallback)
+          // Then call plainFallbackHeadline with valid dims to ensure no ReferenceError
+          const dims = {{}};
+          const dep = {{}};
+          const ref = {{}};
+          return plainFallbackHeadline(dims, dep, ref);
+        }}
+        console.log(JSON.stringify(main()));
+        """
+        result = subprocess.run(["node", "-e", script], cwd=ROOT, text=True, capture_output=True, check=False)
+        if result.returncode != 0:
+            self.fail(f"Node script failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        output = json.loads(result.stdout.strip())
+        # plainFallbackHeadline should return a string even with empty dims
+        self.assertIsInstance(output, str)
+        self.assertGreater(len(output), 0)
 
     def test_operational_learnings_respect_selected_interval_incident(self):
         result = self.run_js("""

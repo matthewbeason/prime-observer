@@ -1225,7 +1225,7 @@
       const context = timeContextFromSelection(opts.selectedBucket, opts.timeContextPayload);
       const selected = Boolean(opts.selectedBucket);
       const happened = selectedTimeSummaryText(opts.selectedBucket, opts.selectedEvidence, opts.intervalSummaryPayload)
-        || (selected ? "Selected interval evidence is unavailable." : plainFallbackHeadline(dimensions, dependency, refined));
+        || (selected ? "Selected interval evidence is unavailable." : plainFallbackHeadline(opts.dimensions, opts.dependency, opts.refined));
       const healthy = selected && opts.selectedEvidence
         ? [opts.selectedEvidence.internetSamples && !opts.selectedEvidence.internetRawBadSamples ? "Internet probes" : null, opts.selectedEvidence.resolverSamples && !opts.selectedEvidence.resolverRawBadSamples ? "Resolver probes" : null, opts.selectedEvidence.lanSamples && !opts.selectedEvidence.lanElevatedSamples ? "Router path" : null].filter(Boolean).join(", ") || "No healthy comparison in selected interval"
         : "Current healthy services shown below";
@@ -1828,6 +1828,9 @@
         powerContextPayload: currentVizState.powerContextPayload,
         incidentSimilarityPayload: currentVizState.incidentSimilarityPayload,
         operationalLearningsPayload: currentVizState.operationalLearningsPayload,
+        dimensions: currentVizState.dimensions,
+        dependency: currentVizState.dependency,
+        refined: currentVizState.refined,
       });
     }
 
@@ -3904,6 +3907,11 @@
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary, patternSummary);
         updateAttributionCard(attribution, attributionEvidence);
+
+        const currentDimensions = dashboardHealth?.healthDimensions || null;
+        const currentDependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
+        const currentRefined = networkAttributionPayload?.refined_attribution || currentDimensions?.attribution || null;
+
         renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload, assistantInputPayload, assistantReviewPayload);
         syncDashboardTimeContext({
           selectedBucket,
@@ -3914,7 +3922,14 @@
           powerContextPayload,
           incidentSimilarityPayload,
           operationalLearningsPayload,
+          dimensions: currentDimensions,
+          dependency: currentDependency,
+          refined: currentRefined,
         });
+
+        currentVizState.dimensions = currentDimensions;
+        currentVizState.dependency = currentDependency;
+        currentVizState.refined = currentRefined;
         renderWanHealthTable(internetSeriesMarked, resolverSeriesMarked);
         updateMobileCurrentState();
         scheduleResponsiveRender();
