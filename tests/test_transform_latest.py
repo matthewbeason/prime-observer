@@ -591,7 +591,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("Cloudflare Radar", dashboard_html)
         self.assertIn("Power Infrastructure", dashboard_html)
         self.assertNotIn("DNS Security", dashboard_html)
-        self.assertIn("Normal ASN traffic does not prove a measured path is healthy", dashboard_html)
+        self.assertNotIn("Normal ASN traffic does not prove a measured path is healthy", dashboard_html)
         self.assertNotIn("Limiting or corroborating context only", dashboard_html)
         self.assertIn("Current status", investigation_html)
         self.assertIn("User-facing impact", investigation_html)

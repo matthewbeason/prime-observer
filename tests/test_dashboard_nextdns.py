@@ -135,7 +135,7 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn('id="applicationHttpsValue"', html)
         self.assertIn("function renderApplicationExperience(application)", html)
         self.assertIn("System DNS", html)
-        self.assertIn("Direct secondary resolver", html)
+        self.assertIn("Secondary resolver", html)
         self.assertNotIn("openrouter.ai/api/v1/chat/completions", html)
         self.assertIn('label = "Live";', html)
         self.assertIn("function toCompactRelativeAge(d){", html)
@@ -211,7 +211,7 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertNotIn('supportingContextDetails', html)
         self.assertIn("Cloudflare Radar", html)
         self.assertIn("Power Infrastructure", html)
-        self.assertIn("Normal ASN traffic does not prove a measured path is healthy", html)
+        self.assertNotIn("Normal ASN traffic does not prove a measured path is healthy", html)
 
     def test_dashboard_primary_view_removes_duplicate_action_resolver_and_attribution_cards(self):
         html = (ROOT / "viz" / "index.html").read_text()

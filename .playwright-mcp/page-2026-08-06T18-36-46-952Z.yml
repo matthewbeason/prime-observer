@@ -1,0 +1,184 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - generic [ref=f1e4]:
+      - heading "Prime Observer" [level=1] [ref=f1e5]
+      - generic [ref=f1e6]: Network Observability & User Experience Engine
+    - generic [ref=f1e7]:
+      - link "Open current incident" [ref=f1e8] [cursor=pointer]:
+        - /url: ./investigate.html?view=current
+      - generic [ref=f1e9]:
+        - text: Build
+        - strong [ref=f1e10]: v0.9.0
+  - status [ref=f1e11]: Unable to load local telemetry files. Serve viz/ over HTTP and confirm the generated artifacts are present.
+  - generic [ref=f1e13]:
+    - heading "Current Summary local evidence" [level=4] [ref=f1e14]:
+      - generic [ref=f1e15]: Current Summary
+      - generic [ref=f1e16]: local evidence
+    - generic [ref=f1e17]: Awaiting current summary.
+    - generic [ref=f1e18]:
+      - generic [ref=f1e19]:
+        - generic [ref=f1e20]: What happened
+        - generic [ref=f1e21]: Current evidence loading.
+      - generic [ref=f1e22]:
+        - generic [ref=f1e23]: Stayed healthy
+        - generic [ref=f1e24]: —
+      - generic [ref=f1e25]:
+        - generic [ref=f1e26]: User impact
+        - generic [ref=f1e27]: —
+      - generic [ref=f1e28]:
+        - generic [ref=f1e29]: Scope
+        - generic [ref=f1e30]: —
+      - generic [ref=f1e31]:
+        - generic [ref=f1e32]: Condition
+        - generic [ref=f1e33]: —
+      - generic [ref=f1e34]:
+        - generic [ref=f1e35]: External events
+        - generic [ref=f1e36]: —
+      - generic [ref=f1e37]:
+        - generic [ref=f1e38]: Pattern
+        - generic [ref=f1e39]: —
+  - generic [ref=f1e40]:
+    - generic [ref=f1e41]:
+      - heading "Likely issue evidence" [level=4] [ref=f1e42]:
+        - generic [ref=f1e43]: Likely issue
+        - generic [ref=f1e44]: evidence
+      - generic [ref=f1e45]: —
+      - generic [ref=f1e46]: Only shown when sufficiently supported.
+    - generic [ref=f1e47]:
+      - heading "DNS & Web Health —" [level=4] [ref=f1e48]:
+        - generic [ref=f1e49]: DNS & Web Health
+        - generic [ref=f1e50]: —
+      - generic [ref=f1e51]: —
+      - generic [ref=f1e52]: DNS and web check evidence is unavailable or stale.
+      - generic [ref=f1e53]:
+        - generic [ref=f1e54]:
+          - generic [ref=f1e55]: System DNS
+          - generic [ref=f1e56]: —
+        - generic [ref=f1e57]:
+          - generic [ref=f1e58]: Direct primary resolver
+          - generic [ref=f1e59]: —
+        - generic [ref=f1e60]:
+          - generic [ref=f1e61]: Direct secondary resolver
+          - generic [ref=f1e62]: —
+        - generic [ref=f1e63]:
+          - generic [ref=f1e64]: HTTPS transaction
+          - generic [ref=f1e65]: —
+        - generic [ref=f1e66]:
+          - generic [ref=f1e67]: Freshness
+          - generic [ref=f1e68]: —
+      - generic [ref=f1e69]:
+        - generic [ref=f1e70]:
+          - generic [ref=f1e71]: Resolver paths
+          - generic [ref=f1e72]: —
+        - generic [ref=f1e73]:
+          - generic [ref=f1e74]: Primary
+          - generic [ref=f1e75]: —
+        - generic [ref=f1e76]:
+          - generic [ref=f1e77]: Secondary
+          - generic [ref=f1e78]: —
+        - generic [ref=f1e79]:
+          - generic [ref=f1e80]: Active resolver
+          - generic [ref=f1e81]: —
+        - generic [ref=f1e82]:
+          - generic [ref=f1e83]: Resolver coverage
+          - generic [ref=f1e84]: —
+  - generic [ref=f1e86]:
+    - heading "Internet Conditions Cloudflare Radar" [level=4] [ref=f1e87]:
+      - generic [ref=f1e88]: Internet Conditions
+      - generic [ref=f1e89]: Cloudflare Radar
+    - generic [ref=f1e91]: —
+    - generic [ref=f1e92]:
+      - generic [ref=f1e93]: —
+      - generic [ref=f1e94]: Normal ASN traffic does not prove a measured path is healthy; this is context only.
+      - generic [ref=f1e95]:
+        - generic [ref=f1e96]:
+          - generic [ref=f1e97]: Scope
+          - generic [ref=f1e98]: —
+        - generic [ref=f1e99]:
+          - generic [ref=f1e100]: Updated
+          - generic [ref=f1e101]: —
+      - group [ref=f1e102]:
+        - generic "View Radar evidence >" [ref=f1e103] [cursor=pointer]
+  - generic [ref=f1e105]:
+    - heading "DNS Activity NextDNS" [level=4] [ref=f1e106]:
+      - generic [ref=f1e107]: DNS Activity
+      - generic [ref=f1e108]: NextDNS
+    - generic [ref=f1e110]: —
+    - generic [ref=f1e111]:
+      - generic [ref=f1e112]: —
+      - generic [ref=f1e113]:
+        - generic [ref=f1e114]:
+          - generic [ref=f1e115]: Top queried
+          - generic [ref=f1e116]: —
+        - generic [ref=f1e118]:
+          - generic [ref=f1e119]: Top blocked
+          - generic [ref=f1e120]: —
+        - generic [ref=f1e122]:
+          - generic [ref=f1e123]: Freshness
+          - generic [ref=f1e124]: —
+      - group [ref=f1e125]:
+        - generic "View DNS activity >" [ref=f1e126] [cursor=pointer]
+  - generic [ref=f1e128]:
+    - heading "24-hour network history last 24h" [level=4] [ref=f1e129]:
+      - generic [ref=f1e130]: 24-hour network history
+      - generic [ref=f1e131]: last 24h
+    - generic [ref=f1e132]: Current network checks across monitored internet and resolver target groups. Use this to track latency, jitter, loss, and sustained instability over time.
+  - generic [ref=f1e133]:
+    - generic [ref=f1e134]:
+      - generic [ref=f1e135]: Primary evidence view
+      - generic [ref=f1e136]:
+        - heading "Internet instability timeline" [level=3] [ref=f1e137]
+        - generic [ref=f1e138]: "Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts"
+      - 'group "Internet instability timeline Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts" [ref=f1e140]'
+      - generic [ref=f1e141]: Click a bucket to pin a 15-minute interval. That same interval is outlined in blue across all three charts below.
+    - generic [ref=f1e142]:
+      - generic [ref=f1e143]: Selected time window
+      - generic [ref=f1e144]:
+        - heading "Select a heatmap bucket" [level=3] [ref=f1e145]
+        - generic [ref=f1e146]: Tap or click a WAN heatmap bucket to review that same 15-minute interval across the evidence chips and all three charts.
+      - generic [ref=f1e147]:
+        - generic [ref=f1e148]:
+          - heading "Interval" [level=4] [ref=f1e149]
+          - generic [ref=f1e150]: —
+          - generic [ref=f1e151]: No interval selected.
+        - generic [ref=f1e152]:
+          - heading "Why This Interval" [level=4] [ref=f1e153]
+          - generic [ref=f1e154]: No selection
+          - generic [ref=f1e155]: Choose a heatmap bucket to pin the same interval across all three charts.
+        - generic [ref=f1e156]:
+          - heading "Internet Probes" [level=4] [ref=f1e157]
+          - generic [ref=f1e158]: —
+          - generic [ref=f1e159]: No interval selected.
+        - generic [ref=f1e160]:
+          - heading "Resolver Probes" [level=4] [ref=f1e161]
+          - generic [ref=f1e162]: —
+          - generic [ref=f1e163]: No interval selected.
+        - generic [ref=f1e164]:
+          - heading "LAN Gateway" [level=4] [ref=f1e165]
+          - generic [ref=f1e166]: —
+          - generic [ref=f1e167]: No interval selected.
+      - generic [ref=f1e168]:
+        - generic [ref=f1e169]: Need event-level tables or nearby context?
+        - link "Open current incident" [ref=f1e170] [cursor=pointer]:
+          - /url: ./investigate.html?view=current
+        - button "Clear selection" [ref=f1e171]
+    - generic [ref=f1e172]:
+      - generic [ref=f1e173]: Instrument Panel
+      - generic [ref=f1e174]:
+        - heading "WAN — Internet probes p95 latency (ms)" [level=3] [ref=f1e175]
+        - generic [ref=f1e176]: Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval
+      - img "WAN — Internet probes p95 latency (ms) Cloudflare and Quad9 • line = p95 latency only • shaded bands come from composite heatmap buckets and may be driven by internet or resolver p95, jitter, or loss • blue outline = selected interval" [ref=f1e177]
+    - generic [ref=f1e178]:
+      - generic [ref=f1e179]: Instrument Panel
+      - generic [ref=f1e180]:
+        - heading "WAN — Resolver probes p95 latency (ms)" [level=3] [ref=f1e181]
+        - generic [ref=f1e182]: NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval
+      - img "WAN — Resolver probes p95 latency (ms) NextDNS primary and secondary resolver path probes • shaded bands come from composite heatmap buckets • blue outline = selected interval" [ref=f1e183]
+    - generic [ref=f1e184]:
+      - generic [ref=f1e185]: Local Path Instrument
+      - generic [ref=f1e186]:
+        - heading "LAN (Gateway) — p95 latency (ms)" [level=3] [ref=f1e187]
+        - generic [ref=f1e188]: Same path styling as WAN chart
+      - img "LAN (Gateway) — p95 latency (ms) Same path styling as WAN chart" [ref=f1e189]
+      - generic [ref=f1e190]: "Data: latest.csv • Refresh: 5s"
+  - tooltip

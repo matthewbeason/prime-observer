@@ -534,7 +534,7 @@
   <div class="header">
     <div class="titleblock">
       <h1>Prime Observer</h1>
-      <div class="subtitle" id="subtitle">Network Observability & User Experience Engine</div>
+      <div class="subtitle" id="subtitle">Network Observability &amp; User Experience Engine</div>
       <div class="egg-message header-egg" id="seldonMessage">Potential Seldon Crisis detected.</div>
     </div>
     <div class="badges">
@@ -614,7 +614,7 @@
     <div class="card" id="likelyCauseCard">
       <h4><span>Likely issue</span><span class="pill" id="likelyCausePill">evidence</span></h4>
       <div class="value" id="likelyCauseValue">—</div>
-      <div class="legacy-disclosure" id="likelyCauseDetail">Only shown when sufficiently supported.</div>
+      <div class="legacy-disclosure" id="likelyCauseDetail">—</div>
       <details class="card-disclosure" id="whyUpstreamDisclosure" style="display:none;">
         <summary id="whyUpstreamDisclosureSummary">Why this looks upstream &#9657;</summary>
         <div class="card-disclosure-body">
@@ -658,7 +658,6 @@
       <div class="value" style="font-size:20px;" id="internetConditionsValue">—</div>
       <div id="internetConditionsDetails">
         <div class="status-summary" id="internetConditionsSummary">—</div>
-        <div class="legacy-disclosure">Normal ASN traffic does not prove a measured path is healthy; this is context only.</div>
         <div class="metric-stack" style="margin-top:8px;">
           <div class="metric-pair"><span class="label">Scope</span><span class="metric-value" id="internetConditionsScope">—</span></div>
           <div class="metric-pair"><span class="label">Updated</span><span class="metric-value" id="internetConditionsUpdated">—</span></div>
@@ -2490,7 +2489,7 @@
       document.getElementById("likelyCauseValue").textContent = attributionSubstantive ? faultDomain : "—";
       document.getElementById("likelyCauseDetail").textContent = Array.isArray(refined?.evidence_for) && refined.evidence_for.length
         ? refined.evidence_for.slice(0, 2).map(cleanOperatorText).join("; ")
-        : "Only shown when sufficiently supported.";
+        : "—";
       setPillText("likelyCausePill", attributionSubstantive ? healthLabel(refined?.confidence) : "Hidden", attributionSubstantive ? healthTone("confidence", refined?.confidence) : "neutral");
 
       // Why upstream disclosure inside Likely Issue
