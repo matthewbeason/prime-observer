@@ -1225,7 +1225,7 @@
       const context = timeContextFromSelection(opts.selectedBucket, opts.timeContextPayload);
       const selected = Boolean(opts.selectedBucket);
       const happened = selectedTimeSummaryText(opts.selectedBucket, opts.selectedEvidence, opts.intervalSummaryPayload)
-        || (selected ? "Selected interval evidence is unavailable." : document.getElementById("operatorAssessmentHeadline").textContent || "Current evidence loaded.");
+        || (selected ? "Selected interval evidence is unavailable." : plainFallbackHeadline(dimensions, dependency, refined));
       const healthy = selected && opts.selectedEvidence
         ? [opts.selectedEvidence.internetSamples && !opts.selectedEvidence.internetRawBadSamples ? "Internet probes" : null, opts.selectedEvidence.resolverSamples && !opts.selectedEvidence.resolverRawBadSamples ? "Resolver probes" : null, opts.selectedEvidence.lanSamples && !opts.selectedEvidence.lanElevatedSamples ? "Router path" : null].filter(Boolean).join(", ") || "No healthy comparison in selected interval"
         : "Current healthy services shown below";
