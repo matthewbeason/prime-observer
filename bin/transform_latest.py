@@ -74,6 +74,7 @@ WINDOW = dt.timedelta(hours=WINDOW_HOURS)
 # is over.
 TELEMETRY_PATTERN = "bakeoff_*.csv"
 BASELINE_FILE_COUNT = 10
+BASELINE_ACTIVE_SOURCE_FILES = 2
 BASELINE_HISTORY_SCHEMA_VERSION = 1
 BASELINE_HISTORY_MODEL_VERSION = "prime_observer.baseline_history.v1"
 BASELINE_HISTORY_MIN_SAMPLES = 24
@@ -82,6 +83,7 @@ BASELINE_HISTORY_MAX_VERSIONS = 5
 BASELINE_HISTORY_STALE_DAYS = 21
 BASELINE_CHANGE_DELTA_PCT = 10.0
 BASELINE_HISTORY_RECENT_SAMPLES = 3
+BASELINE_RECOVERY_IMPROVEMENT_DELTA_PCT = 35.0
 
 TARGET_COLUMNS = ("target_label", "target_class")
 BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct", "baseline_sample_count")
@@ -367,6 +369,8 @@ def baseline_guardrail_status(samples, *, application_experience, operator_impac
         recent = percentile(p95_values[-BASELINE_HISTORY_RECENT_SAMPLES:], 50)
         if older and recent and ((recent - older) / older) * 100.0 >= 35.0:
             breaches.append("rapid_worsening")
+        if older and recent and ((older - recent) / older) * 100.0 >= BASELINE_RECOVERY_IMPROVEMENT_DELTA_PCT:
+            breaches.append("post_recovery_stabilizing")
     return {"status": "breached" if breaches else "clear", "breaches": breaches}
 
 
@@ -402,7 +406,12 @@ def build_baseline_history(*, generated_at, previous_history=None, application_e
     for key in sorted(set(grouped) | set(previous_targets)):
         all_target_samples = sorted(grouped.get(key, []), key=lambda item: item["t"])
         all_source_files = sorted({sample["source_file"] for sample in all_target_samples})
-        selected_source_files = set(all_source_files[-BASELINE_HISTORY_MIN_SOURCE_FILES:])
+        # The active durable baseline is the recent normal now: use the newest
+        # two telemetry source files while preserving older accepted ranges in
+        # version_history. The two-file window matches the existing minimum
+        # source-file requirement, so adaptation remains deterministic and
+        # explainable without letting very old samples permanently vote.
+        selected_source_files = set(all_source_files[-BASELINE_ACTIVE_SOURCE_FILES:])
         target_samples = [sample for sample in all_target_samples if sample["source_file"] in selected_source_files]
         previous = previous_targets.get(key) if isinstance(previous_targets.get(key), dict) else None
         if not target_samples:

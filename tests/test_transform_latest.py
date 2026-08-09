@@ -412,6 +412,177 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(secondary["previous_baseline_summary"]["baseline_version"], 3)
         self.assertEqual(secondary["version_history"][0]["baseline_version"], 3)
 
+    def test_active_baseline_uses_recent_source_window_and_preserves_prior_range(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": (now - dt.timedelta(days=3)).isoformat(),
+            "baseline_version": 7,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "identity": {"phase": "FIBER", "target_class": "resolver_probe", "member_id": "nextdns_secondary", "host": "45.90.30.134"},
+                    "baseline_version": 7,
+                    "window": {"start": "2026-06-10T00:00:00+00:00", "end": "2026-06-11T00:00:00+00:00"},
+                    "sample_count": 24,
+                    "median": 40.0,
+                    "p95": 42.0,
+                    "accepted_state": "within_target",
+                    "version_history": [],
+                }
+            },
+        }
+        self.module.BASELINE_HISTORY_OUT.write_text(json.dumps(previous))
+        self.write_rows_file("bakeoff_20260610.csv", self.baseline_history_rows(now - dt.timedelta(days=5), secondary=40))
+        self.write_rows_file("bakeoff_20260611.csv", self.baseline_history_rows(now - dt.timedelta(days=4), secondary=40))
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=176))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        secondary = history["targets"]["FIBER|resolver_probe|nextdns_secondary"]
+        self.assertEqual(secondary["baseline_change_status"], "changed")
+        self.assertEqual(secondary["median"], 176.0)
+        self.assertEqual(secondary["accepted_state"], "elevated_but_stable")
+        self.assertEqual(secondary["source_files"], ["bakeoff_20260614.csv", "bakeoff_20260615.csv"])
+        self.assertEqual(secondary["previous_baseline_summary"]["median"], 40.0)
+        self.assertEqual(secondary["version_history"][0]["median"], 40.0)
+
+    def test_insufficient_recent_source_files_retains_previous_durable_baseline(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": (now - dt.timedelta(days=1)).isoformat(),
+            "baseline_version": 4,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "identity": {"phase": "FIBER", "target_class": "resolver_probe", "member_id": "nextdns_secondary", "host": "45.90.30.134"},
+                    "baseline_version": 4,
+                    "window": {"start": "2026-06-10T00:00:00+00:00", "end": "2026-06-11T00:00:00+00:00"},
+                    "sample_count": 24,
+                    "median": 40.0,
+                    "p95": 42.0,
+                    "accepted_state": "within_target",
+                    "version_history": [],
+                }
+            },
+        }
+        self.module.BASELINE_HISTORY_OUT.write_text(json.dumps(previous))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=176))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        secondary = history["targets"]["FIBER|resolver_probe|nextdns_secondary"]
+        self.assertEqual(secondary["median"], 40.0)
+        self.assertEqual(secondary["baseline_change_status"], "retained_guardrail_or_insufficient_evidence")
+        self.assertIn("insufficient_source_files", secondary["blocked_update"]["reasons"])
+
+    def test_immediate_post_recovery_transition_does_not_train_baseline(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": (now - dt.timedelta(days=1)).isoformat(),
+            "baseline_version": 5,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "identity": {"phase": "FIBER", "target_class": "resolver_probe", "member_id": "nextdns_secondary", "host": "45.90.30.134"},
+                    "baseline_version": 5,
+                    "window": {"start": "2026-06-10T00:00:00+00:00", "end": "2026-06-11T00:00:00+00:00"},
+                    "sample_count": 24,
+                    "median": 176.0,
+                    "p95": 178.0,
+                    "accepted_state": "elevated_but_stable",
+                    "version_history": [],
+                }
+            },
+        }
+        self.module.BASELINE_HISTORY_OUT.write_text(json.dumps(previous))
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=260))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=40))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        secondary = history["targets"]["FIBER|resolver_probe|nextdns_secondary"]
+        self.assertEqual(secondary["median"], 176.0)
+        self.assertEqual(secondary["baseline_change_status"], "retained_guardrail_or_insufficient_evidence")
+        self.assertIn("post_recovery_stabilizing", secondary["blocked_update"]["reasons"])
+
+    def test_sustained_healthy_post_recovery_evidence_resumes_baseline_learning(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": (now - dt.timedelta(days=1)).isoformat(),
+            "baseline_version": 5,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "identity": {"phase": "FIBER", "target_class": "resolver_probe", "member_id": "nextdns_secondary", "host": "45.90.30.134"},
+                    "baseline_version": 5,
+                    "window": {"start": "2026-06-10T00:00:00+00:00", "end": "2026-06-11T00:00:00+00:00"},
+                    "sample_count": 24,
+                    "median": 176.0,
+                    "p95": 178.0,
+                    "accepted_state": "elevated_but_stable",
+                    "version_history": [],
+                }
+            },
+        }
+        self.module.BASELINE_HISTORY_OUT.write_text(json.dumps(previous))
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=40))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=40))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        secondary = history["targets"]["FIBER|resolver_probe|nextdns_secondary"]
+        self.assertEqual(secondary["baseline_change_status"], "changed")
+        self.assertEqual(secondary["median"], 40.0)
+        self.assertEqual(secondary["accepted_state"], "within_target")
+        self.assertEqual(secondary["version_history"][0]["median"], 176.0)
+
+    def test_rolling_baseline_adaptation_is_generic_for_internet_probe(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+        previous = {
+            "schema_version": 1,
+            "model_version": "prime_observer.baseline_history.v1",
+            "generated_at": (now - dt.timedelta(days=3)).isoformat(),
+            "baseline_version": 6,
+            "targets": {
+                "FIBER|internet_probe|1.1.1.1": {
+                    "identity": {"phase": "FIBER", "target_class": "internet_probe", "member_id": "1.1.1.1", "host": "1.1.1.1"},
+                    "baseline_version": 6,
+                    "window": {"start": "2026-06-10T00:00:00+00:00", "end": "2026-06-11T00:00:00+00:00"},
+                    "sample_count": 24,
+                    "median": 20.0,
+                    "p95": 21.0,
+                    "accepted_state": "within_target",
+                    "version_history": [],
+                }
+            },
+        }
+        self.module.BASELINE_HISTORY_OUT.write_text(json.dumps(previous))
+        self.write_rows_file("bakeoff_20260614.csv", self.baseline_history_rows(now - dt.timedelta(days=2), secondary=35, primary=35))
+        self.write_rows_file("bakeoff_20260615.csv", self.baseline_history_rows(now - dt.timedelta(hours=2), secondary=35, primary=35))
+        self.write_application_experience(now)
+
+        self.run_main_capturing_output()
+
+        history = json.loads(self.module.BASELINE_HISTORY_OUT.read_text())
+        internet = history["targets"]["FIBER|internet_probe|1.1.1.1"]
+        self.assertEqual(internet["baseline_change_status"], "changed")
+        self.assertEqual(internet["median"], 30.0)
+        self.assertEqual(internet["version_history"][0]["median"], 20.0)
+        self.assertEqual(internet["source_files"], ["bakeoff_20260614.csv", "bakeoff_20260615.csv"])
+
     def test_durable_baseline_blocks_update_for_insufficient_samples_loss_timeout_or_app_failure(self):
         now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
         cases = [
