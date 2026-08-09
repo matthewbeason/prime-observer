@@ -98,6 +98,62 @@ The repository defines six dashboard questions:
 Changes should be judged against those questions rather than broadening the
 product casually.
 
+### Normal Is Learned, Not Defined By Static Thresholds
+
+Normal is learned from observed telemetry over the most recent eligible
+telemetry source files. The active durable baseline uses the newest two
+telemetry source files, minimum existing sample and source requirements remain,
+and older baseline versions are preserved as historical memory in
+`viz/baseline_history.json`. Sustained stable new behavior can become current
+normal.
+
+Static WAN thresholds remain safety guardrails only. Loss, timeout, DNS/HTTPS
+failure, gateway problems, correlated degradation, rapid worsening, severe
+excursions, and confirmed or major impact must not be normalized away. Raw
+observations and history remain factual even when adaptive semantics suppress a
+bad moment.
+
+### Sharp Post-Recovery Transitions Do Not Immediately Retrain
+
+A durable baseline is not retrained when the older observed median is
+materially better than the most recent samples. This `post_recovery_stabilizing`
+guardrail prevents an incident recovery from immediately being learned away as
+normal and keeps the stable recovery window factual.
+
+### Visualization First, Narrative Second, Details Last
+
+Operators should see first, understand second, and investigate only when
+necessary. The heatmap and latency line charts are core product functionality
+and must be preserved. A visualization must reduce cognitive load, not decorate
+the UI; pie charts are not part of the Prime Observer visual vocabulary. New
+features should first ask whether they can be communicated visually, and the
+dashboard should not grow cards simply because a new artifact or capability
+exists.
+
+### Python Owns Semantics; The Browser Is Renderer-Only
+
+Deterministic Python is authoritative for facts, evidence, thresholds, event
+boundaries, lifecycle, affected scope, classifications, baselines, freshness,
+semantic hashing, safety constraints, and fallback guidance. The browser renders
+generated artifacts and maps emitted fields to presentation; it must not own
+health, attribution, baseline, incident, or next-action semantics.
+
+### AI Interprets Evidence, It Does Not Own It
+
+Valid/current OpenRouter-backed Operator Assistant output is the primary
+operator-facing interpretation when it is valid for the current evidence
+package, and a deterministic fallback remains available when it is not. The LLM
+may synthesize likely meaning, uncertainty, and safe next actions from
+deterministic evidence, but it must not invent facts or contradict deterministic
+evidence, and it must not replace the visualization.
+
+### Renderer Changes Require Browser Smoke Validation
+
+Any renderer, initialization, or time-context change affecting `viz/index.html`
+requires browser smoke validation through local HTTP covering the heatmap, all
+primary line charts, tooltips and interactions, selected-time behavior, and no
+fatal console errors.
+
 ## Documented Caveats
 
 These are documented in the repository, but not fully resolved into additional

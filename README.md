@@ -6,9 +6,11 @@ Prime Observer is a local-first network experience observability engine focused 
 
 It combines measured telemetry, deterministic health modeling, Observation projection, historical investigation evidence, and optional DNS/security context into a single local-first workflow.
 
-It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, pattern awareness, DNS security context, and operational simplicity.
+It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, learned baselines, pattern awareness, incident investigation, DNS security context, and operational simplicity.
 
-Current release: **v0.9.0**
+Current release: **v0.9.0** (latest tag). `HEAD` is ahead of the tag with
+committed lifecycle, adaptive-baseline, interval, similarity, operational
+learning, temporal workspace, and dashboard presentation work.
 
 Previous production release: **v0.7.2**
 
@@ -18,7 +20,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current v0.9.0 dashboard
+Current dashboard (renders committed post-v0.9.0 work)
 
 Prime Observer Dashboard
 
@@ -48,6 +50,8 @@ Prime Observer is more opinionated:
 - It focuses on user noticeability rather than raw latency alone.
 - It distinguishes turbulence from sustained degradation.
 - It compares current WAN behavior against historical behavior for the same hour of day.
+- It learns normal from observed telemetry rather than static thresholds alone,
+  keeping static thresholds as safety guardrails.
 - It attempts lightweight LAN vs WAN attribution.
 - It can include optional DNS/security context without becoming a DNS analytics platform.
 - It runs locally with flat CSV and JSON files.
@@ -102,6 +106,32 @@ The dashboard labels behavior as better than usual, normal, slightly elevated, o
 Pattern Confidence is based on `baseline_sample_count`, the number of historical WAN samples contributing to the baseline for that hour.
 
 Sparse baselines are treated as learning or low confidence so the dashboard does not overstate weak historical context.
+
+### Learned Baselines
+
+Normal is learned from observed telemetry rather than defined by static latency
+thresholds. Static WAN thresholds remain safety guardrails only.
+
+Prime Observer maintains durable per-target baseline memory in
+`viz/baseline_history.json`. The active durable baseline is learned from the
+newest two eligible telemetry source files, minimum existing sample and source
+requirements remain, and older accepted baseline ranges are preserved as
+version history. Sustained stable new behavior can become current normal.
+
+Sharp post-recovery transitions block immediate retraining: when the older
+observed median is materially better than the most recent samples
+(`post_recovery_stabilizing`), the baseline is not retrained. Loss, timeout,
+DNS/HTTPS failure, gateway problems, correlated degradation, rapid worsening,
+severe excursions, and confirmed or major impact are never normalized away. Raw
+observations and history remain factual even when adaptive semantics suppress a
+bad moment.
+
+When a durable baseline is valid for a resolver member, adaptive metadata emits
+`baseline_source: durable`, `durable_baseline_version`, `durable_baseline_age`,
+`deviation_from_durable_baseline`, and `baseline_change_status`. Incident
+eligibility still respects guardrails; durable baselines improve the comparison
+input but do not suppress outages, packet loss, timeouts, DNS/HTTPS failures,
+gateway failures, broad correlated failures, or reported major impact.
 
 ### Network Attribution
 
@@ -586,9 +616,13 @@ no database is required. If search, collaboration, or multi-user requirements
 eventually justify PostgreSQL or Supabase, it should consume canonical artifacts
 as an optional index/projection rather than replace them.
 
-The next planned history capability after hardening is direct links/bookmarks for
-historical investigations. Event comparison and recurrence/similarity detection
-remain future work.
+The next planned history capability after hardening is Needs Matthew Review.
+Direct links/bookmarks for current, selected-interval, and historical
+investigation entry points are implemented
+(`?view=current`, `?view=interval&start=<ISO>&end=<ISO>`, and
+`?view=incident&event=<event-id>`). Deterministic current-incident similarity
+and operational learning over completed incidents are implemented
+(`viz/incident_similarity.json`, `viz/operational_learnings.json`).
 
 The investigation workflow also maintains an optional generated Investigation
 Index at `viz/investigation_index.json`. The index is a local catalog of
@@ -771,6 +805,9 @@ Prime Observer favors:
 - evidence-first architecture
 - privacy-first local execution
 - user-experience context over raw metric volume
+- visualization first, narrative second, details last
+- learned normal over static thresholds, with static thresholds as safety
+  guardrails
 
 Prime Observer avoids:
 
@@ -781,6 +818,28 @@ Prime Observer avoids:
 - browser-side secrets
 - black-box scoring
 - alert noise
+- decorative visualization (pie charts are not part of the visual vocabulary)
+- dashboard cards that exist only because a new artifact exists
+
+A visualization must reduce cognitive load, not decorate the UI. The heatmap
+and latency line charts are core product functionality and must be preserved.
+New features should first ask: "Can this be communicated visually?"
+
+## Testing
+
+The project currently has approximately 466 tests. Test count is not a goal;
+the focus is unique, high-value coverage. Test-suite maintenance prioritizes:
+
+- unique/high-value tests
+- removal of duplicate or overlapping tests
+- removal of brittle, implementation-coupled tests
+- removal of obsolete tests
+- integration coverage
+- a small set of critical browser smoke tests
+
+Do not add tests merely to grow the count, and do not delete tests without
+confirming the behavior is covered elsewhere. See `docs/validation.md` for the
+canonical validation guide.
 
 ## What This Is Not
 
@@ -794,6 +853,26 @@ Prime Observer is not:
 - an AI-driven diagnosis engine
 
 It is a focused local dashboard for understanding whether network behavior is healthy, unusual, attributable, sustained, and likely noticeable.
+
+## Release Notes: v0.9.0
+
+v0.9.0 adds optional external context without expanding Prime Observer into a
+provider-comparison tool.
+
+v0.9.0 includes:
+
+- Added optional Cloudflare Radar Internet Conditions context as a local
+  generated artifact.
+- Added optional provider ASN scoping for ISP-specific traffic context.
+- Enriched Internet Conditions artifact and dashboard presentation.
+- Preserved the deterministic health model and evidence-first boundaries.
+
+Since v0.9.0, HEAD has committed additional work ahead of the tag, including the
+event-aligned investigation lifecycle, operator-first Investigation redesign,
+multidimensional health rendering, adaptive and durable baselines, interval
+summaries, incident similarity, operational learning, temporal workspace
+context, and dashboard presentation work. See `HANDOFF.md`, `ROADMAP.md`, and
+`DECISIONS.md` for the current committed state.
 
 ## Release Notes: v0.8.0
 
@@ -844,7 +923,7 @@ v0.7.1 includes:
 
 ## Release Boundaries
 
-v0.8.0 intentionally does not migrate or expand:
+The `v0.8.0` release intentionally did not migrate or expand:
 
 - User Noticeability semantics
 - Pattern Awareness semantics
@@ -856,6 +935,13 @@ v0.8.0 intentionally does not migrate or expand:
 - weather, power, or ISP status correlation
 - LLM explanations
 - major dashboard refactors
+
+Some of those boundaries have since moved, all committed at `HEAD` ahead of the
+`v0.9.0` tag: optional APS Power Infrastructure context now exists as an
+Environmental Context provider, OpenRouter-backed Operator Assistant
+interpretation is the primary operator-facing narrative when valid, and the
+dashboard and Investigation pages have been refactored. The boundaries that
+remain are captured in `ROADMAP.md` under Deferred Or Explicitly Avoided Areas.
 
 ## License
 

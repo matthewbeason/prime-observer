@@ -3,98 +3,99 @@
 ## Current State
 
 - Branch: `main`
-- Current release: `v0.9.0`
 - Latest tag: `v0.9.0`
-- `HEAD` is ahead of the `v0.9.0` release tag and includes later lifecycle work
+- `HEAD` is ahead of the `v0.9.0` release tag with committed lifecycle,
+  adaptive-baseline, interval, similarity, operational learning, temporal
+  workspace, and dashboard presentation work
 
 Prime Observer currently ships:
 
 - deterministic health modeling over local telemetry
 - observation-backed attribution and episode semantics
-- automatic current-event investigation generation
-- immutable completed-event investigation history
+- automatic current-event investigation generation with incident lifecycle,
+  phases, and deterministic replay
+- immutable completed-event investigation history with similarity and
+  operational learning projections
 - operator-first Investigation rendering with deterministic fallback assessment
 - OpenRouter-backed Operator Assistant interpretation as the primary
   operator-facing narrative when output is valid for the evidence package
 - Python-owned multidimensional health evaluation with additive artifact fields
   rendered in the dashboard and Investigation UI
+- adaptive learned baselines with durable baseline memory in
+  `viz/baseline_history.json`, a recency-aware active window, and
+  post-recovery stabilization protection
 - impact-v2 fields that preserve legacy `user_impact` while separating
   estimated user impact from observed reports
 - asynchronous pending-work consumption through a separate local worker and
   tracked 60-second LaunchAgent
 - manual requested-window investigation generation and viewing
+- direct link/bookmark entry points for current, selected-interval, and
+  completed incident views
+- one deterministic selected-interval summary rendered on exact route match
 - optional NextDNS summary context
 - optional Cloudflare Radar Internet Conditions context
+- optional APS Power Infrastructure context
 - optional local Application Experience probes that feed estimated impact only
 - local operator impact feedback that feeds observed impact only
 
 ## Recent Completed Work
 
-Repository-backed recent milestones:
+Repository-backed recent milestones (all committed):
 
 - `v0.8.0`: Observation domain foundation
 - `v0.8.1`: Bucket selection alignment
 - `v0.8.2`: Dashboard operator polish
 - `v0.9.0`: Internet Conditions external context
-- post-`v0.9.0` uncommitted work: event-aligned automatic investigation
-  lifecycle, hardened completed-event history, and operator-first Investigation
-  redesign with asynchronous Operator Assistant generation and last-known-good
-  publication behavior
+- post-`v0.9.0` event-aligned automatic investigation lifecycle and hardened
+  completed-event history
+- post-`v0.9.0` operator-first Investigation redesign with asynchronous
+  Operator Assistant generation and last-known-good publication behavior
 - post-`v0.9.0` health-dimensions work: Phase 1 calibration document, Phase 2
   deterministic evaluator with additive artifact output, and Phase 3 browser
   rendering for emitted multidimensional fields
-- post-`v0.9.0` Investigation IA work: Phase 4.2 redesigns
-  `viz/investigate.html` as an Incident Record over existing artifacts, keeping
-  evaluator semantics and schemas unchanged
-- post-`v0.9.0` Phase 4.3 work: Operator Assistant model selection is explicitly
-  pinned to `google/gemini-3.5-flash` by default, provider auto-routing is
-  rejected, and additive impact-v2 fields distinguish estimated and observed
-  user impact
-- post-`v0.9.0` Phase 4.4 work adds a separate local application-experience
-  collector and `viz/application_experience.json`; transform reads the artifact
-  without network calls and uses fresh evidence only for estimated user impact
-- post-`v0.9.0` Phase 4.5 work adds `bin/record_operator_impact.py`, local
-  `viz/operator_impact_feedback.json`, split estimated/observed impact
-  presentation, and dashboard/Investigation rendering for Application Experience
-  evidence
-- post-`v0.9.0` Incident Intelligence Phase 1 makes Investigation entry points
-  explicit (`view=current`, `view=interval`, `view=incident`) and adds an
-  additive Python-owned `incident_record` story to newly generated automatic
-  investigations
-- post-`v0.9.0` Incident Intelligence Phase 2 adds additive Python-owned
-  `incident_phases` for Before, During, and optional Recovery story sections;
-  the browser renders these fields without inferring phase semantics
-- post-`v0.9.0` Incident Intelligence Phase 3 adds additive Python-owned
-  `incident_replay` milestones so Investigation can render deterministic replay
-  without browser-side inference or historical similarity
-- post-`v0.9.0` Adaptive Baseline Phase C adds generated durable baseline memory
-  in `viz/baseline_history.json`; transform learns compact per-target summaries
-  across recent telemetry files and health dimensions prefer valid durable
-  resolver baselines before falling back to in-window evidence
-
-Recent commits before `v0.9.0` show this sequence:
-
-- added Internet Conditions context
-- refreshed it in the scheduled workflow
-- enriched the Internet Conditions artifact and dashboard presentation
-- prepared the `v0.9.0` release
+- post-`v0.9.0` Investigation IA redesign of `viz/investigate.html` as an
+  Incident Record over existing artifacts
+- post-`v0.9.0` Operator Assistant model selection pinned to
+  `google/gemini-3.5-flash` by default, provider auto-routing rejected, and
+  additive impact-v2 fields distinguish estimated and observed user impact
+- post-`v0.9.0` separate local application-experience collector feeding
+  estimated impact only
+- post-`v0.9.0` `bin/record_operator_impact.py` and local operator impact
+  feedback feeding observed impact only
+- post-`v0.9.0` Incident Intelligence Phases 1-3: explicit entry points,
+  Python-owned `incident_record`, `incident_phases`, and deterministic replay
+- post-`v0.9.0` Adaptive Baseline Phases A-C and recency-aware durable
+  baselines: resolver adaptive classification metadata, adaptive incident
+  eligibility, and `viz/baseline_history.json` durable memory with a newest-two
+  active source window and post-recovery stabilization guardrail
+- post-`v0.9.0` Temporal Memory Phase 1: one deterministic selected-interval
+  summary in `viz/interval_summary.json`
+- post-`v0.9.0` Incident Intelligence Phase E: deterministic current-incident
+  similarity in `viz/incident_similarity.json`
+- post-`v0.9.0` Operational Learning Phase 1: deterministic lessons in
+  `viz/operational_learnings.json`
+- post-`v0.9.0` Temporal Workspace Phase 1: default selected-time context in
+  `viz/time_context.json`
+- post-`v0.9.0` dashboard presentation work: consolidated hierarchy, unified
+  time context, simplified operator dashboard, and restored visualization
+  rendering
 
 Next conceptual milestone:
 
-- define Environmental Context architecture before evaluating additional
-  providers
+- `Needs Matthew Review` after the current committed state is lived with
 
 ## Current Architecture State
 
 Current artifact flow:
 
 - telemetry history in `data/bakeoff_YYYYMMDD.csv`
-- `bin/transform_latest.py` generates dashboard, observation, mutable current
-  investigation, write-once completed snapshot, and investigation catalog
-  artifacts
+- `bin/transform_latest.py` generates dashboard, observation, baseline,
+  interval, similarity, learning, time-context, mutable current investigation,
+  write-once completed snapshot, and investigation catalog artifacts
 - `bin/build_investigation.py` generates manual requested-window evidence
   artifacts
-- optional fetchers generate DNS and Internet Conditions summaries
+- optional fetchers generate DNS, Internet Conditions, and APS Power
+  Infrastructure summaries
 - `bin/fetch_application_experience.py` generates local DNS/HTTPS transaction
   evidence for impact-v2 corroboration
 - `bin/record_operator_impact.py` records bounded local operator feedback for
@@ -117,7 +118,8 @@ Current projection state:
 - `viz/observations.json` is the repository-described authoritative Observation
   projection for deterministic semantics Prime Observer owns
 - `viz/baseline_history.json` is compact generated durable baseline memory keyed
-  by phase, target class, and host/member identity
+  by phase, target class, and host/member identity, with a recency-aware active
+  window over the newest two telemetry source files
 - `viz/interval_summary.json` is the generated deterministic summary for one
   selected interval, rendered only when route start/end match the artifact
 - `viz/incident_similarity.json` is the generated current-incident similarity
@@ -144,12 +146,13 @@ Current projection state:
 
 ## Active Watch Period
 
-The repository currently says to live with `v0.9.0` for several days before
-expanding functionality.
+The repository previously said to live with `v0.9.0` for several days before
+expanding functionality. The committed post-`v0.9.0` work implements the
+investigation lifecycle redesign, adaptive baselines, interval intelligence,
+incident similarity, operational learning, and the temporal dashboard workspace.
 
-The current uncommitted work implements Incident Intelligence Phase E. Direct
-links/bookmarks for current, selected-interval, and historical investigation
-entry points remain explicit: `?view=current`,
+Direct links/bookmarks for current, selected-interval, and historical
+investigation entry points are explicit: `?view=current`,
 `?view=interval&start=<ISO>&end=<ISO>`, and
 `?view=incident&event=<event-id>`. Selected interval view uses matching
 Python-generated `viz/interval_summary.json` evidence when available and keeps a
@@ -177,6 +180,8 @@ Watch items currently named in the repository:
   scanning
 - whether investigation navigation and nearby-event discovery improve evidence
   review without implying correlation
+- whether the recency-aware active baseline and post-recovery stabilization
+  behave as expected over time
 
 ## Resume Checklist
 
@@ -190,6 +195,6 @@ When resuming work:
 
 ## Needs Matthew Review
 
-- What milestone should follow the current `v0.9.0` observation period.
+- What milestone should follow the current committed post-`v0.9.0` state.
 - Whether the repository wants a standing handoff file updated each release or
   only when work pauses midstream.

@@ -558,6 +558,19 @@ window, sample count, and change explanation. Missing, malformed, stale,
 incompatible, insufficient, or guardrail-blocked baseline history falls back to
 the Phase B in-window baseline and never blocks transform.
 
+The active durable baseline is the recent normal: it is learned from the newest
+two eligible telemetry source files (`BASELINE_ACTIVE_SOURCE_FILES = 2`), which
+matches the existing minimum source-file requirement. Older accepted ranges are
+preserved in each target's `version_history` instead of being overwritten, so
+sustained stable new behavior can become current normal while prior normal
+remains historical memory.
+
+A sharp post-recovery transition does not immediately retrain the baseline. When
+the older observed median is materially better than the most recent samples
+(`BASELINE_RECOVERY_IMPROVEMENT_DELTA_PCT = 35.0`), the guardrail emits
+`post_recovery_stabilizing` and blocks the retraining, keeping the stable
+recovery window factual.
+
 When a durable baseline is valid for a resolver member, adaptive metadata emits
 `baseline_source: durable`, `durable_baseline_version`, `durable_baseline_age`,
 `deviation_from_durable_baseline`, and `baseline_change_status`. Incident

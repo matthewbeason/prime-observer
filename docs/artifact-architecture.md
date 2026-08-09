@@ -371,7 +371,11 @@ global baseline version, target entries keyed by `phase|target_class|member`,
 accepted windows, sample counts, p95 distribution summaries, jitter range,
 loss/timeout rates, confidence, accepted state, prior baseline summaries,
 guardrail status, source files, source time coverage, and limited version
-history. The artifact is compact, stores no raw telemetry duplicates, and is
+history. The active baseline is recency aware: it is learned from the newest two
+eligible telemetry source files, older accepted ranges remain in
+`version_history`, and a `post_recovery_stabilizing` guardrail blocks retraining
+when the older observed median is materially better than the most recent
+samples. The artifact is compact, stores no raw telemetry duplicates, and is
 published atomically. If missing, malformed, stale, incompatible, insufficient,
 or guardrail-blocked, health evaluation falls back to in-window adaptive baseline
 behavior. Historical investigation snapshots are not rewritten.

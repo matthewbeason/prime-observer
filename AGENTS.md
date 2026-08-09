@@ -6,11 +6,15 @@ This file is the working contract for coding agents operating in this
 repository.
 
 Prime Observer is a local-first network experience observability system. It
-uses flat CSV/JSON artifacts, deterministic heuristics, an LLM interpretation
-layer, and a static dashboard to answer whether network behavior is healthy,
-unusual, attributable, sustained, and likely noticeable to users.
+uses flat CSV/JSON artifacts, deterministic heuristics, learned baselines, an
+LLM interpretation layer, and a static dashboard to answer whether network
+behavior is healthy, unusual, attributable, sustained, and likely noticeable to
+users.
 
-Current release: `v0.9.0`
+Current release: `v0.9.0` (latest tag). `HEAD` is ahead of the tag with
+committed lifecycle, adaptive-baseline, interval, similarity, operational
+learning, temporal workspace, and dashboard presentation work described in
+`HANDOFF.md` and `ROADMAP.md`.
 
 See:
 
@@ -49,9 +53,21 @@ If something cannot be supported from the repository, mark it:
 - Keep Prime Observer factual and bounded.
 - Preserve the separation between Evidence, Observation, Investigation,
   Interpretation, and Projection described in `README.md`.
+- Preserve the visualization-first product posture: operators should see first,
+  understand second, and investigate only when necessary. The heatmap and
+  latency line charts are core product functionality and must be preserved.
+- Preserve the learned-baseline model: normal is learned from observed behavior
+  over the most recent eligible telemetry, static thresholds remain safety
+  guardrails only, and loss, timeout, DNS/HTTPS failure, gateway problems,
+  correlated degradation, rapid worsening, severe excursions, and confirmed or
+  major impact must not be normalized away. Raw observations and history remain
+  factual even when adaptive semantics suppress a bad moment.
 - Deterministic Python remains authoritative for facts, evidence, thresholds,
-  event boundaries, lifecycle, affected scope, classifications, freshness,
-  semantic hashing, safety constraints, and fallback guidance.
+  event boundaries, lifecycle, affected scope, classifications, baselines,
+  freshness, semantic hashing, safety constraints, and fallback guidance.
+- The browser is renderer-only. It renders generated artifacts and maps emitted
+  fields to presentation; it must not own health, attribution, baseline,
+  incident, or next-action semantics.
 - OpenRouter-backed Operator Assistant output is the primary operator-facing
   interpretation when it is valid for the current evidence package. It may
   synthesize likely meaning, uncertainty, and safe next actions, but it must not
@@ -63,11 +79,14 @@ If something cannot be supported from the repository, mark it:
 
 - `bin/transform_latest.py` generates `viz/latest.csv`,
   `viz/network_attribution.json`, `viz/observations.json`,
-  `viz/dashboard_health.json`, the current `viz/investigation.json`, immutable
-  completed-event snapshots under `viz/investigations/`, and
-  `viz/investigation_catalog.json`. Completed snapshots are atomically
-  published, write-once runtime artifacts; malformed existing snapshots are
-  preserved and reported through the generated catalog instead of overwritten.
+  `viz/dashboard_health.json`, `viz/baseline_history.json`,
+  `viz/interval_summary.json`, `viz/incident_similarity.json`,
+  `viz/operational_learnings.json`, `viz/time_context.json`, the current
+  `viz/investigation.json`, immutable completed-event snapshots under
+  `viz/investigations/`, and `viz/investigation_catalog.json`. Completed
+  snapshots are atomically published, write-once runtime artifacts; malformed
+  existing snapshots are preserved and reported through the generated catalog
+  instead of overwritten.
 - `bin/build_investigation.py` generates `viz/investigation.json` and
   `viz/investigation_index.json`.
 - `bin/build_operator_assistant_input.py` generates
@@ -81,6 +100,10 @@ If something cannot be supported from the repository, mark it:
   state separately from valid output.
 - `bin/fetch_nextdns_summary.py` generates `viz/nextdns_summary.json`.
 - `bin/fetch_cloudflare_radar.py` generates `viz/internet_conditions.json`.
+- `bin/fetch_aps_power_context.py` generates `viz/aps_power_context.json`.
+- `bin/fetch_application_experience.py` generates
+  `viz/application_experience.json`.
+- `bin/record_operator_impact.py` generates `viz/operator_impact_feedback.json`.
 - `viz/index.html` renders the dashboard from generated local artifacts.
 - `viz/investigate.html` renders historical investigation evidence.
 
@@ -116,6 +139,11 @@ These are local/generated artifacts and must not be committed:
 - `viz/network_attribution.json`
 - `viz/observations.json`
 - `viz/dashboard_health.json`
+- `viz/baseline_history.json`
+- `viz/interval_summary.json`
+- `viz/incident_similarity.json`
+- `viz/operational_learnings.json`
+- `viz/time_context.json`
 - `viz/investigation.json`
 - `viz/investigation_index.json`
 - `viz/investigation_catalog.json`
@@ -126,9 +154,13 @@ These are local/generated artifacts and must not be committed:
 - `viz/.operator_assistant_generation.lock`
 - `viz/nextdns_summary.json`
 - `viz/internet_conditions.json`
+- `viz/aps_power_context.json`
+- `viz/application_experience.json`
+- `viz/operator_impact_feedback.json`
 - `.env.nextdns`
 - `.env.cloudflare`
 - `.env.openrouter`
+- `.env.application_experience`
 
 ## Validation
 
@@ -141,6 +173,12 @@ See `docs/validation.md` for the canonical validation guide.
 
 For code changes, also run validation appropriate to the affected area. Use the
 existing tests and scripts in the repository as the guide.
+
+The project currently has approximately 466 tests. Test count is not a goal;
+focus test maintenance on unique/high-value coverage, removal of duplicate or
+obsolete tests, integration coverage, and a small set of critical browser smoke
+checks. Do not add tests merely to grow the count, and do not delete tests
+without confirming the behavior is covered elsewhere.
 
 ## Dashboard Scope
 
@@ -156,3 +194,12 @@ repository:
 
 Do not add dashboard semantics or components casually. Preserve the restrained,
 observability-focused product posture described in the repository.
+
+Any renderer, initialization, or time-context change affecting `viz/index.html`
+requires browser smoke validation through local HTTP covering:
+
+- the heatmap
+- all primary line charts
+- tooltips and interactions
+- selected-time behavior
+- no fatal console errors

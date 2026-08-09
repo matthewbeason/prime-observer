@@ -26,105 +26,184 @@ Repository tags and release labels show this progression:
 - `v0.8.2`: Dashboard operator polish
 - `v0.9.0`: Internet Conditions external context
 
-## Current Milestone
+Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
 
-Current repository state is the `v0.9.0` release.
+- event-aligned automatic investigation lifecycle and immutable completed-event
+  history
+- operator-first Investigation redesign as an Incident Record with deterministic
+  fallback assessment and asynchronous Operator Assistant generation
+- multidimensional health evaluator (Phase 1 calibration document, Phase 2
+  deterministic evaluator, Phase 3 browser rendering of emitted fields)
+- Operator Assistant model pinned to `google/gemini-3.5-flash` by default with
+  impact-v2 estimated/observed impact separation
+- application-experience probes and local operator impact feedback
+- Incident Intelligence Phases 1-3: explicit entry points, `incident_record`,
+  `incident_phases`, and deterministic replay
+- Adaptive Baseline Phases A-C: resolver adaptive classification metadata,
+  adaptive incident eligibility, and durable baseline memory
+- recency-aware durable baselines with a newest-two source-file active window
+  and post-recovery stabilization protection
+- Temporal Memory Phase 1: one deterministic selected-interval summary
+- Incident Intelligence Phase E: deterministic current-incident similarity
+- Operational Learning Phase 1: deterministic repeated lessons
+- Temporal Workspace Phase 1: default selected-time context
+- dashboard presentation work: consolidated hierarchy, unified time context,
+  and restored visualization rendering
 
-The repository explicitly says to live with `v0.9.0` for several days before
-expanding functionality.
+## Current State
 
-Uncommitted post-release work adds event-aligned automatic investigation
-lifecycle, completed-event history, and an operator-first Investigation redesign.
-The current implementation milestone is to validate the redesign before
-committing: atomic write-once snapshots, URL-addressable historical selection,
-Python-owned operator fallback fields, OpenRouter last-known-good publication,
-corrected representative timeline metrics, condensed evidence buckets,
-asynchronous pending-work generation, bounded retries, duplicate suppression,
-aligned tests, and docs.
+The current repository state is `HEAD` ahead of the `v0.9.0` tag with all
+post-release work committed. There is no newer release tag yet.
+
+The product is a visualization-first local network observability workspace.
+Python owns deterministic health, attribution, baseline, incident, lifecycle,
+interval, similarity, and learning semantics. The browser is renderer-only.
+The heatmap and latency line charts are core product functionality and must be
+preserved.
 
 Current watch period:
 
 - observe whether noticeability misses stable-but-noticeable problems
 - observe whether turbulence or pattern confidence create misleading signals
-- observe whether DNS Security and Internet Conditions add useful context
+- observe whether DNS Security, Internet Conditions, and APS Power context add
+  useful context or clutter
 - observe whether the current dashboard scanning and investigation workflow
   improve operator understanding
-- Phase 1 health-dimensions design and calibration fixture work is documented in
-  `docs/health-dimensions-calibration.md`; production behavior is intentionally
-  unchanged pending implementation review.
-- Phase 2 implements Python-owned multidimensional health evaluation and additive
-  artifact fields. Phase 3 renders those fields in the dashboard and
-  Investigation UI while retaining legacy noticeability and attribution cards as
-  compatibility disclosure.
-- Phase 4.1 simplified the dashboard hierarchy. Phase 4.2 redesigns the
-  Investigation page as an Incident Record over existing artifact fields, with no
-  evaluator or schema changes.
-- Phase 4.3 pins Operator Assistant synthesis to an explicit OpenRouter model by
-  default and adds Python-owned impact-v2 fields that separate estimated user
-  impact from observed reports while preserving legacy compatibility fields.
-- Phase 4.4 adds separate local Application Experience probes. Fresh DNS/HTTPS
-  transaction evidence can refine estimated user impact, while stale, malformed,
-  or missing evidence is ignored and no dashboard or Investigation redesign is
-  included.
-- Phase 4.5 adds command-line local operator feedback for observed impact and
-  surfaces Application Experience evidence in dashboard and Investigation
-  rendering. Estimated and observed impact remain separate.
-- Incident Intelligence Phase 1 makes Investigation entry points explicit,
-  prevents selected interval links from silently rendering the current incident,
-  and adds a deterministic Python-owned `incident_record` story to newly
-  generated automatic investigations.
-- Incident Intelligence Phase 2 adds Python-owned Before, During, and optional
-  Recovery incident phase story fields and renders them ahead of technical
-  detail without changing thresholds, attribution, impact, collectors, or
-  OpenRouter behavior.
-- Incident Intelligence Phase 3 adds Python-owned deterministic replay milestones
-  for Investigation without animation, browser-side inference, historical
-  similarity, or pattern matching.
-- Adaptive Baseline Phase C adds durable generated baseline memory in
-  `viz/baseline_history.json`, preserving raw telemetry semantics while allowing
-  resolver adaptive classification to compare current behavior with compact,
-  versioned historical norms.
-- Temporal Memory Phase 1 adds one Python-owned deterministic selected-interval
-  summary in `viz/interval_summary.json`, rendered only when route start/end
-  match and without browser-side interval inference.
-- Incident Intelligence Phase E adds Python-owned deterministic current-incident
-  similarity in `viz/incident_similarity.json`, using weighted explainable
-  dimensions over completed snapshots without embeddings, LLM similarity, or
-  browser-side inference.
-- Operational Learning Phase 1 adds Python-owned deterministic learning in
-  `viz/operational_learnings.json`, requiring repeated supporting observations
-  from completed incidents and durable baselines, with confidence reduction or
-  retirement for contradictory evidence and renderer-only dashboard/Investigation
-  presentation.
-- Temporal Workspace Phase 1 adds Python-owned default selected-time context in
-  `viz/time_context.json` and makes heatmap selection update dashboard summary
-  context without removing existing dashboard charts or Investigation links.
+- observe whether the recency-aware active baseline and post-recovery
+  stabilization behave as expected over time
+- observe whether the committed post-`v0.9.0` investigation and baseline work
+  holds up before new functionality is added
 
-## Next Logical Milestone
+## Product Design Principles
 
-Direct links/bookmarks for current, selected-interval, and completed incident
-views are now explicit. The selected interval view can render one matching
-Python-generated interval summary and otherwise remains a safe request state.
-Incident phase storytelling, deterministic replay, adaptive baseline memory, the
-first interval summary and similarity artifacts, Operational Learning Phase 1,
-and Temporal Workspace Phase 1 are additive over existing artifacts. The next
-planned capability after this redesign is Needs Matthew Review.
+These principles are settled repository direction and should guide new work.
 
-Before implementing additional external providers, the next conceptual
-architecture step is to clarify Environmental Context boundaries and evaluate
-Environmental Context evidence domains and candidate providers against them.
+1. Visualization first. Narrative second. Details last.
 
-Future provider evaluation may consider domains such as:
+2. A visualization must reduce cognitive load, not decorate the UI.
 
-- Internet infrastructure
-- ISP infrastructure
-- Power infrastructure
-- Weather
-- Regional hazards
-- regional service disruptions
+3. Prefer:
+   - heatmaps
+   - timelines
+   - line charts
+   - sparklines
+   - event lanes
+   - compact bars
+   - interval bands
+   - baseline/deviation overlays
+   - annotations
 
-APS may be considered only as a future candidate for the Power Infrastructure
-evidence domain. It is not an approved implementation commitment.
+4. Avoid decorative visualization. Pie charts are not part of the Prime
+   Observer visual vocabulary.
+
+5. AI should interpret visualized/deterministic evidence, not replace the
+   visualization.
+
+6. New features should first ask: "Can this be communicated visually?"
+
+7. Do not add dashboard cards simply because a new artifact or capability
+   exists.
+
+8. The main dashboard should remain quiet, concise, and visualization-forward.
+
+9. Any renderer, initialization, or time-context change affecting
+   `viz/index.html` requires browser smoke validation of:
+   - the heatmap
+   - all primary line charts
+   - tooltips and interactions
+   - selected-time behavior
+   - no fatal console errors
+
+## Future Roadmap
+
+The following are future directions, not implemented behavior.
+
+### Priority 1 — Main UI Visual Refinement
+
+The current dashboard hierarchy is liked and should not be redesigned wholesale.
+
+Goal: reduce text density in the upper cards using subtle deterministic
+micro-visualizations where they genuinely replace prose.
+
+Potential directions:
+
+- DNS & Web Health: compact resolver/application status or latency indicators
+- Historical Patterns: small recurrence/time visualization
+- Internet Conditions: compact event timeline/strip
+- Power Infrastructure: compact event timeline/strip
+- DNS Activity: compact proportional bars for blocked/encrypted activity
+
+`Current Summary` and `Likely issue` should remain primarily concise
+narrative/interpretation.
+
+Do not compete visually with the existing heatmap and primary line charts.
+
+### Priority 2 — Analyze Incident / Investigation Overhaul
+
+The current Investigation/Evidence experience is considered ineffective and
+should eventually be redesigned from first principles.
+
+Preserve the underlying incident intelligence and artifacts, but do not assume
+the current UI should survive.
+
+Concept direction: build an Incident Explorer / Incident Workbench centered on
+time.
+
+Operator interaction model:
+
+- See
+- Zoom
+- Ask why
+- Inspect evidence
+- Compare
+
+Potential experience:
+
+- annotated incident timeline
+- before / during / after regions
+- zoomable/drillable time window
+- 15-minute interval investigation
+- event lanes above/below the timeline
+- resolver, gateway, application, Cloudflare, APS, operator-feedback markers
+- baseline vs observed behavior
+- visual markers explaining why an interval qualified as an incident
+- supporting evidence appears contextually for the selected interval
+- AI explains why the deterministic system classified the selected slice the
+  way it did
+- ability eventually to compare visually similar incidents
+
+Inspiration:
+
+- financial/stock-chart time exploration
+- forecasting history/current/future visual grammar, without claiming future
+  prediction unless supported
+- visual/faceted search where characteristics of the data drive exploration
+
+Longer-term possibility: a deterministic visualization grammar where incident
+characteristics determine which approved visual representations receive
+emphasis.
+
+Python continues to own semantic facts. The visualization layer presents those
+facts. The LLM explains them.
+
+### Priority 3 — Deployment/Productization (Someday)
+
+Prime Observer is technically portable but not yet a polished self-service
+deployment.
+
+Future possibilities:
+
+- fresh-machine deployment audit
+- guided configuration
+- bootstrap/setup script
+- dependency checks
+- scheduler installation
+- secrets/provider configuration
+- clean initialization without another installation's learned runtime data
+- INSTALL documentation
+- logo / visual identity / favicon
+
+Do not make productization a near-term priority.
 
 ## Deferred Or Explicitly Avoided Areas
 
@@ -136,12 +215,11 @@ The repository explicitly says not to expand into these areas yet:
 - alerts or notifications
 - unbounded or browser-side LLM explanations
 - weather correlation
-- power outage correlation
 - ISP status correlation
-- major `viz/index.html` refactor
+- major `viz/index.html` refactor (beyond approved micro-visualization work)
 - database-backed storage replacing canonical artifacts
-- event comparison before history is hardened
-- recurrence or similarity detection before history is hardened
+- event comparison or similarity detection in the browser (Python-owned
+  `viz/incident_similarity.json` is the committed deterministic mechanism)
 
 If a future database becomes useful, it should be an optional search/index
 projection that consumes canonical JSON/CSV artifacts. It should not replace the
