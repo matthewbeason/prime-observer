@@ -139,6 +139,20 @@ class DashboardConsolidationTest(unittest.TestCase):
             self.assertGreater(el_idx, app_idx,
                                f"{el_id} must be inside applicationExperienceCard section")
 
+    def test_dns_web_health_status_uses_artifact_states_not_latency_thresholds(self):
+        fn = extract_function(self.html, "function transactionStatus")
+        self.assertIn('const status = String(transaction.status || "").toLowerCase();', fn)
+        self.assertIn('if (status === "ok")', fn)
+        self.assertIn('["failed", "timeout", "http_error"].includes(status)', fn)
+        self.assertNotIn("slowThreshold", fn)
+        self.assertNotIn("latency >", fn)
+        self.assertNotIn("renderStatusLatencyStrip", self.html)
+        self.assertNotIn("applicationExperienceVisual", self.html)
+        self.assertIn("Primary resolver", self.html)
+        self.assertIn("Secondary resolver", self.html)
+        self.assertIn('id="mobileApplicationPrimaryDnsValue"', self.html)
+        self.assertIn('id="mobileApplicationSecondaryDnsValue"', self.html)
+
     # ── Current Summary expanded rows ─────────────────────────────────────────
 
     def test_current_summary_has_scope_and_condition(self):
@@ -230,6 +244,17 @@ class DashboardConsolidationTest(unittest.TestCase):
         self.assertIn("similarityPayload", fn)
         self.assertIn("learningsPayload", fn)
         self.assertIn("strong_match_count", fn)
+        self.assertNotIn("renderEventStrip", fn)
+        self.assertNotIn("current.pattern", fn)
+
+    def test_historical_patterns_strip_and_internal_language_removed(self):
+        self.assertNotIn("historicalPatternsVisual", self.html)
+        self.assertNotIn("mobileHistoricalPatternsVisual", self.html)
+        self.assertNotIn("event-strip", self.html)
+        self.assertNotIn("Adaptive Baseline Event", self.html)
+        self.assertNotIn("adaptive_baseline_event", self.html)
+        fn = extract_function(self.html, "function operatorHistoricalText")
+        self.assertIn('replace(/adaptive baseline event/ig, "similar network behavior")', fn)
 
     def test_sync_dashboard_time_context_calls_historical_patterns(self):
         fn = extract_function(self.html, "function syncDashboardTimeContext")
@@ -253,6 +278,29 @@ class DashboardConsolidationTest(unittest.TestCase):
         self.assertNotIn("mobileAffectedScopeValue", fn)
         self.assertNotIn("mobileTechnicalConditionValue", fn)
 
+    def test_micro_visuals_do_not_create_new_cards_or_touch_narrative_cards(self):
+        primary = self.html[self.html.index('id="operatorAssessmentCard"'):self.html.index('id="compareWrap"')]
+        self.assertIn('id="dnsActivityBars"', primary)
+        current_summary = self.html[self.html.index('id="operatorAssessmentCard"'):self.html.index('<div class="viz-panel primary mobile-only">')]
+        likely_issue = self.html[self.html.index('id="likelyCauseCard"'):self.html.index('id="applicationExperienceCard"')]
+        for marker in ("micro-strip", "event-strip", "micro-bars"):
+            self.assertNotIn(marker, current_summary)
+            self.assertNotIn(marker, likely_issue)
+        self.assertNotIn('id="dnsAndWebVisualCard"', self.html)
+        self.assertNotIn('id="externalEventStripCard"', self.html)
+
+    def test_micro_visual_markup_is_mobile_safe(self):
+        self.assertIn('@media (max-width: 767px)', self.html)
+        self.assertIn('id="mobilePrimaryDnsBars"', self.html)
+        self.assertNotIn('id="mobileInternetConditionsEventStrip"', self.html)
+        self.assertNotIn('id="mobilePowerInfrastructureEventStrip"', self.html)
+
+    def test_lan_tooltip_has_selected_bucket_context_parity(self):
+        fn = extract_function(self.html, "function selectedBucketEvidenceHtml")
+        self.assertIn("LAN elevation is isolated from sustained WAN bad-sample counts.", fn)
+        render_fn = extract_function(self.html, "function renderLine")
+        self.assertIn("selectedBucketEvidenceHtml(opts.selectedEvidence)", render_fn)
+
     # ── No browser-side semantic inference introduced ──────────────────────────
 
     def test_no_new_browser_inference_in_historical_patterns(self):
@@ -261,6 +309,14 @@ class DashboardConsolidationTest(unittest.TestCase):
         self.assertNotIn("intervalsOverlap", fn)
         self.assertNotIn("computeAttribution(", fn)
         self.assertNotIn("markPersistentWanBad", fn)
+
+    def test_no_external_overlap_inference_in_browser(self):
+        self.assertNotIn("function externalEventsForContext", self.html)
+        self.assertNotIn("function itemTimeWindow", self.html)
+        self.assertIn("overlapping_external_event_sources", self.html)
+        selected_fn = extract_function(self.html, "function renderExternalContextTimeNote")
+        self.assertIn("overlapping_external_event_sources", selected_fn)
+        self.assertNotIn("intervalsOverlap", selected_fn)
 
 
 if __name__ == "__main__":

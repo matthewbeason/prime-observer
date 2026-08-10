@@ -50,11 +50,10 @@ class DashboardTimeContextTest(unittest.TestCase):
             "function toShortTime",
             "function fmt1",
             "function healthLabel",
-            "function intervalsOverlap",
-            "function itemTimeWindow",
+            "function cleanOperatorText",
+            "function operatorHistoricalText",
             "function timeContextMatchesGenerated",
             "function timeContextFromSelection",
-            "function externalEventsForContext",
             "function selectedTimePatternText",
             "function selectedTimeSummaryText",
             "function formatTimeRange",
@@ -90,14 +89,14 @@ class DashboardTimeContextTest(unittest.TestCase):
         self.assertIn("blue outline = selected interval", self.html)
 
     def test_external_events_appear_only_when_overlapping(self):
-        # externalEventsForContext is a utility; production rendering reads
-        # the context.overlapping_external_event_sources from the Python artifact instead.
-        # Verify that renderExternalContextTimeNote reads the artifact field.
+        # Rendering reads context.overlapping_external_event_sources from the
+        # Python artifact instead of calculating overlap in the browser.
         ext_fn = extract_function(self.html, "function renderExternalContextTimeNote")
         self.assertIn("overlapping_external_event_sources", ext_fn)
         # Renderer must NOT call intervalsOverlap or itemTimeWindow for the overlap decision.
         self.assertNotIn("intervalsOverlap(start, end,", ext_fn)
         self.assertNotIn("itemTimeWindow(item)", ext_fn)
+        self.assertNotIn("function externalEventsForContext", self.html)
 
     def test_render_selected_time_context_fallback_without_uei(self):
         """Regression: renderSelectedTimeContext fallback must not ReferenceError on undefined dims."""
@@ -156,7 +155,7 @@ class DashboardTimeContextTest(unittest.TestCase):
         };
         """)
 
-        self.assertEqual(result["match"], "Resolver Path Degradation")
+        self.assertEqual(result["match"], "Similar prior incident found")
         self.assertEqual(result["miss"], "No selected-time pattern match")
 
     def test_no_selection_defaults_to_current_context(self):

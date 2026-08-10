@@ -19,6 +19,8 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn('id="dnsTopBlockedCount"', html)
         self.assertIn('id="dnsUnavailable"', html)
         self.assertIn('id="dnsActivitySummary"', html)
+        self.assertIn('id="dnsActivityBars"', html)
+        self.assertIn('id="mobilePrimaryDnsBars"', html)
         self.assertIn("DNS Activity", html)
         self.assertNotIn("api.nextdns.io", html)
         self.assertNotIn("X-Api-Key", html)
@@ -38,6 +40,22 @@ class DashboardNextDnsTest(unittest.TestCase):
         self.assertIn('renderDomainWithCount("dnsTopBlocked", "dnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");', html)
         self.assertIn('renderDomainWithCount("mobileDnsTopQueried", "mobileDnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");', html)
         self.assertIn('renderDomainWithCount("mobileDnsTopBlocked", "mobileDnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");', html)
+
+    def test_dns_activity_bars_reflect_artifact_percentages(self):
+        html = (ROOT / "viz" / "index.html").read_text()
+
+        self.assertIn("function renderMicroBars(targetId, bars)", html)
+        self.assertIn('const blockRate = parseFloatSafe(summary.block_rate_pct, null);', html)
+        self.assertIn('const encryptedRate = parseFloatSafe(summary.encrypted_rate_pct, null);', html)
+        self.assertIn('renderMicroBars("dnsActivityBars", [', html)
+        self.assertIn('{ label: "Blocked", value: blockRate, tone: "watch" }', html)
+        self.assertIn('{ label: "Encrypted", value: encryptedRate, tone: "info" }', html)
+        self.assertIn('fill.style.width = `${value == null ? 0 : value}%`;', html)
+        self.assertIn('row.innerHTML = `<div class="micro-segment-label"><span>${bar.label}</span><span style="margin-left:auto;">${value == null ? "—" : `${fmt1(value)}%`}</span></div>`;', html)
+        self.assertIn('document.getElementById("dnsValue").textContent = `${fmtInt(totalQueries)} queries`;', html)
+        self.assertNotIn("renderStatusLatencyStrip", html)
+        self.assertNotIn("donut", html.lower())
+        self.assertNotIn("pie", html.lower())
 
     def test_dashboard_explains_heatmap_and_chart_semantics(self):
         html = (ROOT / "viz" / "index.html").read_text()

@@ -208,6 +208,61 @@
       font-weight:700;
       color:var(--muted-strong);
     }
+    .micro-bars{
+      display:grid;
+      gap:6px;
+      margin-top:8px;
+    }
+    .micro-segment{
+      min-width:0;
+      border:1px solid rgba(112,97,78,.14);
+      border-radius:12px;
+      background:rgba(255,255,255,.42);
+      padding:6px 7px;
+    }
+    .micro-segment-label{
+      display:flex;
+      align-items:center;
+      gap:5px;
+      min-width:0;
+      color:var(--muted);
+      font-size:10px;
+      font-weight:760;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .micro-segment-value{
+      margin-top:4px;
+      color:var(--ink);
+      font-size:11px;
+      font-weight:760;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .micro-track{
+      height:4px;
+      margin-top:5px;
+      border-radius:999px;
+      background:rgba(112,97,78,.12);
+      overflow:hidden;
+    }
+    .micro-fill{
+      display:block;
+      height:100%;
+      width:0;
+      border-radius:999px;
+      background:var(--fiber);
+    }
+    .micro-fill.ok{background:var(--ok);}
+    .micro-fill.watch{background:var(--watch);}
+    .micro-fill.risk{background:var(--risk);}
+    .micro-fill.neutral{background:var(--muted);}
+    .application-checks .metric-pair{grid-template-columns:minmax(120px, 1fr) minmax(0, auto);}
+    .application-checks .label{overflow:visible;text-overflow:clip;white-space:normal;}
     .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
     .chip{
       display:inline-flex;
@@ -582,6 +637,12 @@
         <h4>DNS &amp; Web Health</h4>
         <div class="value-inline" id="mobileApplicationExperienceValue">—</div>
         <div class="detail-line" id="mobileApplicationExperienceDetail">—</div>
+        <div class="metric-stack application-checks" style="margin-top:8px;">
+          <div class="metric-pair"><span class="label">System DNS</span><span class="metric-value" id="mobileApplicationSystemDnsValue">—</span></div>
+          <div class="metric-pair"><span class="label">Primary resolver</span><span class="metric-value" id="mobileApplicationPrimaryDnsValue">—</span></div>
+          <div class="metric-pair"><span class="label">Secondary resolver</span><span class="metric-value" id="mobileApplicationSecondaryDnsValue">—</span></div>
+          <div class="metric-pair"><span class="label">HTTPS</span><span class="metric-value" id="mobileApplicationHttpsValue">—</span></div>
+        </div>
         </div>
         <div class="mobile-state-card span-2" id="mobileHistoricalPatternsCard" style="display:none;">
         <h4>Historical Patterns</h4>
@@ -591,6 +652,7 @@
         <div class="mobile-state-card span-2" id="mobilePrimaryDnsCard">
         <h4>DNS Activity</h4>
         <div class="value-inline" id="mobilePrimaryDnsValue">—</div>
+        <div class="micro-bars" id="mobilePrimaryDnsBars" aria-label="DNS activity rates"></div>
         <div class="detail-line" id="mobilePrimaryDnsSummary">—</div>
         <div class="detail-line dns-domain-detail-line">
           <b>Top queried:</b>
@@ -629,11 +691,11 @@
       <h4><span>DNS &amp; Web Health</span><span class="pill" id="applicationExperiencePill">—</span></h4>
       <div class="value" style="font-size:20px;" id="applicationExperienceValue">—</div>
       <div class="status-summary" id="applicationExperienceSummary">DNS and web check evidence is unavailable or stale.</div>
-      <div class="metric-stack" style="margin-top:8px;">
+      <div class="metric-stack application-checks" style="margin-top:8px;">
         <div class="metric-pair"><span class="label">System DNS</span><span class="metric-value" id="applicationSystemDnsValue">—</span></div>
-        <div class="metric-pair"><span class="label">Direct primary resolver</span><span class="metric-value" id="applicationPrimaryDnsValue">—</span></div>
-        <div class="metric-pair"><span class="label">Direct secondary resolver</span><span class="metric-value" id="applicationSecondaryDnsValue">—</span></div>
-        <div class="metric-pair"><span class="label">HTTPS transaction</span><span class="metric-value" id="applicationHttpsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Primary resolver</span><span class="metric-value" id="applicationPrimaryDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">Secondary resolver</span><span class="metric-value" id="applicationSecondaryDnsValue">—</span></div>
+        <div class="metric-pair"><span class="label">HTTPS</span><span class="metric-value" id="applicationHttpsValue">—</span></div>
         <div class="metric-pair"><span class="label">Freshness</span><span class="metric-value" id="applicationExperienceFreshness">—</span></div>
       </div>
       <div class="metric-stack" style="margin-top:8px; border-top:1px solid var(--border); padding-top:8px;">
@@ -713,6 +775,7 @@
     <div class="value" style="font-size:20px;" id="dnsValue">—</div>
     <div id="dnsDetails">
       <div class="status-summary" id="dnsActivitySummary">—</div>
+      <div class="micro-bars" id="dnsActivityBars" aria-label="DNS activity rates"></div>
       <div class="metric-stack" style="margin-top:8px;">
         <div class="metric-pair dns-domain-pair">
           <span class="label">Top queried</span>
@@ -1153,16 +1216,6 @@
         : "No LAN samples in the selected interval.";
     }
 
-    function intervalsOverlap(aStart, aEnd, bStart, bEnd){
-      return Boolean(aStart && aEnd && bStart && bEnd && aStart < bEnd && bStart < aEnd);
-    }
-
-    function itemTimeWindow(item){
-      const start = parseTs(item?.started || item?.start || item?.event_start || item?.updated_at || item?.published_at || "");
-      const end = parseTs(item?.ended || item?.end || item?.event_end || item?.estimated_restoration_time || "") || start;
-      return start ? { start, end } : null;
-    }
-
     function timeContextMatchesGenerated(bucket, generatedContext){
       const start = parseTs(generatedContext?.start || "");
       const end = parseTs(generatedContext?.end || "");
@@ -1188,25 +1241,19 @@
       };
     }
 
-    function externalEventsForContext(context, internetConditions, powerContext){
-      const start = parseTs(context?.start || "");
-      const end = parseTs(context?.end || "");
-      if (!start || !end) return [];
-      const events = [];
-      for (const [source, payload] of [["Cloudflare routing event", internetConditions], ["APS power interruption", powerContext]]){
-        for (const item of (payload?.items || [])){
-          const window = itemTimeWindow(item);
-          if (window && intervalsOverlap(start, end, window.start, window.end)) events.push(source);
-        }
-      }
-      return [...new Set(events)].sort();
-    }
-
     function selectedTimePatternText(context, similarityPayload, learningsPayload){
       const current = similarityPayload?.current_incident || null;
-      if (context?.incident_id && current?.incident_id === context.incident_id) return current.pattern ? healthLabel(current.pattern) : "Pattern match available";
+      if (context?.incident_id && current?.incident_id === context.incident_id) return "Similar prior incident found";
       const active = Array.isArray(learningsPayload?.insights) ? learningsPayload.insights.find(item => item && item.stability !== "retired" && item.confidence !== "retired" && (!context?.incident_id || (item.supporting_incidents || []).includes(context.incident_id))) : null;
-      return active ? active.title : "No selected-time pattern match";
+      return active ? operatorHistoricalText(active.title || active.summary || "Historical learning available") : "No selected-time pattern match";
+    }
+
+    function operatorHistoricalText(value){
+      const text = cleanOperatorText(value || "");
+      if (!text) return "";
+      return text
+        .replace(/adaptive baseline event/ig, "similar network behavior")
+        .replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/g, match => healthLabel(match));
     }
 
     function selectedTimeSummaryText(bucket, evidence, intervalSummary){
@@ -1300,12 +1347,12 @@
       const lines = [];
       if (simMatches){
         lines.push(`Seen ${strongCount} time${strongCount === 1 ? "" : "s"} before`);
-        const patternLabel = healthLabel(current.pattern || matches[0].pattern || "unknown_pattern");
-        lines.push(patternLabel);
+        lines.push("Similar prior incidents exist for this current event.");
       }
       if (insights.length){
-        lines.push(insights[0].title || "Operational learning");
-        if (insights[0].summary) lines.push(insights[0].summary);
+        const title = operatorHistoricalText(insights[0].title || "Operational learning");
+        if (title) lines.push(title);
+        if (insights[0].summary) lines.push(operatorHistoricalText(insights[0].summary));
         else if (Number.isFinite(insights[0].times_observed) && insights[0].times_observed > 0)
           lines.push(`Observed ${fmt1(insights[0].times_observed)} times`);
       }
@@ -1426,6 +1473,31 @@
         const line = document.createElement("div");
         line.textContent = value;
         target.appendChild(line);
+      }
+    }
+
+    function clampPercent(value){
+      if (!Number.isFinite(value)) return 0;
+      return Math.max(0, Math.min(100, value));
+    }
+
+    function renderMicroBars(targetId, bars){
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.replaceChildren();
+      for (const bar of (bars || [])){
+        const value = Number.isFinite(bar?.value) ? clampPercent(bar.value) : null;
+        const row = document.createElement("div");
+        row.className = "micro-segment";
+        row.innerHTML = `<div class="micro-segment-label"><span>${bar.label}</span><span style="margin-left:auto;">${value == null ? "—" : `${fmt1(value)}%`}</span></div>`;
+        const track = document.createElement("div");
+        track.className = "micro-track";
+        const fill = document.createElement("span");
+        fill.className = `micro-fill ${bar.tone || "info"}`;
+        fill.style.width = `${value == null ? 0 : value}%`;
+        track.appendChild(fill);
+        row.appendChild(track);
+        target.appendChild(row);
       }
     }
 
@@ -2143,11 +2215,12 @@
 
     function transactionStatus(transaction){
       if (!transaction || typeof transaction !== "object") return { label: "Unavailable", tone: "neutral" };
-      if (transaction.timeout || transaction.success === false) return { label: "Failing", tone: "risk" };
-      const latency = parseFloatSafe(transaction.latency_ms ?? transaction.total_duration_ms, null);
-      const slowThreshold = transaction.role === "system" || transaction.type === "system_dns" || transaction.type === "direct_dns" ? 200 : 1200;
-      if (transaction.success && latency != null && latency > slowThreshold) return { label: "Slow", tone: "watch" };
-      if (transaction.success) return { label: "Healthy", tone: "ok" };
+      const status = String(transaction.status || "").toLowerCase();
+      if (status === "ok") return { label: "Healthy", tone: "ok" };
+      if (status === "slow") return { label: "Slow", tone: "watch" };
+      if (["failed", "timeout", "http_error"].includes(status)) return { label: "Failing", tone: "risk" };
+      if (transaction.success === true) return { label: "Healthy", tone: "ok" };
+      if (transaction.success === false) return { label: "Failing", tone: "risk" };
       return { label: "Unavailable", tone: "neutral" };
     }
 
@@ -2181,6 +2254,10 @@
         ["applicationPrimaryDnsValue", applicationTransaction(application, "primary")],
         ["applicationSecondaryDnsValue", applicationTransaction(application, "secondary")],
         ["applicationHttpsValue", applicationTransaction(application, "https")],
+        ["mobileApplicationSystemDnsValue", applicationTransaction(application, "system")],
+        ["mobileApplicationPrimaryDnsValue", applicationTransaction(application, "primary")],
+        ["mobileApplicationSecondaryDnsValue", applicationTransaction(application, "secondary")],
+        ["mobileApplicationHttpsValue", applicationTransaction(application, "https")],
       ];
       for (const [id, transaction] of entries){
         const status = transactionStatus(transaction);
@@ -2434,7 +2511,7 @@
         return;
       }
       card.style.display = "";
-      document.getElementById("similarityPattern").textContent = healthLabel(current.pattern || matches[0].pattern || "unknown_pattern");
+      document.getElementById("similarityPattern").textContent = "Similar prior incidents";
       document.getElementById("similarityDetail").textContent = `${strongCount} similar ${strongCount === 1 ? "incident" : "incidents"}`;
       setPillText("similarityPill", "Seen before", "watch");
     }
@@ -2450,8 +2527,8 @@
       }
       const insight = insights[0];
       card.style.display = "";
-      document.getElementById("operationalLearningTitle").textContent = insight.title || "Operational learning";
-      document.getElementById("operationalLearningDetail").textContent = insight.summary || `Observed ${fmt1(insight.times_observed || insights.length)} times`;
+      document.getElementById("operationalLearningTitle").textContent = operatorHistoricalText(insight.title || "Operational learning");
+      document.getElementById("operationalLearningDetail").textContent = operatorHistoricalText(insight.summary || `Observed ${fmt1(insight.times_observed || insights.length)} times`);
       setPillText("operationalLearningPill", healthLabel(insight.confidence || "medium"), insight.confidence === "high" ? "ok" : "watch");
     }
 
@@ -2511,6 +2588,12 @@
       const members = Array.isArray(dependency?.members) ? dependency.members : [];
       const primary = members.find(member => member.role === "primary") || null;
       const secondary = members.find(member => member.role === "secondary") || null;
+      const resolverUnstable = members.some(member => ["elevated", "degraded", "severe"].includes(member?.technical_condition?.state));
+      if (application?.is_current && (parseFloatSafe(application?.failure_counts?.total, 0) || 0) === 0 && resolverUnstable){
+        const distinction = "DNS and HTTPS transactions are working now; resolver path probe instability is shown separately below.";
+        document.getElementById("applicationExperienceSummary").textContent = distinction;
+        document.getElementById("mobileApplicationExperienceDetail").textContent = distinction;
+      }
       document.getElementById("dependencyStateValue").textContent = resolverPathSummary(primary, secondary);
       document.getElementById("dependencyRedundancyValue").textContent = resolverCoverageLabel(dependency, members);
       document.getElementById("dependencyActiveMemberValue").textContent = dependency?.active_member || "Active resolver not established";
@@ -2771,6 +2854,14 @@
       renderDomainWithCount("mobilePrimaryDnsTopBlocked", "mobilePrimaryDnsTopBlockedCount", "", null, "blocks");
       renderDomainWithCount("mobileDnsTopQueried", "mobileDnsTopQueriedCount", "", null, "queries");
       renderDomainWithCount("mobileDnsTopBlocked", "mobileDnsTopBlockedCount", "", null, "blocks");
+      renderMicroBars("dnsActivityBars", [
+        { label: "Blocked", value: null, tone: "neutral" },
+        { label: "Encrypted", value: null, tone: "neutral" },
+      ]);
+      renderMicroBars("mobilePrimaryDnsBars", [
+        { label: "Blocked", value: null, tone: "neutral" },
+        { label: "Encrypted", value: null, tone: "neutral" },
+      ]);
       document.getElementById("mobileDnsLastUpdate").textContent = "—";
       updateMobileDnsSummary({ unavailable: true });
       syncDnsDisclosureLabels();
@@ -2789,12 +2880,15 @@
       const blockRate = parseFloatSafe(summary.block_rate_pct, null);
       const encryptedRate = parseFloatSafe(summary.encrypted_rate_pct, null);
       const totalQueries = parseFloatSafe(summary.total_queries, null);
-      document.getElementById("dnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
+      document.getElementById("dnsValue").textContent = `${fmtInt(totalQueries)} queries`;
       const queryText = `${fmtInt(totalQueries)} queries`;
-      const encryptedText = encryptedRate == null ? "encrypted share unavailable" : `${fmt1(encryptedRate)}% encrypted`;
-      document.getElementById("dnsActivitySummary").textContent = `${queryText} · ${encryptedText}`;
+      document.getElementById("dnsActivitySummary").textContent = "Blocked and encrypted shares shown below.";
       document.getElementById("dnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("dnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
+      renderMicroBars("dnsActivityBars", [
+        { label: "Blocked", value: blockRate, tone: "watch" },
+        { label: "Encrypted", value: encryptedRate, tone: "info" },
+      ]);
       renderDomainWithCount("dnsTopQueried", "dnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");
       renderDomainWithCount("dnsTopBlocked", "dnsTopBlockedCount", summary.top_blocked_domain, summary.top_blocked_domain_count, "blocks");
       document.getElementById("dnsLastUpdate").textContent = generatedAt ? toRelativeAge(generatedAt) : "—";
@@ -2803,9 +2897,13 @@
       document.getElementById("dnsStale").textContent = isStale ? "Stale" : "";
       setAccent(document.getElementById("dnsCard"), "accent-ok");
       setAccent(document.getElementById("dnsValue"), "ok");
-      document.getElementById("mobileDnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
-      document.getElementById("mobilePrimaryDnsValue").textContent = blockRate == null ? "— blocked" : `${fmt1(blockRate)}% blocked`;
-      document.getElementById("mobilePrimaryDnsSummary").textContent = `${queryText} · ${encryptedText}`;
+      document.getElementById("mobileDnsValue").textContent = `${fmtInt(totalQueries)} queries`;
+      document.getElementById("mobilePrimaryDnsValue").textContent = `${fmtInt(totalQueries)} queries`;
+      document.getElementById("mobilePrimaryDnsSummary").textContent = "Blocked and encrypted shares shown above.";
+      renderMicroBars("mobilePrimaryDnsBars", [
+        { label: "Blocked", value: blockRate, tone: "watch" },
+        { label: "Encrypted", value: encryptedRate, tone: "info" },
+      ]);
       document.getElementById("mobileDnsQueries").textContent = fmtInt(totalQueries);
       document.getElementById("mobileDnsEncrypted").textContent = encryptedRate == null ? "—" : `${fmt1(encryptedRate)}%`;
       renderDomainWithCount("mobilePrimaryDnsTopQueried", "mobilePrimaryDnsTopQueriedCount", summary.top_queried_domain, summary.top_queried_domain_count, "queries");
@@ -3209,11 +3307,15 @@
 
     function selectedBucketEvidenceHtml(evidence){
       if (!evidence) return "";
+      const lanContext = evidence.lanElevatedSamples > 0
+        ? '<div class="list-line muted">LAN elevation is isolated from sustained WAN bad-sample counts.</div>'
+        : '';
       return `<div class="section">
                 <div class="headline">Selected Bucket</div>
                 <div class="list-line">Internet probes: <span class="strong">${evidence.internetSustainedBadSamples}</span> sustained bad sample(s) (${evidence.internetRawBadSamples} raw bad / ${evidence.internetSamples} total)</div>
                 <div class="list-line">Resolver probes: <span class="strong">${evidence.resolverSustainedBadSamples}</span> sustained bad sample(s) (${evidence.resolverRawBadSamples} raw bad / ${evidence.resolverSamples} total)</div>
                 <div class="list-line">LAN: <span class="strong">${evidence.lanElevatedSamples}</span> elevated sample(s) / ${evidence.lanSamples} total</div>
+                ${lanContext}
               </div>`;
     }
 

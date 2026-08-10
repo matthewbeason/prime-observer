@@ -42,6 +42,17 @@ class DashboardInternetConditionsTest(unittest.TestCase):
         self.assertIn('data.query_target_id', html)
         self.assertIn('data.fallback_used', html)
 
+    def test_dashboard_external_event_visuals_removed_without_time_encoding(self):
+        html = (ROOT / "viz" / "index.html").read_text()
+
+        self.assertNotIn("function renderInternetConditionsEventStrip", html)
+        self.assertNotIn('id="internetConditionsEventStrip"', html)
+        self.assertNotIn('id="mobileInternetConditionsEventStrip"', html)
+        self.assertNotIn("renderEventStrip", html)
+        self.assertIn('const sources = Array.isArray(context?.overlapping_external_event_sources) ? context.overlapping_external_event_sources : null;', html)
+        self.assertNotIn("function externalEventsForContext", html)
+        self.assertNotIn("itemTimeWindow", html)
+
     def test_dashboard_renders_scope_and_conditional_details_from_artifact(self):
         html = (ROOT / "viz" / "index.html").read_text()
 

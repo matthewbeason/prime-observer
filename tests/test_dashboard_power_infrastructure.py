@@ -71,6 +71,15 @@ class DashboardPowerInfrastructureTest(unittest.TestCase):
         self.assertNotIn("outagemap.aps.com/outageviewer/mockData", html)
         self.assertIn('if (!data || data.provider !== "aps")', html)
 
+    def test_dashboard_power_event_visuals_removed_without_time_encoding(self):
+        html = INDEX_HTML.read_text()
+
+        self.assertNotIn("function renderPowerInfrastructureEventStrip", html)
+        self.assertNotIn('id="powerInfrastructureEventStrip"', html)
+        self.assertNotIn('id="mobilePowerInfrastructureEventStrip"', html)
+        self.assertNotIn("renderEventStrip", html)
+        self.assertNotIn("function externalEventsForContext", html)
+
     def test_dashboard_hides_power_card_when_fetch_fails(self):
         html = INDEX_HTML.read_text()
 
