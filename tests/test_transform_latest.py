@@ -136,6 +136,39 @@ class TransformLatestTest(unittest.TestCase):
             self.telemetry_row(timestamp.isoformat(), host, p95, jitter=jitter, loss=loss)
         )
 
+    def resolver_baseline_history(self, *, primary_p95=116.0, secondary_p95=166.0, secondary_state="elevated_but_stable"):
+        return {
+            "schema_version": 1,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_primary": {
+                    "sample_count": 100,
+                    "median": 75.0,
+                    "p95": primary_p95,
+                    "accepted_state": "within_target",
+                    "guardrail_status": {"status": "clear", "breaches": []},
+                },
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "sample_count": 100,
+                    "median": 139.0,
+                    "p95": secondary_p95,
+                    "accepted_state": secondary_state,
+                    "guardrail_status": {"status": "clear", "breaches": []},
+                },
+            },
+        }
+
+    def healthy_application_experience(self):
+        return {
+            "is_current": True,
+            "failure_counts": {"total": 0},
+            "dns_transactions": [
+                {"role": "system", "success": True, "timeout": False},
+                {"role": "primary", "success": True, "timeout": False},
+                {"role": "secondary", "success": True, "timeout": False},
+            ],
+            "https_transaction": {"success": True, "timeout": False},
+        }
+
     def write_application_experience(self, generated_at):
         checked_at = generated_at.isoformat().replace("+00:00", "Z")
         payload = {
@@ -938,6 +971,118 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(buckets[0]["bad"], 2)
         self.assertEqual(buckets[0]["raw_bad"], 3)
         self.assertFalse(buckets[0]["is_turbulence"])
+
+    def test_dashboard_resolver_within_learned_elevated_baseline_is_not_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = [
+            self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.30.134", p95)
+            for idx, p95 in enumerate([150, 155, 160])
+        ]
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history=self.resolver_baseline_history(), application_experience=self.healthy_application_experience())
+        buckets = self.module.classify_buckets(marked)
+
+        self.assertEqual([sample["raw_bad"] for sample in marked], [False, False, False])
+        self.assertFalse(buckets[0]["bad"])
+
+    def test_dashboard_resolver_above_learned_range_is_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = [
+            self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.30.134", p95)
+            for idx, p95 in enumerate([190, 191, 192])
+        ]
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history=self.resolver_baseline_history(), application_experience=self.healthy_application_experience())
+
+        self.assertEqual([sample["raw_bad"] for sample in marked], [True, True, True])
+        self.assertEqual([sample["is_bad"] for sample in marked], [False, True, True])
+
+    def test_dashboard_resolver_learned_normal_with_loss_is_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = [
+            self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.30.134", 150, loss=2)
+            for idx in range(3)
+        ]
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history=self.resolver_baseline_history(), application_experience=self.healthy_application_experience())
+
+        self.assertEqual([sample["raw_bad"] for sample in marked], [True, True, True])
+        self.assertEqual([sample["is_bad"] for sample in marked], [False, True, True])
+
+    def test_dashboard_resolver_learned_normal_with_timeout_is_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = []
+        for idx in range(3):
+            row = self.telemetry_row((base + dt.timedelta(minutes=idx)).isoformat(), "45.90.30.134", 150)
+            row["received"] = "0"
+            rows.append(self.module.normalize_dashboard_sample(row))
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history=self.resolver_baseline_history(), application_experience=self.healthy_application_experience())
+
+        self.assertEqual([sample["raw_bad"] for sample in marked], [True, True, True])
+        self.assertEqual([sample["is_bad"] for sample in marked], [False, True, True])
+
+    def test_dashboard_both_resolvers_above_learned_range_are_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = []
+        for idx in range(3):
+            rows.append(self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.28.134", 150))
+            rows.append(self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.30.134", 190))
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history=self.resolver_baseline_history(), application_experience=self.healthy_application_experience())
+        buckets = self.module.classify_buckets(marked)
+
+        self.assertGreaterEqual(buckets[0]["bad"], 4)
+        self.assertTrue(buckets[0]["bad"])
+
+    def test_dashboard_correlated_resolver_gateway_internet_degradation_stays_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows_out = []
+        for idx in range(3):
+            ts = (base + dt.timedelta(minutes=idx)).isoformat()
+            rows_out.append(self.telemetry_row(ts, "192.168.1.1", 160, jitter=55))
+            rows_out.append(self.telemetry_row(ts, "1.1.1.1", 180, jitter=55))
+            rows_out.append(self.telemetry_row(ts, "45.90.30.134", 190, jitter=55))
+        for row in rows_out:
+            row.update(self.module.target_metadata(row["host"]))
+
+        dashboard = self.module.build_dashboard_health(
+            rows_out,
+            {},
+            base + dt.timedelta(minutes=4),
+            baseline_history=self.resolver_baseline_history(),
+            application_experience=self.healthy_application_experience(),
+        )
+
+        bucket = dashboard["composite_wan_buckets"][0]
+        self.assertTrue(bucket["isBadBucket"])
+        self.assertGreater(bucket["groups"]["internet_probe"]["bad"], 0)
+        self.assertGreater(bucket["groups"]["resolver_probe"]["bad"], 0)
+        self.assertTrue(bucket["selectedEvidence"]["lanBad"])
+
+    def test_dashboard_resolver_without_durable_baseline_uses_legacy_threshold(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = [
+            self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.30.134", 150)
+            for idx in range(3)
+        ]
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history={"schema_version": 1, "targets": {}}, application_experience=self.healthy_application_experience())
+
+        self.assertEqual([sample["raw_bad"] for sample in marked], [True, True, True])
+        self.assertEqual([sample["is_bad"] for sample in marked], [False, True, True])
+
+    def test_dashboard_healthy_app_checks_do_not_make_learned_normal_secondary_bad(self):
+        base = dt.datetime(2026, 6, 15, 20, 15, tzinfo=dt.timezone.utc)
+        rows = [
+            self.dashboard_sample(base + dt.timedelta(minutes=idx), "45.90.30.134", 150)
+            for idx in range(3)
+        ]
+
+        marked = self.module.mark_dashboard_wan_bad(rows, baseline_history=self.resolver_baseline_history(), application_experience=self.healthy_application_experience())
+
+        self.assertTrue(self.module.app_checks_healthy(self.healthy_application_experience()))
+        self.assertFalse(any(sample["raw_bad"] for sample in marked))
 
     def test_turbulence_bucket_requires_raw_bad_without_sustained_run(self):
         base = dt.datetime(2026, 6, 15, 20, 0, tzinfo=dt.timezone.utc)
