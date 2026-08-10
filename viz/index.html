@@ -1864,8 +1864,29 @@
       if (typeof MOBILE_MEDIA.addEventListener === "function") MOBILE_MEDIA.addEventListener("change", scheduleResponsiveRender);
     }
 
+    function roundedLatencyCeiling(maxValue){
+      const value = Number.isFinite(maxValue) ? Math.max(0, maxValue) : 0;
+      const padded = value <= 0 ? 50 : value * 1.12;
+      const steps = [50, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000];
+      for (const step of steps){
+        if (padded <= step) return step;
+      }
+      return Math.ceil(padded / 500) * 500;
+    }
+
+    function latencyDomainForSeries(seriesArr){
+      const maxValue = d3.max(seriesArr || [], d => d.p95) || 0;
+      return [0, roundedLatencyCeiling(maxValue)];
+    }
+
+    function sharedWanLatencyDomain(internetSeries, resolverSeries){
+      return latencyDomainForSeries([...(internetSeries || []), ...(resolverSeries || [])]);
+    }
+
     function rerenderFromState(){
       if (!currentVizState) return;
+      const wanYDomain = sharedWanLatencyDomain(currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked);
+      const lanYDomain = latencyDomainForSeries(currentVizState.lanSeries);
       renderHeatmap("#heatmap", currentVizState.compositeWanBuckets);
       renderLine("#wanInternet", currentVizState.internetSeriesMarked, {
         label: "WAN internet p95",
@@ -1874,7 +1895,8 @@
         rawSpikeMarkers: currentVizState.rawSpikeMarkers,
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
-        xDomain: currentVizState.xDomain
+        xDomain: currentVizState.xDomain,
+        yDomain: wanYDomain
       });
       renderLine("#wanResolver", currentVizState.resolverSeriesMarked, {
         label: "WAN resolver p95",
@@ -1882,13 +1904,15 @@
         turbulenceBuckets: currentVizState.turbulenceBuckets,
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
-        xDomain: currentVizState.xDomain
+        xDomain: currentVizState.xDomain,
+        yDomain: wanYDomain
       });
       renderLine("#lan", currentVizState.lanSeries, {
         label: "LAN p95",
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
-        xDomain: currentVizState.xDomain
+        xDomain: currentVizState.xDomain,
+        yDomain: lanYDomain
       });
       updateSelectedBucketPanel(currentVizState.selectedBucket, currentVizState.selectedEvidence);
       syncDashboardTimeContext({
@@ -3813,10 +3837,8 @@
       );
       const xDomain = opts.xDomain || (seriesArr.length ? d3.extent(seriesArr, d=>d.t) : fallbackDomain);
       const x = d3.scaleTime().domain(xDomain).range([0, innerW]);
-      const ymin = seriesArr.length ? d3.min(seriesArr, d=>d.p95) : 0;
-      const ymax = seriesArr.length ? d3.max(seriesArr, d=>d.p95) : 1;
-      const spread = Math.max(5, (ymax - ymin) || 0);
-      const y = d3.scaleLinear().domain([Math.max(0, ymin - spread*0.2), ymax + spread*0.2]).range([innerH, 0]);
+      const yDomain = Array.isArray(opts.yDomain) && opts.yDomain.length === 2 ? opts.yDomain : latencyDomainForSeries(seriesArr);
+      const y = d3.scaleLinear().domain(yDomain).range([innerH, 0]);
 
       if (!seriesArr.length) {
         g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No data in window.");

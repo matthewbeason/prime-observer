@@ -301,6 +301,40 @@ class DashboardConsolidationTest(unittest.TestCase):
         render_fn = extract_function(self.html, "function renderLine")
         self.assertIn("selectedBucketEvidenceHtml(opts.selectedEvidence)", render_fn)
 
+    def test_wan_charts_share_latency_y_axis_domain(self):
+        rerender = extract_function(self.html, "function rerenderFromState")
+        render_line = extract_function(self.html, "function renderLine")
+
+        self.assertIn("const wanYDomain = sharedWanLatencyDomain(currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked);", rerender)
+        self.assertIn("const lanYDomain = latencyDomainForSeries(currentVizState.lanSeries);", rerender)
+        self.assertIn('renderLine("#wanInternet", currentVizState.internetSeriesMarked', rerender)
+        self.assertIn('renderLine("#wanResolver", currentVizState.resolverSeriesMarked', rerender)
+        self.assertIn("yDomain: wanYDomain", rerender)
+        self.assertEqual(rerender.count("yDomain: wanYDomain"), 2)
+        self.assertIn("yDomain: lanYDomain", rerender)
+        self.assertIn("const yDomain = Array.isArray(opts.yDomain) && opts.yDomain.length === 2 ? opts.yDomain : latencyDomainForSeries(seriesArr);", render_line)
+        self.assertNotIn("ymin - spread", render_line)
+
+    def test_latency_y_axis_helpers_are_stable_and_do_not_clip(self):
+        script = textwrap.dedent(f"""
+            const d3 = {{ max: (items, accessor) => items.reduce((max, item) => Math.max(max, accessor(item)), -Infinity) }};
+            {extract_function(self.html, "function roundedLatencyCeiling")}
+            {extract_function(self.html, "function latencyDomainForSeries")}
+            {extract_function(self.html, "function sharedWanLatencyDomain")}
+            const shared = sharedWanLatencyDomain([{{p95: 82}}], [{{p95: 241}}]);
+            const expanded = sharedWanLatencyDomain([{{p95: 82}}], [{{p95: 610}}]);
+            const lan = latencyDomainForSeries([{{p95: 18}}, {{p95: 33}}]);
+            console.log(JSON.stringify({{ shared, expanded, lan }}));
+        """)
+        result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+        payload = json.loads(result.stdout)
+
+        self.assertEqual(payload["shared"], [0, 300])
+        self.assertEqual(payload["expanded"], [0, 750])
+        self.assertEqual(payload["lan"], [0, 50])
+        self.assertGreaterEqual(payload["shared"][1], 241)
+        self.assertGreaterEqual(payload["expanded"][1], 610)
+
     # ── No browser-side semantic inference introduced ──────────────────────────
 
     def test_no_new_browser_inference_in_historical_patterns(self):
