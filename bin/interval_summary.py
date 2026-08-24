@@ -3,7 +3,8 @@ import datetime as dt
 from collections import Counter
 from typing import Any
 
-from health_model import WAN_BAD, bucket_start
+from health_model import LAN_BAD_P95, WAN_BAD, bucket_start, lan_elevation
+from semantic_health import SEMANTIC_MODEL_VERSION, interval_guardrails, mark_wan_semantics
 from target_metadata import target_metadata
 
 
@@ -63,6 +64,7 @@ def normalize_row(row):
     timeout = bool(sent and received is not None and received <= 0)
     return {
         "t": timestamp,
+        "phase": str(row.get("phase_label") or row.get("phase") or "FIBER").strip().upper(),
         "host": host,
         "target_class": row.get("target_class") or meta.get("target_class") or "unknown_probe",
         "target_label": row.get("target_label") or meta.get("target_label") or host,
@@ -75,13 +77,17 @@ def normalize_row(row):
     }
 
 
-def rows_in_interval(rows, start, end):
+def normalize_rows(rows):
     samples = []
     for row in rows:
         sample = normalize_row(row)
-        if sample and start <= sample["t"] < end:
+        if sample:
             samples.append(sample)
     return sorted(samples, key=lambda item: item["t"])
+
+
+def rows_in_interval(rows, start, end):
+    return [sample for sample in normalize_rows(rows) if start <= sample["t"] < end]
 
 
 def group_metrics(samples, target_class):
@@ -89,18 +95,39 @@ def group_metrics(samples, target_class):
     p95 = [sample.get("p95") for sample in rows]
     jitter = [sample.get("jitter") for sample in rows]
     loss = [sample.get("loss") for sample in rows]
-    raw_bad = [
-        sample for sample in rows
-        if sample.get("p95", 0.0) > WAN_BAD["p95"]
-        or sample.get("jitter", 0.0) > WAN_BAD["jitter"]
-        or sample.get("loss", 0.0) > WAN_BAD["loss"]
-    ]
+    def static_excursion(sample):
+        if target_class == "gateway_probe":
+            return (sample.get("p95") or 0.0) > LAN_BAD_P95
+        return (
+            (sample.get("p95") or 0.0) > WAN_BAD["p95"]
+            or (sample.get("jitter") or 0.0) > WAN_BAD["jitter"]
+            or (sample.get("loss") or 0.0) > WAN_BAD["loss"]
+            or sample.get("timeout")
+        )
+    absolute = [sample for sample in rows if sample.get("absolute_threshold_excursion", static_excursion(sample))]
+    operator_bad = [sample for sample in rows if sample.get("operator_bad", static_excursion(sample))]
+    persistent = [sample for sample in rows if sample.get("is_bad")]
+    learned_states = [sample.get("learned_normal_state") for sample in rows if sample.get("learned_normal_state")]
+    guardrails = list(dict.fromkeys(
+        breach
+        for sample in rows
+        for breach in (sample.get("semantic_guardrail_breaches") or [])
+    ))
+    gateway_assessment = lan_elevation(rows) if target_class == "gateway_probe" else None
     if not rows:
         state = "unknown"
     elif any(sample.get("timeout") for sample in rows) or any((sample.get("loss") or 0.0) > WAN_BAD["loss"] for sample in rows):
         state = "failing"
-    elif raw_bad:
+    elif gateway_assessment and gateway_assessment.get("lan_bad"):
         state = "elevated"
+    elif gateway_assessment and absolute:
+        state = "isolated_excursion"
+    elif persistent:
+        state = "degraded_from_baseline" if "degraded_from_baseline" in learned_states else "elevated"
+    elif "elevated_but_stable" in learned_states:
+        state = "elevated_but_stable"
+    elif operator_bad:
+        state = "isolated_excursion"
     else:
         state = "healthy"
     return {
@@ -111,12 +138,24 @@ def group_metrics(samples, target_class):
         "max_jitter_ms": rounded(max(jitter), 1) if jitter else None,
         "loss_rate_pct": rounded(sum(loss) / len(loss), 3) if loss else None,
         "timeout_count": len([sample for sample in rows if sample.get("timeout")]),
-        "raw_bad_samples": len(raw_bad),
+        "raw_bad_samples": len(operator_bad),
+        "operator_bad_samples": len(operator_bad),
+        "persistent_bad_samples": len(persistent),
+        "absolute_threshold_excursion": bool(absolute),
+        "absolute_excursion_samples": len(absolute),
+        "learned_normal_state": (
+            "degraded_from_baseline" if "degraded_from_baseline" in learned_states
+            else "elevated_but_stable" if "elevated_but_stable" in learned_states
+            else "fallback_absolute_threshold" if "fallback_absolute_threshold" in learned_states
+            else "within_target" if "within_target" in learned_states
+            else "not_applicable"
+        ),
+        "guardrail_breaches": guardrails,
         "hosts": dict(Counter(sample.get("host") for sample in rows)),
     }
 
 
-def application_summary(application_experience, start, end):
+def application_summary(application_experience, start, end, generated_at):
     if not isinstance(application_experience, dict):
         return {
             "state": "unknown",
@@ -124,6 +163,16 @@ def application_summary(application_experience, start, end):
             "https_success": None,
             "timeout_count": 0,
             "evidence": ["Application evidence is unavailable."],
+        }
+    is_historical = end < generated_at - dt.timedelta(minutes=30)
+    if is_historical:
+        return {
+            "state": "unknown",
+            "dns_success": None,
+            "https_success": None,
+            "timeout_count": 0,
+            "temporal_scope": "current_only_unavailable_for_historical_interval",
+            "evidence": ["Current application checks are not historical evidence for this interval."],
         }
     dns = [item for item in application_experience.get("dns_transactions", []) if isinstance(item, dict)]
     https = application_experience.get("https_transaction") if isinstance(application_experience.get("https_transaction"), dict) else {}
@@ -136,6 +185,7 @@ def application_summary(application_experience, start, end):
         "dns_success": dns_success if dns else None,
         "https_success": https_success if https else None,
         "timeout_count": timeout_count,
+        "temporal_scope": "current_snapshot",
         "evidence": list(application_experience.get("evidence") or []),
     }
 
@@ -170,9 +220,8 @@ def incident_overlap(incidents, start, end):
     return {"count": len(overlaps), "items": overlaps}
 
 
-def adaptive_state(health_dimensions):
-    members = (((health_dimensions or {}).get("adaptive_baseline") or {}).get("resolver_members") or [])
-    states = [member.get("baseline_state") for member in members if isinstance(member, dict) and member.get("baseline_state")]
+def adaptive_state_from_metrics(resolver):
+    states = [resolver.get("learned_normal_state")]
     if "failing" in states:
         return "failing"
     if "degraded_from_baseline" in states or "anomalous" in states:
@@ -184,36 +233,52 @@ def adaptive_state(health_dimensions):
     return "unknown"
 
 
-def baseline_comparison(health_dimensions):
-    members = (((health_dimensions or {}).get("adaptive_baseline") or {}).get("resolver_members") or [])
+def baseline_comparison(samples, resolver):
+    members = []
+    seen = set()
+    for sample in samples:
+        if sample.get("target_class") != "resolver_probe":
+            continue
+        semantic = sample.get("semantic_health") if isinstance(sample.get("semantic_health"), dict) else {}
+        learned = semantic.get("learned_comparison") if isinstance(semantic.get("learned_comparison"), dict) else {}
+        member_id = sample.get("member_id") or sample.get("host")
+        if member_id in seen:
+            continue
+        seen.add(member_id)
+        members.append({
+            "member_id": member_id,
+            "role": sample.get("role"),
+            "baseline_state": learned.get("state"),
+            "baseline_source": learned.get("baseline_source"),
+            "incident_eligible": semantic.get("incident_eligible"),
+            "suppression_reason": "established_degraded_baseline" if learned.get("state") == "elevated_but_stable" and not semantic.get("incident_eligible") else None,
+        })
     return {
-        "adaptive_baseline_state": adaptive_state(health_dimensions),
-        "resolver_members": [
-            {
-                "member_id": member.get("member_id"),
-                "role": member.get("role"),
-                "baseline_state": member.get("baseline_state"),
-                "baseline_source": member.get("baseline_source"),
-                "incident_eligible": member.get("incident_eligible"),
-                "suppression_reason": member.get("incident_suppression_reason"),
-            }
-            for member in members if isinstance(member, dict)
-        ],
+        "adaptive_baseline_state": adaptive_state_from_metrics(resolver),
+        "resolver_members": members,
+        "temporal_scope": "selected_interval",
     }
 
 
 def likely_issue_for(gateway, internet, resolver, app, adaptive):
     if app.get("state") == "failing":
         return "Application transaction failure"
-    if gateway.get("state") in {"elevated", "failing"}:
+    degraded_states = {"elevated", "degraded_from_baseline", "failing"}
+    if gateway.get("state") in degraded_states and (
+        internet.get("state") in degraded_states or resolver.get("state") in degraded_states
+    ):
+        return "Mixed local and upstream evidence"
+    if gateway.get("state") in degraded_states:
         return "Local gateway path"
-    if internet.get("state") in {"elevated", "failing"} and resolver.get("state") in {"elevated", "failing"}:
+    if resolver.get("state") == "elevated_but_stable":
+        return "Established degraded resolver baseline"
+    if internet.get("state") in degraded_states and resolver.get("state") in degraded_states:
         return "Broad upstream path"
-    if resolver.get("state") in {"elevated", "failing"}:
+    if resolver.get("state") in degraded_states:
         if adaptive == "elevated_but_stable":
             return "Established degraded resolver baseline"
         return "Resolver provider path"
-    if internet.get("state") in {"elevated", "failing"}:
+    if internet.get("state") in degraded_states:
         return "Internet path"
     return "No active issue detected"
 
@@ -223,10 +288,12 @@ def overall_condition_for(gateway, internet, resolver, app, overlap, adaptive):
         return "failing"
     if overlap.get("count"):
         return "incident_overlap"
-    if adaptive == "elevated_but_stable" and resolver.get("state") == "elevated":
+    if adaptive == "elevated_but_stable" and resolver.get("state") == "elevated_but_stable":
         return "elevated_but_stable"
-    if any(group.get("state") == "elevated" for group in (gateway, internet, resolver)):
-        return "elevated"
+    if any(group.get("state") in {"elevated", "degraded_from_baseline"} for group in (gateway, internet, resolver)):
+        return "degraded"
+    if any(group.get("state") == "isolated_excursion" for group in (gateway, internet, resolver)):
+        return "isolated_excursion"
     if all(group.get("state") in {"healthy", "unknown"} for group in (gateway, internet, resolver)) and app.get("state") in {"working", "unknown"}:
         return "healthy"
     return "unknown"
@@ -236,7 +303,7 @@ def services_for(gateway, internet, resolver, app):
     affected = []
     healthy = []
     for label, group in (("Gateway", gateway), ("Internet probes", internet), ("Resolver probes", resolver)):
-        if group.get("state") in {"elevated", "failing"}:
+        if group.get("state") in {"elevated", "degraded_from_baseline", "failing"}:
             affected.append(label)
         elif group.get("state") == "healthy":
             healthy.append(label)
@@ -252,27 +319,43 @@ def summary_text(start, end, condition, likely_issue, affected, healthy, app, ad
     end_text = end.strftime("%I:%M %p").lstrip("0")
     if condition == "healthy":
         return f"Between {start_text} and {end_text}, Prime Observer did not detect active network degradation. Application checks remained {app.get('state', 'unknown')}."
-    if adaptive == "elevated_but_stable" and "Resolver probes" in affected:
+    if adaptive == "elevated_but_stable":
         return f"Between {start_text} and {end_text}, Prime Observer observed elevated latency on the resolver path. DNS and HTTPS checks continued succeeding, and the interval most closely represents an established degraded baseline rather than an active outage."
     return f"Between {start_text} and {end_text}, Prime Observer observed {likely_issue.lower()}. Affected services: {', '.join(affected) if affected else 'none detected'}. Healthy services: {', '.join(healthy) if healthy else 'none confirmed'}."
 
 
-def build_interval_summary(*, rows, start, end, generated_at, incidents=None, health_dimensions=None, application_experience=None, source_path=None):
+def build_interval_summary(*, rows, start, end, generated_at, incidents=None, health_dimensions=None, application_experience=None, baseline_history=None, source_path=None):
     start_ts = parse_ts(start)
     end_ts = parse_ts(end)
     if start_ts is None or end_ts is None or end_ts <= start_ts:
         raise ValueError("interval summary requires valid start and end timestamps")
-    samples = rows_in_interval(rows, start_ts, end_ts)
+    all_samples = normalize_rows(rows)
+    wan = [sample for sample in all_samples if sample.get("target_class") in {"internet_probe", "resolver_probe"}]
+    marked_wan = mark_wan_semantics(
+        wan,
+        baseline_history=baseline_history if end_ts >= generated_at - dt.timedelta(minutes=30) else None,
+        application_experience=application_experience,
+        health_dimensions=health_dimensions if end_ts >= generated_at - dt.timedelta(minutes=30) else None,
+    )
+    marked_index = {(sample.get("t"), sample.get("host")): sample for sample in marked_wan}
+    samples = [
+        marked_index.get((sample.get("t"), sample.get("host")), sample)
+        for sample in all_samples
+        if start_ts <= sample["t"] < end_ts
+    ]
     gateway = group_metrics(samples, "gateway_probe")
     internet = group_metrics(samples, "internet_probe")
     resolver = group_metrics(samples, "resolver_probe")
-    app = application_summary(application_experience, start_ts, end_ts)
+    app = application_summary(application_experience, start_ts, end_ts, generated_at)
     overlap = incident_overlap(incidents or [], start_ts, end_ts)
-    baseline = baseline_comparison(health_dimensions or {})
+    baseline = baseline_comparison(samples, resolver)
     adaptive = baseline.get("adaptive_baseline_state")
     condition = overall_condition_for(gateway, internet, resolver, app, overlap, adaptive)
     likely_issue = likely_issue_for(gateway, internet, resolver, app, adaptive)
     affected, healthy = services_for(gateway, internet, resolver, app)
+    gateway_degraded = gateway.get("state") in {"elevated", "degraded_from_baseline", "failing"}
+    guardrails = interval_guardrails(marked_wan, gateway_degraded=gateway_degraded)
+    operator_facing_bad = any(sample.get("is_bad") for sample in marked_wan) or gateway_degraded or app.get("state") == "failing"
     coverage = {
         "sample_count": len(samples),
         "wan_samples": len([sample for sample in samples if sample.get("target_class") in {"internet_probe", "resolver_probe"}]),
@@ -293,6 +376,7 @@ def build_interval_summary(*, rows, start, end, generated_at, incidents=None, he
     return {
         "schema_version": INTERVAL_SUMMARY_SCHEMA_VERSION,
         "model_version": INTERVAL_SUMMARY_MODEL_VERSION,
+        "semantic_model_version": SEMANTIC_MODEL_VERSION,
         "generated_at": iso(generated_at),
         "start": iso(start_ts),
         "end": iso(end_ts),
@@ -300,6 +384,8 @@ def build_interval_summary(*, rows, start, end, generated_at, incidents=None, he
         "current_or_historical": "current" if end_ts >= generated_at - dt.timedelta(minutes=30) else "historical",
         "coverage": coverage,
         "overall_condition": condition,
+        "operator_facing_bad": operator_facing_bad,
+        "guardrail_breaches": guardrails,
         "user_impact": "none_detected" if app.get("state") == "working" and condition in {"healthy", "elevated", "elevated_but_stable"} else "possible",
         "application_summary": app,
         "likely_issue": likely_issue,

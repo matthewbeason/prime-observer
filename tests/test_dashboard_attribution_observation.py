@@ -54,7 +54,8 @@ class DashboardAttributionObservationStaticTest(unittest.TestCase):
         self.assertIn("loadObservationsPayload()", self.html)
         self.assertIn("loadNetworkAttributionPayload()", self.html)
         self.assertIn("resolveCurrentAttribution({", self.html)
-        self.assertIn("computeFallbackAttribution: useHealthFallback ? () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked) : null", self.html)
+        self.assertNotIn("function computeAttribution", self.html)
+        self.assertNotIn("computeFallbackAttribution", self.html)
         self.assertIn('return await res.json();', self.html)
         self.assertIn('return null;', self.html)
 
@@ -193,7 +194,7 @@ class DashboardAttributionObservationBehaviorTest(unittest.TestCase):
             ],
         )
 
-    def test_falls_back_to_browser_computation_when_json_sources_unavailable(self):
+    def test_returns_unavailable_when_json_sources_are_unavailable(self):
         result = self.run_js(
             """
             const computed = {
@@ -210,10 +211,7 @@ class DashboardAttributionObservationBehaviorTest(unittest.TestCase):
             return resolved;
             """
         )
-        self.assertEqual(result["label"], "Likely local (LAN / Wi-Fi)")
-        self.assertEqual(result["confidence"], "High")
-        self.assertEqual(result["why"], "LAN is elevated while WAN target groups remain stable.")
-        self.assertEqual(result["facts"], ["LAN/gateway also degraded."])
+        self.assertIsNone(result)
 
     def test_does_not_invoke_browser_fallback_when_observation_exists(self):
         result = self.run_js(
@@ -244,7 +242,7 @@ class DashboardAttributionObservationBehaviorTest(unittest.TestCase):
         self.assertEqual(result["resolved"]["source"], "observations")
         self.assertEqual(result["fallbackCalls"], 0)
 
-    def test_invokes_browser_fallback_only_when_generated_sources_are_unavailable(self):
+    def test_does_not_invoke_browser_fallback_when_generated_sources_are_unavailable(self):
         result = self.run_js(
             """
             let fallbackCalls = 0;
@@ -265,8 +263,8 @@ class DashboardAttributionObservationBehaviorTest(unittest.TestCase):
             return { resolved, fallbackCalls };
             """
         )
-        self.assertEqual(result["resolved"]["source"], "computed")
-        self.assertEqual(result["fallbackCalls"], 1)
+        self.assertIsNone(result["resolved"])
+        self.assertEqual(result["fallbackCalls"], 0)
 
 
 if __name__ == "__main__":

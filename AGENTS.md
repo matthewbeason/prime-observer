@@ -184,7 +184,7 @@ See `docs/validation.md` for the canonical validation guide.
 For code changes, also run validation appropriate to the affected area. Use the
 existing tests and scripts in the repository as the guide.
 
-The project currently has approximately 466 tests. Test count is not a goal;
+The project currently has approximately 526 tests. Test count is not a goal;
 focus test maintenance on unique/high-value coverage, removal of duplicate or
 obsolete tests, integration coverage, and a small set of critical browser smoke
 checks. Do not add tests merely to grow the count, and do not delete tests

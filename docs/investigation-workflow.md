@@ -85,6 +85,13 @@ baseline comparison, confidence, deterministic narrative, evidence references,
 and metrics for latency, jitter, loss, timeouts, DNS, HTTPS, gateway, resolver,
 Internet, application, and adaptive baseline state.
 
+The interval producer uses the same Python-owned sample semantics as dashboard
+health: absolute excursions, learned comparison, guardrails, persistence, and
+operator-facing classification remain distinct. Current application checks and
+current baseline projections are not reused as historical interval evidence;
+when interval-specific evidence is unavailable, the historical field remains
+unavailable.
+
 `?view=interval&start=<ISO>&end=<ISO>` now attempts to load
 `viz/interval_summary.json`. The browser validates that the artifact start/end
 match the requested interval and renders only artifact-provided interval fields.
@@ -371,7 +378,9 @@ operator decisions:
 The browser is renderer-only. Operational classifications, affected target
 selection, timeline summaries, confidence, freshness, lifecycle state, history
 ordering, and duration are Python-generated. Schema 1 artifacts are rendered
-with a compatibility fallback and are not upgraded in the browser.
+without semantic reinterpretation and are not upgraded in the browser. Missing
+Python-owned semantic artifacts produce an unavailable state rather than a
+browser-computed health, attribution, impact, or interval narrative.
 
 If a catalog is missing or malformed, the current investigation remains usable
 and the History panel reports that history is unavailable. If the catalog
@@ -536,6 +545,10 @@ Internet Conditions context, when present, is copied only from the existing
 generated `viz/internet_conditions.json` fields. It represents the closest
 available locally generated Environmental Context snapshot, not historical
 proof of what happened during the event window.
+
+Replay milestones use a bounded provider item's real event start time. Artifact
+generation time is never substituted as the provider event time, and temporal
+proximity remains supporting context rather than causal proof.
 
 The copied Internet Conditions context is supporting evidence only. It may
 include provider, generated time, status, summary, query metadata, scope,

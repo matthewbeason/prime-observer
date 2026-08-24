@@ -49,6 +49,9 @@ Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
 - Temporal Workspace Phase 1: default selected-time context
 - dashboard presentation work: consolidated hierarchy, unified time context,
   and restored visualization rendering
+- semantic consistency phase: one Python-owned evaluator across dashboard
+  health, latest interval summary, observation/attribution production, and
+  current investigation production; browser semantic fallbacks removed
 
 ## Current State
 
@@ -63,6 +66,8 @@ preserved.
 
 Current watch period:
 
+- verify learned-normal resolver intervals remain semantically identical across
+  dashboard, interval summary, and current investigation projections
 - observe whether noticeability misses stable-but-noticeable problems
 - observe whether turbulence or pattern confidence create misleading signals
 - observe whether DNS Security, Internet Conditions, and APS Power context add

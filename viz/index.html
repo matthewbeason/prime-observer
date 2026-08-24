@@ -827,28 +827,6 @@
   </div>
   </div>
 
-  <details class="supporting-context" id="legacyCompatibilityDetails" style="display:none;">
-    <summary>Legacy details</summary>
-    <div class="row dashboard-overview" style="margin-top:16px;">
-      <div class="card" style="min-width:240px;" id="noticeCard">
-        <h4><span>Legacy Noticeability</span><span class="pill" id="noticePill">v1</span></h4>
-        <div class="value" id="noticeScore">—</div>
-        <div class="egg-message" id="zeroLawMessage">Zeroth Law Check: no significant harm to humans detected.</div>
-        <div class="metric-stack" style="margin-top:8px;">
-          <div class="metric-pair"><span class="label">Level</span><span class="metric-value" id="noticeLevel">—</span></div>
-          <div class="metric-pair"><span class="label">Confidence</span><span class="metric-value" id="noticeConfidence">—</span></div>
-        </div>
-      </div>
-
-      <div class="card" style="min-width:240px;" id="attribCard">
-        <h4><span>Legacy Attribution</span><span class="pill">v1</span></h4>
-        <div class="value" style="font-size:20px;" id="attribLabel">—</div>
-        <div class="metric-pair" style="margin-top:8px;"><span class="label">Confidence</span><span class="metric-value" id="attribConfidence">—</span></div>
-        <div class="chip-row" id="attribEvidenceChips"></div>
-      </div>
-    </div>
-  </details>
-
   <div class="row dashboard-overview" style="margin-top:16px;">
     <div class="card health-card">
       <h4><span>24-hour network history</span><span class="small">last 24h</span></h4>
@@ -864,7 +842,7 @@
       <div class="panel-kicker">Primary evidence view</div>
       <div class="section-title">
         <h3 id="heatmapHeading">Internet instability timeline</h3>
-        <div class="legend" id="heatmapLegend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained p95/jitter/loss degradation • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts</div>
+        <div class="legend" id="heatmapLegend">Composite WAN evidence: internet + resolver probes • 15‑minute buckets • dark gray = sustained Python-classified degradation after learned comparison and guardrails • amber = turbulence • click a bucket to inspect the same interval across the evidence panel and all three charts</div>
       </div>
       <div class="heatmap-scroll">
         <svg id="heatmap" width="1100" height="180" role="group" aria-labelledby="heatmapHeading heatmapLegend"></svg>
@@ -1072,11 +1050,6 @@
       "45.90.30.134": { label: "NextDNS secondary", className: "resolver_probe" },
     };
     const WAN_CLASSES = new Set(["internet_probe", "resolver_probe"]);
-    const WAN_BAD = { p95: 140, jitter: 50, loss: 1.0 };
-    const WAN_BAD_PERSISTENCE = 2;
-    const TURBULENCE_MIN_RAW_BAD = 4;
-    const ATTRIBUTION_CUT_MINUTES = 15;
-    const LAN_BAD_P95 = 120;
     const MOBILE_MEDIA = window.matchMedia("(max-width: 767px)");
 
     let selectedBucketKey = null;
@@ -1244,15 +1217,15 @@
       path.textContent = `${pathTagLabel(bucket.phase)} • 15-minute bucket${isHistorical ? " • Historical interval — not current" : ""}`;
       state.textContent = stateLabel;
       state.classList.add(stateClass);
-      summary.textContent = `${bucket.evidenceLabel || compositeEvidenceLabel(bucket)}. Composite sustained bad ${bucket.bad}/${bucket.total}; raw bad ${bucket.rawBad}/${bucket.total}.`;
+      summary.textContent = `${bucket.evidenceLabel || compositeEvidenceLabel(bucket)}. Composite sustained bad ${bucket.bad}/${bucket.total}; operator-bad ${bucket.rawBad}/${bucket.total}; absolute excursions ${bucket.absoluteExcursions ?? 0}/${bucket.total}.`;
 
       internet.textContent = `${evidence.internetSustainedBadSamples}/${evidence.internetSamples}`;
       internet.classList.add(evidence.internetSustainedBadSamples ? "risk" : (evidence.internetRawBadSamples ? "watch" : "ok"));
-      internetDetail.textContent = `${evidence.internetRawBadSamples} raw bad sample(s) in the selected interval.`;
+      internetDetail.textContent = `${evidence.internetRawBadSamples} operator-bad and ${evidence.internetAbsoluteExcursionSamples ?? 0} absolute-excursion sample(s) in the selected interval.`;
 
       resolver.textContent = `${evidence.resolverSustainedBadSamples}/${evidence.resolverSamples}`;
       resolver.classList.add(evidence.resolverSustainedBadSamples ? "risk" : (evidence.resolverRawBadSamples ? "watch" : "ok"));
-      resolverDetail.textContent = `${evidence.resolverRawBadSamples} raw bad sample(s) in the selected interval.`;
+      resolverDetail.textContent = `${evidence.resolverRawBadSamples} operator-bad and ${evidence.resolverAbsoluteExcursionSamples ?? 0} absolute-excursion sample(s) in the selected interval.`;
 
       lan.textContent = `${evidence.lanElevatedSamples}/${evidence.lanSamples}`;
       lan.classList.add(evidence.lanElevatedSamples ? "watch" : "ok");
@@ -1304,13 +1277,7 @@
     function selectedTimeSummaryText(bucket, evidence, intervalSummary){
       if (!bucket) return null;
       if (timeContextMatchesGenerated(bucket, intervalSummary) && intervalSummary?.summary) return intervalSummary.summary;
-      const label = bucket.isBadBucket ? "Sustained degradation" : (bucket.isTurbulence ? "Turbulence" : "No active degradation");
-      const affected = [];
-      const healthy = [];
-      if (evidence?.internetSustainedBadSamples || evidence?.internetRawBadSamples) affected.push("Internet probes"); else if (evidence?.internetSamples) healthy.push("Internet probes");
-      if (evidence?.resolverSustainedBadSamples || evidence?.resolverRawBadSamples) affected.push("Resolver probes"); else if (evidence?.resolverSamples) healthy.push("Resolver probes");
-      if (evidence?.lanElevatedSamples) affected.push("Router path"); else if (evidence?.lanSamples) healthy.push("Router path");
-      return `${label} during ${toShortTime(bucket.t)} – ${toShortTime(bucket.t2)}. Affected: ${affected.join(", ") || "none detected"}.`;
+      return "Semantic interval summary unavailable for this selection.";
     }
 
     function renderSelectedTimeContext(opts = {}){
@@ -1318,16 +1285,19 @@
       const selected = Boolean(opts.selectedBucket);
       const happened = selectedTimeSummaryText(opts.selectedBucket, opts.selectedEvidence, opts.intervalSummaryPayload)
         || (selected ? "Selected interval evidence is unavailable." : plainFallbackHeadline(opts.dimensions, opts.dependency, opts.refined));
-      const healthy = selected && opts.selectedEvidence
-        ? [opts.selectedEvidence.internetSamples && !opts.selectedEvidence.internetRawBadSamples ? "Internet probes" : null, opts.selectedEvidence.resolverSamples && !opts.selectedEvidence.resolverRawBadSamples ? "Resolver probes" : null, opts.selectedEvidence.lanSamples && !opts.selectedEvidence.lanElevatedSamples ? "Router path" : null].filter(Boolean).join(", ") || "No healthy comparison in selected interval"
+      const exactIntervalSummary = selected && timeContextMatchesGenerated(opts.selectedBucket, opts.intervalSummaryPayload)
+        ? opts.intervalSummaryPayload
+        : null;
+      const healthy = selected
+        ? (exactIntervalSummary?.healthy_scope || "Semantic interval summary unavailable for this selection.")
         : "Current healthy services shown below";
       // Read Python-provided external source list; do not compute overlap in the browser.
       const extSources = Array.isArray(context?.overlapping_external_event_sources) ? context.overlapping_external_event_sources : null;
       // Read Python-provided user impact when this is the generated interval; do not infer from sample counts.
       const impactText = selected
-        ? (timeContextMatchesGenerated(opts.selectedBucket, opts.intervalSummaryPayload) && opts.intervalSummaryPayload?.user_impact
-            ? (opts.intervalSummaryPayload.user_impact === "none_detected" ? "No user-facing failure detected" : "Possible user impact")
-            : "Selected interval — see evidence below")
+        ? (exactIntervalSummary?.user_impact
+            ? healthLabel(exactIntervalSummary.user_impact)
+            : "Semantic interval summary unavailable for this selection.")
         : "Current impact shown below";
       document.getElementById("operatorAssessmentProvenance").textContent = selected ? "selected time" : "current time";
       if (selected) document.getElementById("operatorAssessmentHeadline").textContent = happened;
@@ -1337,9 +1307,9 @@
       if (selected){
         // In selected mode, clear scope/condition — they will be re-set if intervalSummary provides them
         const scopeEl = document.getElementById("timeContextScope");
-        if (scopeEl) scopeEl.textContent = "Selected interval — see evidence below";
+        if (scopeEl) scopeEl.textContent = exactIntervalSummary?.affected_scope || "Semantic interval summary unavailable for this selection.";
         const condEl = document.getElementById("timeContextCondition");
-        if (condEl) condEl.textContent = "Selected interval — see evidence below";
+        if (condEl) condEl.textContent = exactIntervalSummary?.condition ? healthLabel(exactIntervalSummary.condition) : "Semantic interval summary unavailable for this selection.";
       }
       document.getElementById("timeContextExternal").textContent = extSources === null
         ? (selected ? "External context not available for this interval." : "No external events loaded.")
@@ -1671,61 +1641,6 @@
       }
     }
 
-    function deriveNoticeLevel(summary){
-      const label = String(summary?.label || "").toLowerCase();
-      if (label.includes("likely noticeable")) return "High";
-      if (label.includes("possibly noticeable")) return "Medium";
-      return summary?.score == null ? "—" : "Low";
-    }
-
-    function getPatternAwarenessSummary(wanSeries){
-      if (!wanSeries.length){
-        return { detail: "Learning...", confidence: "Low" };
-      }
-      const latest = [...wanSeries].reverse().find(d =>
-        d.baselineDeltaPct != null && Number.isFinite(d.baselineDeltaPct)
-      );
-      if (!latest){
-        return { detail: "Learning...", confidence: "Low" };
-      }
-
-      const delta = latest.baselineDeltaPct;
-      const sampleCount = latest.baselineSampleCount;
-      if (sampleCount == null || !Number.isFinite(sampleCount)){
-        return { detail: "Learning...", confidence: "Low" };
-      }
-      if (sampleCount < 4){
-        return { detail: `Learning... · Low confidence (${sampleCount} samples)`, confidence: "Low" };
-      }
-
-      let confidence = "Low";
-      if (sampleCount >= 40){
-        confidence = "High";
-      } else if (sampleCount >= 16){
-        confidence = "Medium";
-      }
-
-      let label = "";
-      if (Math.abs(delta) < 10){
-        label = "Normal for this time of day";
-      } else if (delta > 25){
-        label = `Highly elevated for this time of day (+${fmt1(delta)}%)`;
-      } else if (delta > 10){
-        label = `Slightly elevated for this time of day (+${fmt1(delta)}%)`;
-      } else {
-        label = `Better than usual for this time of day (${fmt1(delta)}%)`;
-      }
-
-      return { detail: `${label} · ${confidence} confidence (${sampleCount} samples)`, confidence };
-    }
-
-    function connectionStatusForP95(p95){
-      if (!Number.isFinite(p95)) return { label: "Unknown", tone: "neutral", accent: "accent-neutral" };
-      if (p95 >= LAN_BAD_P95) return { label: "Poor", tone: "risk", accent: "accent-risk" };
-      if (p95 >= 60) return { label: "Notice", tone: "watch", accent: "accent-watch" };
-      return { label: "Good", tone: "ok", accent: "accent-ok" };
-    }
-
     function updateConnectionCard(data){
       const connectionValue = document.getElementById("connectionP95");
       const connectionBadge = document.getElementById("connectionBadge");
@@ -1746,13 +1661,12 @@
       const lanRows = data.filter(d => isGatewayClass(d.targetClass));
       const lastLan = lanRows.length ? lanRows[lanRows.length - 1] : data[data.length - 1];
       const p95 = lastLan?.p95;
-      const status = connectionStatusForP95(p95);
       if (connectionValue) connectionValue.textContent = Number.isFinite(p95) ? `${fmt1(p95)} ms` : "—";
       if (document.getElementById("phase")) document.getElementById("phase").textContent = pathTagLabel(lastLan?.phase);
       if (document.getElementById("lastTs")) document.getElementById("lastTs").textContent = lastLan?.t ? toRelativeAge(lastLan.t) : "—";
-      if (connectionBadge) applyPillState(connectionBadge, status.label, status.tone);
-      if (connectionCard) setAccent(connectionCard, status.accent);
-      if (connectionValue) setAccent(connectionValue, status.tone);
+      if (connectionBadge) applyPillState(connectionBadge, "Latest measurement", "neutral");
+      if (connectionCard) setAccent(connectionCard, "accent-neutral");
+      if (connectionValue) setAccent(connectionValue, "neutral");
       if (routerPathEl) routerPathEl.textContent = `${pathTagLabel(lastLan?.phase)} · ${Number.isFinite(p95) ? fmt1(p95) + " ms" : "—"}`;
     }
 
@@ -1932,7 +1846,7 @@
       if (!currentVizState) return;
       const wanYDomain = sharedWanLatencyDomain(currentVizState.internetSeriesMarked, currentVizState.resolverSeriesMarked);
       const lanYDomain = latencyDomainForSeries(currentVizState.lanSeries);
-      renderHeatmap("#heatmap", currentVizState.compositeWanBuckets);
+      renderHeatmap("#heatmap", currentVizState.compositeWanBuckets, currentVizState.semanticAvailable);
       renderLine("#wanInternet", currentVizState.internetSeriesMarked, {
         label: "WAN internet p95",
         badBuckets: currentVizState.badBuckets,
@@ -2064,21 +1978,6 @@
     function isGatewayClass(targetClass){ return targetClass === "gateway_probe"; }
     function isWanClass(targetClass){ return WAN_CLASSES.has(targetClass); }
 
-    function isWanBadRow(r){
-      return (r.p95 > WAN_BAD.p95) || (r.jitter > WAN_BAD.jitter) || (r.loss > WAN_BAD.loss);
-    }
-
-    function markPersistentWanBad(series, minStreak = WAN_BAD_PERSISTENCE){
-      const streaks = new Map();
-      return series.map(r => {
-        const rawBad = isWanBadRow(r);
-        const key = `${r.phase || "FIBER"}|${r.targetClass || "unknown_probe"}`;
-        const streak = rawBad ? (streaks.get(key) || 0) + 1 : 0;
-        streaks.set(key, streak);
-        return { ...r, rawBad, isBad: streak >= minStreak };
-      });
-    }
-
     async function loadData() {
       const res = await fetch(CSV_URL, { cache: "no-store" });
       const text = await res.text();
@@ -2188,7 +2087,15 @@
         if (!timestamp) continue;
         sampleClassifications.set(
           `${timestamp.toISOString()}|${sample.phase || "FIBER"}|${sample.targetClass || "unknown_probe"}|${sample.host || ""}`,
-          { rawBad: Boolean(sample.rawBad), isBad: Boolean(sample.isBad) }
+          {
+            rawBad: Boolean(sample.rawBad),
+            isBad: Boolean(sample.isBad),
+            absoluteThresholdExcursion: Boolean(sample.absoluteThresholdExcursion),
+            learnedNormalState: sample.learnedNormalState || "unavailable",
+            guardrailBreaches: Array.isArray(sample.guardrailBreaches) ? sample.guardrailBreaches : [],
+            operatorBad: Boolean(sample.operatorBad),
+            incidentEligible: Boolean(sample.incidentEligible),
+          }
         );
       }
       const compositeWanBuckets = payload.composite_wan_buckets
@@ -2209,15 +2116,20 @@
       if (!dashboardHealth?.sampleClassifications) return series;
       return series.map(sample => {
         const classification = dashboardHealth.sampleClassifications.get(healthSampleKey(sample));
-        if (!classification) return { ...sample, rawBad: false, isBad: false };
-        return { ...sample, rawBad: classification.rawBad, isBad: classification.isBad };
+        if (!classification) return { ...sample, rawBad: null, isBad: null, semanticUnavailable: true };
+        return { ...sample, ...classification, semanticUnavailable: false };
       });
+    }
+
+    function markSemanticUnavailable(series){
+      return series.map(sample => ({ ...sample, rawBad: null, isBad: null, semanticUnavailable: true }));
     }
 
     function setHealthModelMode(isFallback){
       const el = document.getElementById("healthModelMode");
       if (!el) return;
       el.style.display = isFallback ? "block" : "none";
+      el.textContent = isFallback ? "Semantic health artifacts unavailable; raw measurements remain visible." : "";
     }
 
     function normalizeAttributionConfidence(confidence){
@@ -2309,15 +2221,16 @@
     function renderApplicationExperience(application){
       const card = document.getElementById("applicationExperienceCard");
       const current = Boolean(application?.is_current);
-      const failureTotal = parseFloatSafe(application?.failure_counts?.total, 0) || 0;
+      const emittedStatus = String(application?.status || "unknown").toLowerCase();
       const summary = Array.isArray(application?.evidence) && application.evidence.length
         ? application.evidence.slice(0, 2).map(cleanOperatorText).join(" ")
         : "DNS and web check evidence is unavailable or stale.";
-      const overallTone = !current ? "neutral" : failureTotal > 1 ? "risk" : failureTotal === 1 ? "watch" : "ok";
-      document.getElementById("applicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Working") : "Unavailable";
+      const overallTone = !current ? "neutral" : emittedStatus === "degraded" ? "risk" : emittedStatus === "slow" ? "watch" : emittedStatus === "ok" ? "ok" : "neutral";
+      const statusLabel = !current ? "Unavailable" : emittedStatus === "ok" ? "Working" : healthLabel(emittedStatus);
+      document.getElementById("applicationExperienceValue").textContent = statusLabel;
       document.getElementById("applicationExperienceSummary").textContent = summary;
       document.getElementById("applicationExperienceFreshness").textContent = current ? "Fresh" : healthLabel(application?.freshness || "missing");
-      document.getElementById("mobileApplicationExperienceValue").textContent = current ? (failureTotal ? "Degraded" : "Working") : "Unavailable";
+      document.getElementById("mobileApplicationExperienceValue").textContent = statusLabel;
       document.getElementById("mobileApplicationExperienceDetail").textContent = summary;
       const entries = [
         ["applicationSystemDnsValue", applicationTransaction(application, "system")],
@@ -2350,7 +2263,6 @@
     function userImpactValue(estimatedImpact, observedImpact, application){
       const observedState = String(observedImpact?.state || "").toLowerCase();
       if (["reported_minor", "reported_major", "confirmed_service_failure"].includes(observedState)) return healthLabel(observedState);
-      if (application?.is_current && (application.failure_counts?.total || 0) === 0) return "No failure detected";
       return estimatedImpact?.state ? healthLabel(estimatedImpact.state) : "Not established";
     }
 
@@ -2565,11 +2477,6 @@
       return "Monitored fallback state not established";
     }
 
-    function setLegacyCompatibilityMode(enabled){
-      const details = document.getElementById("legacyCompatibilityDetails");
-      if (details) details.style.display = enabled ? "block" : "none";
-    }
-
     function renderIncidentSimilarityDashboard(similarityPayload){
       const card = document.getElementById("similarityCard");
       if (!card) return;
@@ -2613,7 +2520,6 @@
       const feedback = dimensions?.operator_impact_feedback || null;
       const matchedReview = matchingAssistantReview(assistantReviewPayload, assistantInputPayload);
       const hasDimensions = Boolean(dimensions);
-      setLegacyCompatibilityMode(!hasDimensions);
 
       const scope = cleanOperatorText(matchedReview?.affected_scope || affectedScopeFromDimensions(dimensions, dependency));
       const healthyScope = cleanOperatorText(matchedReview?.healthy_scope || healthyScopeFromDimensions(dimensions, dependency));
@@ -2623,8 +2529,8 @@
       const attributionSubstantive = isSubstantiveAttribution(refined);
       const faultDomain = cleanOperatorText(matchedReview?.likely_fault_domain || (attributionSubstantive ? healthLabel(refined?.domain) : "Likely issue is not yet localized"));
 
-      document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline ? cleanOperatorText(matchedReview.headline) : (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Legacy evidence rendered safely; current health dimensions are not available.");
-      document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "legacy mode");
+      document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline ? cleanOperatorText(matchedReview.headline) : (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Semantic health artifacts are unavailable; raw measurements remain visible.");
+      document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "semantic evidence unavailable");
 
       // Scope and condition folded into Current Summary metric rows
       const scopeEl = document.getElementById("timeContextScope");
@@ -2658,12 +2564,6 @@
       const members = Array.isArray(dependency?.members) ? dependency.members : [];
       const primary = members.find(member => member.role === "primary") || null;
       const secondary = members.find(member => member.role === "secondary") || null;
-      const resolverUnstable = members.some(member => ["elevated", "degraded", "severe"].includes(member?.technical_condition?.state));
-      if (application?.is_current && (parseFloatSafe(application?.failure_counts?.total, 0) || 0) === 0 && resolverUnstable){
-        const distinction = "DNS and HTTPS transactions are working now; resolver path probe instability is shown separately below.";
-        document.getElementById("applicationExperienceSummary").textContent = distinction;
-        document.getElementById("mobileApplicationExperienceDetail").textContent = distinction;
-      }
       document.getElementById("dependencyStateValue").textContent = resolverPathSummary(primary, secondary);
       document.getElementById("dependencyRedundancyValue").textContent = resolverCoverageLabel(dependency, members);
       document.getElementById("dependencyActiveMemberValue").textContent = dependency?.active_member || "Active resolver not established";
@@ -2733,12 +2633,6 @@
       };
     }
 
-    function parseObservationTime(value){
-      if (typeof value !== "string" || !value.trim()) return null;
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
     function normalizeIntervalBoundary(value){
       if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
       if (typeof value === "string" || typeof value === "number"){
@@ -2782,96 +2676,7 @@
       return points.length ? d3.extent(points) : null;
     }
 
-    function compareEpisodeObservations(a, b){
-      const priority = { sustained_degradation: 0, turbulence: 1 };
-      const aPriority = priority[a?.status] ?? 99;
-      const bPriority = priority[b?.status] ?? 99;
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      const aStart = a?.start?.getTime?.() ?? 0;
-      const bStart = b?.start?.getTime?.() ?? 0;
-      if (aStart !== bStart) return aStart - bStart;
-      const aEnd = a?.end?.getTime?.() ?? 0;
-      const bEnd = b?.end?.getTime?.() ?? 0;
-      if (aEnd !== bEnd) return aEnd - bEnd;
-      return String(a?.id || "").localeCompare(String(b?.id || ""));
-    }
-
-    function adaptEpisodeObservation(observation){
-      if (!observation || typeof observation !== "object") return null;
-      if (observation?.type !== "episode") return null;
-      const status = observation?.state?.status;
-      if (status !== "sustained_degradation" && status !== "turbulence") return null;
-      const start = parseObservationTime(observation?.interval?.start);
-      const end = parseObservationTime(observation?.interval?.end);
-      if (!start || !end || end <= start) return null;
-      const targetClass = observation?.scope?.target_class;
-      if (targetClass !== "internet_probe" && targetClass !== "resolver_probe") return null;
-      return {
-        id: observation?.id || null,
-        status,
-        label: observation?.state?.label || (status === "sustained_degradation" ? "Sustained degradation" : "Turbulence"),
-        phase: observation?.scope?.phase || null,
-        targetClass,
-        start,
-        end,
-        explanation: typeof observation?.explanation === "string" && observation.explanation.trim()
-          ? observation.explanation.trim()
-          : null,
-        supportingFacts: Array.isArray(observation?.supporting_facts)
-          ? observation.supporting_facts.filter(item => typeof item === "string" && item.trim())
-          : [],
-        scope: observation?.scope || null,
-        source: "observations"
-      };
-    }
-
-    function selectEpisodeObservations(payload){
-      const observations = payload?.observations;
-      if (!Array.isArray(observations)) return [];
-      return observations
-        .map(adaptEpisodeObservation)
-        .filter(Boolean)
-        .sort(compareEpisodeObservations);
-    }
-
-    function intervalOverlapsBucket(intervalStart, intervalEnd, bucket){
-      return intervalStart < bucket.t2 && intervalEnd > bucket.t;
-    }
-
-    function resolveEpisodeStateForBucket(bucket, episodeObservations){
-      if (!Array.isArray(episodeObservations) || !episodeObservations.length) return null;
-      const matches = episodeObservations.filter(observation => {
-        if (observation.targetClass !== bucket.targetClass) return false;
-        if (observation.phase && observation.phase !== bucket.phase) return false;
-        return intervalOverlapsBucket(observation.start, observation.end, bucket);
-      });
-      if (!matches.length) return null;
-      matches.sort(compareEpisodeObservations);
-      return matches[0];
-    }
-
-    function applyEpisodeObservationsToBuckets(baseBuckets, episodeObservations){
-      if (!Array.isArray(baseBuckets) || !baseBuckets.length) return [];
-      if (!Array.isArray(episodeObservations) || !episodeObservations.length){
-        return baseBuckets.map(bucket => ({ ...bucket, semanticSource: "classification", episodeObservation: null }));
-      }
-      return baseBuckets.map(bucket => {
-        const episodeObservation = resolveEpisodeStateForBucket(bucket, episodeObservations);
-        if (!episodeObservation){
-          return { ...bucket, semanticSource: "classification", episodeObservation: null };
-        }
-        return {
-          ...bucket,
-          isBadBucket: episodeObservation.status === "sustained_degradation",
-          isTurbulence: episodeObservation.status === "turbulence",
-          evidenceLabel: episodeObservation.explanation || bucket.evidenceLabel,
-          semanticSource: "observations",
-          episodeObservation
-        };
-      });
-    }
-
-    function resolveCurrentAttribution({ observationsPayload, networkAttributionPayload, computedAttribution, computeFallbackAttribution }){
+    function resolveCurrentAttribution({ observationsPayload, networkAttributionPayload }){
       const observationAttribution = adaptObservationAttribution(
         selectCurrentAttributionObservation(observationsPayload)
       );
@@ -2880,10 +2685,6 @@
       const legacyAttribution = adaptLegacyCurrentAttribution(networkAttributionPayload);
       if (legacyAttribution) return legacyAttribution;
 
-      if (computedAttribution) return computedAttribution;
-      if (typeof computeFallbackAttribution === "function"){
-        return computeFallbackAttribution();
-      }
       return null;
     }
 
@@ -3265,32 +3066,8 @@
       if (tone) dot.classList.add(tone);
     }
 
-    function targetGroupFacts(internetSeries, resolverSeries, lanSeries){
-      const internetBad = internetSeries.some(d => d.isBad) || computeTurbulenceBuckets(internetSeries).length > 0;
-      const resolverBad = resolverSeries.some(d => d.isBad) || computeTurbulenceBuckets(resolverSeries).length > 0;
-      let wanFact = "No WAN target-group evidence is available.";
-      if (internetSeries.length && resolverSeries.length){
-        if (internetBad && !resolverBad) wanFact = "Internet probes degraded while resolver probes remained healthy.";
-        else if (resolverBad && !internetBad) wanFact = "Resolver probes degraded while internet probes remained healthy.";
-        else if (internetBad && resolverBad) wanFact = "Both internet and resolver probes degraded.";
-        else wanFact = "Internet and resolver probes both remained below degradation thresholds.";
-      } else if (internetSeries.length){
-        wanFact = "Internet probe evidence is available; resolver probe evidence is not yet available.";
-      } else if (resolverSeries.length){
-        wanFact = "Resolver probe evidence is available; internet probe evidence is not available.";
-      }
-
-      const lanElevated = lanSeries.filter(d => (d.p95 ?? 0) > LAN_BAD_P95);
-      const lanElevatedRate = lanSeries.length ? lanElevated.length / lanSeries.length : 0;
-      const lanBad = lanElevated.length >= 3 && lanElevatedRate > 0.2;
-      const lanFact = lanBad
-        ? "LAN/gateway also degraded."
-        : (lanSeries.length ? `LAN/gateway elevated samples: ${lanElevated.length}/${lanSeries.length}.` : "LAN/gateway evidence is unavailable.");
-      return [wanFact, lanFact];
-    }
-
     function emptyBucketGroupSummary(){
-      return { total: 0, bad: 0, rawBad: 0, p95Bad: 0, jitterBad: 0, lossBad: 0, maxRawRun: 0, isBadBucket: false, isTurbulence: false };
+      return { total: 0, bad: 0, rawBad: 0, absoluteExcursions: 0, p95Bad: 0, jitterBad: 0, lossBad: 0, maxRawRun: 0, isBadBucket: false, isTurbulence: false };
     }
 
     function compositeEvidenceLabel(bucket){
@@ -3312,67 +3089,12 @@
     function targetGroupEvidenceLine(bucket, targetClass, label){
       const group = bucket?.groups?.[targetClass] || emptyBucketGroupSummary();
       const state = group.isBadBucket ? "sustained bad" : (group.isTurbulence ? "turbulence" : "no sustained degradation");
-      return `${label}: ${state} (${group.bad} sustained bad / ${group.rawBad} raw bad / ${group.total} total)`;
-    }
-
-    function targetGroupSummary(series){
-      const buckets = classifyBuckets(series);
-      return {
-        sampleCount: series.length,
-        rawBadSamples: series.filter(d => d.rawBad).length,
-        sustainedBadSamples: series.filter(d => d.isBad).length,
-        badBuckets: buckets.filter(d => d.bad > 0).length,
-        turbulenceBuckets: buckets.filter(d => d.isTurbulence).length
-      };
-    }
-
-    function attributionEvidenceCounts(internetSeries, resolverSeries, lanSeries){
-      const internet = targetGroupSummary(internetSeries);
-      const resolver = targetGroupSummary(resolverSeries);
-      const lanElevated = lanSeries.filter(d => (d.p95 ?? 0) > LAN_BAD_P95);
-      const internetDegraded = Boolean(internet.sustainedBadSamples || internet.turbulenceBuckets);
-      const resolverDegraded = Boolean(resolver.sustainedBadSamples || resolver.turbulenceBuckets);
-      const wanBadBuckets = internet.badBuckets + resolver.badBuckets;
-      const wanTurbulenceBuckets = internet.turbulenceBuckets + resolver.turbulenceBuckets;
-      const wanSustainedBadSamples = internet.sustainedBadSamples + resolver.sustainedBadSamples;
-      return {
-        internetProbeDegraded: internetDegraded,
-        resolverProbeDegraded: resolverDegraded,
-        lanElevated: lanElevated.length > 0,
-        internetBadBuckets: internet.badBuckets,
-        resolverBadBuckets: resolver.badBuckets,
-        internetSustainedBadSamples: internet.sustainedBadSamples,
-        resolverSustainedBadSamples: resolver.sustainedBadSamples,
-        internetTurbulenceBuckets: internet.turbulenceBuckets,
-        resolverTurbulenceBuckets: resolver.turbulenceBuckets,
-        wanDegradedTargetGroups: [internetDegraded, resolverDegraded].filter(Boolean).length,
-        wanBadBuckets,
-        wanTurbulenceBuckets,
-        wanSustainedBadSamples,
-        wanEvidencePoints: wanSustainedBadSamples + (wanBadBuckets * WAN_BAD_PERSISTENCE) + wanTurbulenceBuckets,
-        lanRecentSamples: lanSeries.length,
-        lanElevatedSamples: lanElevated.length
-      };
+      return `${label}: ${state} (${group.bad} sustained bad / ${group.rawBad} operator-bad / ${group.absoluteExcursions ?? 0} absolute excursions / ${group.total} total)`;
     }
 
     function selectedBucketEvidence(bucket, internetSeries, resolverSeries, lanSeries){
       if (bucket?.selectedEvidence) return bucket.selectedEvidence;
-      const interval = normalizeBucketInterval(bucket);
-      if (!interval) return null;
-      const within = d => d.t >= interval.start && d.t < interval.end;
-      const internet = internetSeries.filter(within);
-      const resolver = resolverSeries.filter(within);
-      const lan = lanSeries.filter(within);
-      return {
-        internetSustainedBadSamples: internet.filter(d => d.isBad).length,
-        internetRawBadSamples: internet.filter(d => d.rawBad).length,
-        internetSamples: internet.length,
-        resolverSustainedBadSamples: resolver.filter(d => d.isBad).length,
-        resolverRawBadSamples: resolver.filter(d => d.rawBad).length,
-        resolverSamples: resolver.length,
-        lanElevatedSamples: lan.filter(d => (d.p95 ?? 0) > LAN_BAD_P95).length,
-        lanSamples: lan.length
-      };
+      return null;
     }
 
     function selectedBucketEvidenceHtml(evidence){
@@ -3382,130 +3104,17 @@
         : '';
       return `<div class="section">
                 <div class="headline">Selected Bucket</div>
-                <div class="list-line">Internet probes: <span class="strong">${evidence.internetSustainedBadSamples}</span> sustained bad sample(s) (${evidence.internetRawBadSamples} raw bad / ${evidence.internetSamples} total)</div>
-                <div class="list-line">Resolver probes: <span class="strong">${evidence.resolverSustainedBadSamples}</span> sustained bad sample(s) (${evidence.resolverRawBadSamples} raw bad / ${evidence.resolverSamples} total)</div>
+                <div class="list-line">Internet probes: <span class="strong">${evidence.internetSustainedBadSamples}</span> sustained bad sample(s) (${evidence.internetRawBadSamples} operator-bad / ${evidence.internetAbsoluteExcursionSamples ?? 0} absolute excursions / ${evidence.internetSamples} total)</div>
+                <div class="list-line">Resolver probes: <span class="strong">${evidence.resolverSustainedBadSamples}</span> sustained bad sample(s) (${evidence.resolverRawBadSamples} operator-bad / ${evidence.resolverAbsoluteExcursionSamples ?? 0} absolute excursions / ${evidence.resolverSamples} total)</div>
                 <div class="list-line">LAN: <span class="strong">${evidence.lanElevatedSamples}</span> elevated sample(s) / ${evidence.lanSamples} total</div>
                 ${lanContext}
               </div>`;
-    }
-
-    function computeUserNoticeability(summary){
-      const scoreEl = document.getElementById("noticeScore");
-      const levelEl = document.getElementById("noticeLevel");
-      if (!summary || summary.score == null) {
-        scoreEl.textContent = "—";
-        levelEl.textContent = "—";
-        document.getElementById("noticeConfidence").textContent = "—";
-        setAccent(document.getElementById("noticeCard"), "accent-neutral");
-        setAccent(scoreEl, "neutral");
-        return;
-      }
-      scoreEl.textContent = String(summary.score);
-      levelEl.textContent = deriveNoticeLevel(summary);
-      const accent = summary.forecast === "Risk" ? "risk" : (summary.forecast === "Watch" ? "watch" : "ok");
-      setAccent(document.getElementById("noticeCard"), `accent-${accent}`);
-      setAccent(scoreEl, accent);
-    }
-
-    function updateAttributionCard(attribution, evidenceCounts){
-      const label = attribution?.label || "—";
-      const labelEl = document.getElementById("attribLabel");
-      labelEl.textContent = label;
-      document.getElementById("attribConfidence").textContent = attribution?.confidence || "—";
-      const chips = [
-        {
-          label: `WAN ${evidenceCounts?.wanDegradedTargetGroups ? "✓" : "—"}`,
-          tone: evidenceCounts?.wanDegradedTargetGroups ? "watch" : "neutral"
-        },
-        {
-          label: `Resolver ${evidenceCounts?.resolverProbeDegraded ? "✓" : "—"}`,
-          tone: evidenceCounts?.resolverProbeDegraded ? "watch" : "neutral"
-        },
-        {
-          label: `Gateway ${evidenceCounts?.lanElevated ? "✓" : "—"}`,
-          tone: evidenceCounts?.lanElevated ? "watch" : "neutral"
-        }
-      ];
-      renderChipRow("attribEvidenceChips", chips);
-      let accent = null;
-      if (label === "No network issue detected") accent = "ok";
-      else if (label === "Likely upstream (ISP / path)" || label === "Likely local (LAN / Wi‑Fi)") accent = "risk";
-      else if (label === "Inconclusive" || label === "Mixed evidence") accent = "watch";
-      setAccent(document.getElementById("attribCard"), accent ? `accent-${accent}` : null);
-      setAccent(labelEl, accent);
     }
 
     function quantile(arr, q){
       if (!arr.length) return null;
       const sorted = arr.slice().sort((a,b)=>a-b);
       return d3.quantile(sorted, q);
-    }
-
-    function getNoticeabilitySummary(wanSeries, compositeBuckets){
-      if (!wanSeries.length) return { score: null, label: "No data", forecast: "No data", why: "No WAN data in window." };
-      const now = new Date();
-      const scoreCut = new Date(now.getTime() - 15 * 60000);
-      const forecastCut = new Date(now.getTime() - 60 * 60000);
-      const recent = wanSeries.filter(d => d.t >= scoreCut);
-      if (!recent.length) return { score: null, label: "No recent WAN data", forecast: "No recent WAN data", why: "No WAN samples in the last 15 minutes." };
-
-      const p95s = recent.map(d => d.p95).filter(Number.isFinite);
-      const medianP95 = quantile(p95s, 0.50) ?? 0;
-      const p95ofP95 = quantile(p95s, 0.95) ?? 0;
-      const elevated = recent.filter(d => d.p95 > 120).length;
-      const severe = recent.filter(d => d.p95 > 180).length;
-      const elevatedFrac = recent.length ? (elevated / recent.length) : 0;
-      let consecutiveElevated = 0;
-      for (let i = recent.length - 1; i >= 0; i--) {
-        if ((recent[i].p95 ?? 0) > 120) consecutiveElevated++;
-        else break;
-      }
-
-      let penalty = 0;
-      if (medianP95 > 80)  penalty += Math.min(10, (medianP95 - 80) * 0.25);
-      if (medianP95 > 120) penalty += Math.min(20, (medianP95 - 120) * 0.20);
-      if (p95ofP95 > 180) penalty += Math.min(15, (p95ofP95 - 180) * 0.08);
-      penalty += elevatedFrac * 25;
-      penalty += Math.min(20, consecutiveElevated * 5);
-      penalty += Math.min(10, severe * 2);
-      const score = Math.max(0, Math.min(100, Math.round(100 - penalty)));
-
-      let label = "Probably masked";
-      if (score < 60) label = "Likely noticeable";
-      else if (score < 75) label = "Possibly noticeable";
-      else if (score < 90) label = "Low risk";
-
-      const recentHourBuckets = (compositeBuckets || []).filter(d => d.t2 >= forecastCut);
-      const badCount60 = recentHourBuckets.filter(d => d.isBadBucket).length;
-      const turbulenceCount60 = recentHourBuckets.filter(d => d.isTurbulence).length;
-      const total60 = recentHourBuckets.length;
-      const recentBadRate = total60 ? (badCount60 / total60) : 0;
-      const recentBadPct = total60 ? Math.round(recentBadRate * 100) : 0;
-
-      let wanSpikeStreak = 0;
-      for (let i = wanSeries.length - 1; i >= 0; i--) {
-        if ((wanSeries[i].p95 ?? 0) > 120) wanSpikeStreak++;
-        else break;
-      }
-
-      let forecast = "Stable";
-      if (recentBadRate >= 0.20 || wanSpikeStreak >= 3) forecast = "Risk";
-      else if (recentBadRate > 0 || turbulenceCount60 > 0 || wanSpikeStreak >= 1) forecast = "Watch";
-
-      let why = `Stable because last 60 min shows ${badCount60}/${total60} composite WAN bad moment bucket(s) (${recentBadPct}%), ${turbulenceCount60} turbulence bucket(s), and no sustained WAN spike streak.`;
-      if (forecast === "Watch") why = `Watch because last 60 min shows ${badCount60}/${total60} composite WAN bad moment bucket(s) (${recentBadPct}%), ${turbulenceCount60} turbulence bucket(s), or a short WAN spike streak of ${wanSpikeStreak}.`;
-      else if (forecast === "Risk") why = `Risk because last 60 min shows ${badCount60}/${total60} composite WAN bad moment bucket(s) (${recentBadPct}%) or a sustained WAN spike streak of ${wanSpikeStreak}.`;
-
-      return { score, label, forecast, why };
-    }
-
-    function computeNoticeabilityForecast(summary, patternSummary){
-      const confidenceEl = document.getElementById("noticeConfidence");
-      if (!summary){
-        confidenceEl.textContent = "—";
-        return;
-      }
-      confidenceEl.textContent = patternSummary?.confidence || "Low";
     }
 
     function computeProviderStats(seriesArr){
@@ -3564,186 +3173,7 @@
       syncWanHealthTables(wrap.innerHTML);
     }
 
-    function classifyBuckets(wanSeries){
-      const binMs = HEAT_BIN_MINUTES * 60000;
-      const buckets = new Map();
-
-      for (const d of wanSeries){
-        const b = Math.floor(d.t.getTime() / binMs) * binMs;
-        const key = `${d.phase || "FIBER"}|${d.targetClass || "unknown_probe"}|${b}`;
-        let obj = buckets.get(key);
-        if (!obj) obj = { phase: d.phase || "FIBER", targetClass: d.targetClass || "unknown_probe", rows: [] };
-        obj.rows.push(d);
-        buckets.set(key, obj);
-      }
-
-      const now = new Date();
-      const recentCut = new Date(now.getTime() - 60 * 60000);
-
-      return Array.from(buckets.values()).map((v) => {
-        const rows = v.rows.sort((a,b)=>a.t-b.t);
-        const total = rows.length;
-        const bad = rows.filter(d => d.isBad).length;
-        const rawBad = rows.filter(d => d.rawBad).length;
-        const p95Bad = rows.filter(d => d.p95 > WAN_BAD.p95).length;
-        const jitterBad = rows.filter(d => d.jitter > WAN_BAD.jitter).length;
-        const lossBad = rows.filter(d => d.loss > WAN_BAD.loss).length;
-        let rawRun = 0, maxRawRun = 0;
-        for (const row of rows){
-          rawRun = row.rawBad ? rawRun + 1 : 0;
-          if (rawRun > maxRawRun) maxRawRun = rawRun;
-        }
-        const firstTime = rows.length ? rows[0].t.getTime() : Date.now();
-        const bucketStart = Math.floor(firstTime / binMs) * binMs;
-        const bucket = {
-          phase: v.phase,
-          targetClass: v.targetClass,
-          t: new Date(bucketStart),
-          t2: new Date(bucketStart + binMs),
-          total, bad, rawBad,
-          p95Bad, jitterBad, lossBad,
-          rate: total ? bad / total : 0,
-          rawRate: total ? rawBad / total : 0,
-          maxRawRun,
-          isBadBucket: bad > 0,
-          isTurbulence: bad === 0 && rawBad >= TURBULENCE_MIN_RAW_BAD && maxRawRun < WAN_BAD_PERSISTENCE,
-          recent: (new Date(bucketStart + binMs)) >= recentCut
-        };
-        bucket.key = bucketKey(bucket);
-        bucket.selected = selectedBucketKey === bucket.key;
-        return bucket;
-      }).sort((a,b)=>a.t-b.t);
-    }
-
-    function buildCompositeWanBuckets(internetSeries, resolverSeries, episodeObservations=[]){
-      const buckets = new Map();
-      const internetBuckets = applyEpisodeObservationsToBuckets(classifyBuckets(internetSeries), episodeObservations);
-      const resolverBuckets = applyEpisodeObservationsToBuckets(classifyBuckets(resolverSeries), episodeObservations);
-      for (const bucket of [...internetBuckets, ...resolverBuckets]){
-        const b = bucket.t.getTime();
-        const key = `${bucket.phase || "FIBER"}|composite_wan|${b}`;
-        let obj = buckets.get(key);
-        if (!obj){
-          obj = {
-            phase: bucket.phase || "FIBER",
-            targetClass: "composite_wan",
-            t: bucket.t,
-            t2: bucket.t2,
-            groups: {},
-            total: 0,
-            bad: 0,
-            rawBad: 0,
-            p95Bad: 0,
-            jitterBad: 0,
-            lossBad: 0,
-            maxRawRun: 0,
-            recent: bucket.recent
-          };
-          buckets.set(key, obj);
-        }
-        obj.groups[bucket.targetClass] = {
-          total: bucket.total,
-          bad: bucket.bad,
-          rawBad: bucket.rawBad,
-          p95Bad: bucket.p95Bad,
-          jitterBad: bucket.jitterBad,
-          lossBad: bucket.lossBad,
-          maxRawRun: bucket.maxRawRun,
-          isBadBucket: bucket.isBadBucket,
-          isTurbulence: bucket.isTurbulence,
-          semanticSource: bucket.semanticSource || "classification",
-          episodeObservation: bucket.episodeObservation || null
-        };
-        obj.total += bucket.total;
-        obj.bad += bucket.bad;
-        obj.rawBad += bucket.rawBad;
-        obj.p95Bad += bucket.p95Bad;
-        obj.jitterBad += bucket.jitterBad;
-        obj.lossBad += bucket.lossBad;
-        obj.maxRawRun = Math.max(obj.maxRawRun, bucket.maxRawRun);
-        obj.recent = obj.recent || bucket.recent;
-      }
-
-      return Array.from(buckets.values()).map(bucket => {
-        bucket.isBadBucket = Boolean(bucket.groups.internet_probe?.isBadBucket || bucket.groups.resolver_probe?.isBadBucket);
-        bucket.isTurbulence = !bucket.isBadBucket && Boolean(bucket.groups.internet_probe?.isTurbulence || bucket.groups.resolver_probe?.isTurbulence);
-        bucket.rate = bucket.total ? bucket.bad / bucket.total : 0;
-        bucket.rawRate = bucket.total ? bucket.rawBad / bucket.total : 0;
-        bucket.episodeObservations = [bucket.groups.internet_probe?.episodeObservation, bucket.groups.resolver_probe?.episodeObservation].filter(Boolean).sort(compareEpisodeObservations);
-        bucket.semanticSource = bucket.episodeObservations.length ? "observations" : "classification";
-        bucket.evidenceLabel = compositeEvidenceLabel(bucket);
-        bucket.key = bucketKey(bucket);
-        bucket.selected = selectedBucketKey === bucket.key;
-        return bucket;
-      }).sort((a,b)=>a.t-b.t);
-    }
-
-    function computeAttribution(wanSeries, lanSeries, resolverSeries){
-      const now = new Date();
-      const cut = new Date(now.getTime() - ATTRIBUTION_CUT_MINUTES * 60000);
-
-      const recentWan = wanSeries.filter(d => d.t >= cut);
-      const recentResolver = resolverSeries.filter(d => d.t >= cut);
-      const recentLan = lanSeries.filter(d => d.t >= cut);
-      const recentInternetBuckets = classifyBuckets(wanSeries).filter(b => b.t2 >= cut);
-      const recentResolverBuckets = classifyBuckets(resolverSeries).filter(b => b.t2 >= cut);
-
-      const wanBad = recentWan.some(d => d.isBad);
-      const resolverBad = recentResolver.some(d => d.isBad);
-      const wanTurbulence = recentInternetBuckets.some(b => b.isTurbulence) || recentResolverBuckets.some(b => b.isTurbulence);
-
-      const lanElevated = recentLan.filter(d => (d.p95 ?? 0) > LAN_BAD_P95);
-      const lanElevatedRate = recentLan.length ? (lanElevated.length / recentLan.length) : 0;
-      const lanBad = lanElevated.length >= 3 && lanElevatedRate > 0.2;
-      const evidence = attributionEvidenceCounts(recentWan, recentResolver, recentLan);
-
-      let label = "Inconclusive";
-      let confidence = "Low";
-      let why = "Signals are mixed across LAN and WAN.";
-
-      if (!recentWan.length && !recentResolver.length && !recentLan.length){
-        label = "No recent data";
-        confidence = "Low";
-        why = "No LAN, internet probe, or resolver probe samples in the last 15 minutes.";
-      } else if (lanBad && (wanBad || resolverBad || wanTurbulence)){
-        const wanPoints = evidence.wanEvidencePoints;
-        const lanPoints = evidence.lanElevatedSamples;
-        const wanDominates = wanPoints >= Math.max(lanPoints * 2, WAN_BAD_PERSISTENCE) ||
-          (evidence.wanDegradedTargetGroups >= 2 && evidence.wanBadBuckets >= lanElevated.length);
-        const lanDominates = lanPoints >= Math.max(3, wanPoints * 1.5) && lanElevatedRate >= 0.5;
-        if (wanDominates){
-          label = "Likely upstream (ISP / path)";
-          confidence = "Medium";
-          why = `WAN evidence spans ${evidence.wanDegradedTargetGroups} target group(s) with ${evidence.wanBadBuckets} sustained bad bucket(s); LAN has ${lanElevated.length}/${recentLan.length} elevated sample(s).`;
-        } else if (lanDominates){
-          label = "Likely local (LAN / Wi‑Fi)";
-          confidence = "Medium";
-          why = `LAN has ${lanElevated.length}/${recentLan.length} elevated sample(s) and materially exceeds WAN evidence counts.`;
-        } else {
-          label = "Mixed evidence";
-          confidence = "Medium";
-          why = `WAN evidence and LAN elevation are both present: ${evidence.wanBadBuckets} WAN sustained bad bucket(s), ${lanElevated.length}/${recentLan.length} LAN elevated sample(s).`;
-        }
-      } else if (lanBad && !wanBad && !resolverBad && !wanTurbulence){
-        label = "Likely local (LAN / Wi‑Fi)";
-        confidence = "High";
-        why = `LAN is elevated (${lanElevated.length}/${recentLan.length} samples, ${Math.round(lanElevatedRate * 100)}%) while WAN target groups remain stable.`;
-      } else if (!lanBad && (wanBad || resolverBad || wanTurbulence)){
-        label = "Likely upstream (ISP / path)";
-        confidence = (wanBad || resolverBad) ? "High" : "Medium";
-        why = (wanBad || resolverBad)
-          ? `WAN target groups show sustained degradation while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`
-          : `WAN target groups show turbulence while LAN stays below local threshold (${lanElevated.length}/${recentLan.length || 0} elevated).`;
-      } else if (!lanBad && !wanBad && !resolverBad && !wanTurbulence){
-        label = "No network issue detected";
-        confidence = "High";
-        why = "LAN and WAN target groups both look stable in the last 15 minutes.";
-      }
-
-      return { label, confidence, why, facts: targetGroupFacts(recentWan, recentResolver, recentLan) };
-    }
-
-    function renderHeatmap(svgSel, buckets) {
+    function renderHeatmap(svgSel, buckets, semanticAvailable = true) {
       const svg = d3.select(svgSel);
       svg.selectAll("*").remove();
 
@@ -3756,7 +3186,10 @@
       const g = svg.append("g").attr("transform", `translate(${pad.l},${pad.t})`);
 
       if (!buckets.length) {
-        g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text("No WAN data in window for configured targets.");
+        const message = semanticAvailable
+          ? "No WAN data in window for configured targets."
+          : "Semantic heatmap unavailable; raw latency charts remain visible.";
+        g.append("text").attr("x", 6).attr("y", 18).attr("fill", "#666").text(message);
         return;
       }
 
@@ -3830,12 +3263,13 @@
                           <div class="list-line">${d.evidenceLabel || compositeEvidenceLabel(d)}</div>
                           <div class="section">
                             <div class="list-line">Composite sustained bad rate: <span class="strong">${(d.rate*100).toFixed(1)}%</span> (${d.bad}/${d.total})</div>
-                            <div class="list-line">Composite raw bad rate: <span class="strong">${(d.rawRate*100).toFixed(1)}%</span> (${d.rawBad}/${d.total})</div>
+                            <div class="list-line">Composite operator-bad rate: <span class="strong">${(d.rawRate*100).toFixed(1)}%</span> (${d.rawBad}/${d.total})</div>
+                            <div class="list-line">Composite absolute excursions: <span class="strong">${d.absoluteExcursions ?? 0}</span>/${d.total}</div>
                           </div>
                           <div class="section">
                             <div class="list-line">${targetGroupEvidenceLine(d, "internet_probe", "Internet probes")}</div>
                             <div class="list-line">${targetGroupEvidenceLine(d, "resolver_probe", "Resolver probes")}</div>
-                            <div class="list-line muted">Raw reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
+                            <div class="list-line muted">Absolute threshold reasons: p95 ${d.p95Bad}, jitter ${d.jitterBad}, loss ${d.lossBad}</div>
                             <div class="list-line muted">Max raw run within a WAN target group: ${d.maxRawRun}</div>
                           </div>
                           ${episodeDetails}
@@ -3858,8 +3292,6 @@
       g.selectAll(".domain, .tick line").attr("stroke","#ddd").attr("aria-hidden", "true");
     }
 
-    function computeBadBuckets(wanSeries){ return classifyBuckets(wanSeries).filter(d => d.isBadBucket); }
-    function computeTurbulenceBuckets(wanSeries){ return classifyBuckets(wanSeries).filter(d => d.isTurbulence); }
     function computeRawSpikeMarkers(wanSeries){ return wanSeries.filter(d => d.rawBad && !d.isBad).map(d => ({ ...d })); }
 
     function meshLineageLabel(evidence){
@@ -4141,7 +3573,7 @@
           let extra = '';
           if (selectedInterval && d.t >= selectedInterval.start && d.t < selectedInterval.end) extra = '<div class="section"><div class="list-line muted">Inside selected heatmap interval.</div></div>';
           if (opts.selectedEvidence) extra += selectedBucketEvidenceHtml(opts.selectedEvidence);
-          if (d.rawBad && !d.isBad) extra += '<div class="section"><div class="list-line muted">Isolated raw spike.</div></div>';
+          if (d.rawBad && !d.isBad) extra += '<div class="section"><div class="list-line muted">Isolated operator-bad sample.</div></div>';
           if (svgSel === "#lan") extra += meshLanTooltipHtml(opts.meshEvidence);
           const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.targetLabel || d.host} • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                         <div class="headline">${opts.label || "p95"}: ${fmt1(d.p95)} ms</div>
@@ -4182,24 +3614,20 @@
         const { lanSeries, internetSeries, resolverSeries } = toSeries(raw);
         const internetSeriesMarked = dashboardHealth
           ? applyDashboardHealthClassifications(internetSeries, dashboardHealth)
-          : markPersistentWanBad(internetSeries);
+          : markSemanticUnavailable(internetSeries);
         const resolverSeriesMarked = dashboardHealth
           ? applyDashboardHealthClassifications(resolverSeries, dashboardHealth)
-          : markPersistentWanBad(resolverSeries);
-        const episodeObservations = selectEpisodeObservations(observationsPayload);
+          : markSemanticUnavailable(resolverSeries);
         const compositeWanBuckets = dashboardHealth
           ? dashboardHealth.compositeWanBuckets.map(bucket => ({ ...bucket, selected: selectedBucketKey === bucket.key }))
-          : buildCompositeWanBuckets(internetSeriesMarked, resolverSeriesMarked, episodeObservations);
-        const noticeSummary = getNoticeabilitySummary([...internetSeriesMarked, ...resolverSeriesMarked].sort((a,b)=>a.t-b.t), compositeWanBuckets);
-        const patternSummary = getPatternAwarenessSummary(internetSeriesMarked);
+          : [];
         const badBuckets = compositeWanBuckets.filter(d => d.isBadBucket);
         const turbulenceBuckets = compositeWanBuckets.filter(d => d.isTurbulence);
         const rawSpikeMarkers = computeRawSpikeMarkers(internetSeriesMarked);
-        const attributionEvidence = dashboardHealth?.attributionEvidenceCounts || attributionEvidenceCounts(internetSeriesMarked, resolverSeriesMarked, lanSeries);
+        const attributionEvidence = dashboardHealth?.attributionEvidenceCounts || null;
         const attribution = resolveCurrentAttribution({
           observationsPayload,
           networkAttributionPayload,
-          computeFallbackAttribution: useHealthFallback ? () => computeAttribution(internetSeriesMarked, lanSeries, resolverSeriesMarked) : null
         });
         const selectedBucket = selectedBucketKey ? (compositeWanBuckets.find(d => d.key === selectedBucketKey) || null) : null;
         if (selectedBucketKey && !selectedBucket) selectedBucketKey = null;
@@ -4210,14 +3638,10 @@
         );
 
         const meshEvidence = meshContextPayload?.lan_evidence || null;
-        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, currentCondition: dashboardHealth?.healthDimensions?.current_condition || null, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, incidentSimilarityPayload, operationalLearningsPayload, meshEvidence };
+        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, semanticAvailable: Boolean(dashboardHealth), currentCondition: dashboardHealth?.healthDimensions?.current_condition || null, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, incidentSimilarityPayload, operationalLearningsPayload, meshEvidence };
 
         updateConnectionCard(raw);
         renderMeshContext(meshContextPayload);
-        computeUserNoticeability(noticeSummary);
-        computeNoticeabilityForecast(noticeSummary, patternSummary);
-        updateAttributionCard(attribution, attributionEvidence);
-
         const currentDimensions = dashboardHealth?.healthDimensions || null;
         const currentDependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
         const currentRefined = networkAttributionPayload?.refined_attribution || currentDimensions?.attribution || null;

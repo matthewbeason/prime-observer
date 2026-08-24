@@ -357,7 +357,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(episodes[0]["state"]["status"], "turbulence")
         self.assertEqual(episodes[0]["scope"]["target_class"], "resolver_probe")
 
-    def test_stable_elevated_resolver_keeps_observations_but_suppresses_current_incident(self):
+    def test_stable_elevated_resolver_is_consistently_suppressed_from_operator_episode(self):
         now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
         base = now - dt.timedelta(hours=2)
         rows = []
@@ -386,8 +386,13 @@ class TransformLatestTest(unittest.TestCase):
         self.assertTrue(investigation["incident_suppressed"])
         self.assertEqual(investigation["suppression_reason"], "established_degraded_baseline")
         episodes = [item for item in observations["observations"] if item["type"] == "episode"]
-        self.assertTrue(episodes)
-        self.assertEqual(episodes[0]["state"]["status"], "sustained_degradation")
+        self.assertEqual(episodes, [])
+        secondary_samples = [
+            item for item in dashboard_health["wan_samples"]
+            if item["targetClass"] == "resolver_probe" and item["host"] == "45.90.30.134"
+        ]
+        self.assertTrue(any(item["absoluteThresholdExcursion"] for item in secondary_samples))
+        self.assertFalse(any(item["operatorBad"] for item in secondary_samples))
 
     def test_durable_baseline_history_created_for_separate_resolver_members(self):
         now = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
@@ -725,7 +730,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("./time_context.json", dashboard_html)
         self.assertIn("./observations.json", dashboard_html)
         self.assertIn("./network_attribution.json", dashboard_html)
-        self.assertIn("selectEpisodeObservations(observationsPayload)", dashboard_html)
+        self.assertNotIn("selectEpisodeObservations(observationsPayload)", dashboard_html)
+        self.assertIn("dashboardHealth.compositeWanBuckets.map", dashboard_html)
         self.assertIn("./nextdns_summary.json", dashboard_html)
         self.assertIn("./internet_conditions.json", dashboard_html)
         self.assertIn("./aps_power_context.json", dashboard_html)
@@ -782,10 +788,11 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("Legacy Model Disclosure", dashboard_html)
         self.assertNotIn("User Noticeability", dashboard_html)
         self.assertNotIn("Network Attribution", dashboard_html)
-        self.assertIn("Legacy Noticeability", dashboard_html)
-        self.assertIn("Legacy Attribution", dashboard_html)
-        self.assertIn("legacyCompatibilityDetails", dashboard_html)
-        self.assertIn("setLegacyCompatibilityMode(!hasDimensions)", dashboard_html)
+        self.assertNotIn("Legacy Noticeability", dashboard_html)
+        self.assertNotIn("Legacy Attribution", dashboard_html)
+        self.assertNotIn("legacyCompatibilityDetails", dashboard_html)
+        self.assertNotIn("setLegacyCompatibilityMode", dashboard_html)
+        self.assertIn("Semantic health artifacts are unavailable", dashboard_html)
         self.assertIn("mobileLikelyCauseValue", dashboard_html)
         self.assertIn("mobileHistoricalPatternsCard", dashboard_html)
         self.assertNotIn("mobileCurrentActionValue", dashboard_html)

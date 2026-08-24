@@ -63,16 +63,9 @@ class DashboardBucketSelectionAlignmentBehaviorTest(unittest.TestCase):
 
     def run_js(self, body: str):
         functions = [
-            "function parseObservationTime",
             "function normalizeIntervalBoundary",
             "function normalizeBucketInterval",
             "function resolveSharedChartDomain",
-            "function compareEpisodeObservations",
-            "function adaptEpisodeObservation",
-            "function selectEpisodeObservations",
-            "function intervalOverlapsBucket",
-            "function resolveEpisodeStateForBucket",
-            "function applyEpisodeObservationsToBuckets",
         ]
         snippets = "\n\n".join(extract_function(self.html, signature) for signature in functions)
         script = textwrap.dedent(
@@ -204,7 +197,7 @@ class DashboardBucketSelectionAlignmentBehaviorTest(unittest.TestCase):
         self.assertEqual(result["end"], "2026-11-01T09:00:00.000Z")
         self.assertEqual(result["minutes"], 15)
 
-    def test_observation_backed_bucket_keeps_same_interval_domain(self):
+    def test_python_projected_bucket_keeps_same_interval_domain(self):
         result = self.run_js(
             """
             const baseBucket = {
@@ -222,19 +215,10 @@ class DashboardBucketSelectionAlignmentBehaviorTest(unittest.TestCase):
               isBadBucket: false,
               isTurbulence: false
             };
-            const observationBucket = applyEpisodeObservationsToBuckets([baseBucket], selectEpisodeObservations({
-              observations: [{
-                id: "observation-episode-a",
-                type: "episode",
-                scope: { system: "prime_observer", subject: "network", view: "episode", phase: "FIBER", target_class: "internet_probe" },
-                interval: { start: "2026-06-27T07:20:00+00:00", end: "2026-06-27T07:26:00+00:00" },
-                state: { status: "sustained_degradation", label: "Sustained degradation" },
-                explanation: "Observation-backed interval."
-              }]
-            }))[0];
+            const projectedBucket = { ...baseBucket, semanticSource: "dashboard_health", isBadBucket: true };
             const observedDomain = resolveSharedChartDomain(
               [[{ t: new Date("2026-06-27T07:22:00+00:00") }]],
-              [observationBucket]
+              [projectedBucket]
             );
             const fallbackDomain = resolveSharedChartDomain(
               [[{ t: new Date("2026-06-27T07:22:00+00:00") }]],
@@ -252,7 +236,7 @@ class DashboardBucketSelectionAlignmentBehaviorTest(unittest.TestCase):
             ["2026-06-27T07:15:00.000Z", "2026-06-27T07:30:00.000Z"],
         )
 
-    def test_legacy_fallback_bucket_interval_normalization_is_stable(self):
+    def test_projected_bucket_interval_normalization_is_stable(self):
         result = self.run_js(
             """
             const interval = normalizeBucketInterval({
@@ -260,7 +244,7 @@ class DashboardBucketSelectionAlignmentBehaviorTest(unittest.TestCase):
               targetClass: "composite_wan",
               t: new Date("2026-06-27T07:30:00+00:00"),
               t2: new Date("2026-06-27T07:45:00+00:00"),
-              semanticSource: "classification"
+              semanticSource: "dashboard_health"
             });
             return {
               start: interval.start.toISOString(),

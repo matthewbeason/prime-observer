@@ -78,6 +78,20 @@ class IntervalSummaryTest(unittest.TestCase):
             }
         }
 
+    def baseline_history(self, *, p95=190, state="elevated_but_stable"):
+        return {
+            "schema_version": 1,
+            "targets": {
+                "FIBER|resolver_probe|nextdns_secondary": {
+                    "sample_count": 96,
+                    "median": 150,
+                    "p95": p95,
+                    "accepted_state": state,
+                    "guardrail_status": {"status": "clear", "breaches": []},
+                }
+            },
+        }
+
     def build(self, rows=None, **kwargs):
         return self.module.build_interval_summary(
             rows=rows or self.rows(),
@@ -87,6 +101,7 @@ class IntervalSummaryTest(unittest.TestCase):
             incidents=kwargs.get("incidents", []),
             health_dimensions=kwargs.get("health_dimensions", self.health()),
             application_experience=kwargs.get("application_experience", self.app()),
+            baseline_history=kwargs.get("baseline_history"),
             source_path="data/test.csv",
         )
 
@@ -99,7 +114,10 @@ class IntervalSummaryTest(unittest.TestCase):
         self.assertEqual(summary["metrics"]["https_success"], True)
 
     def test_adaptive_baseline_interval(self):
-        summary = self.build(rows=self.rows(resolver=176), health_dimensions=self.health("elevated_but_stable", False))
+        summary = self.build(
+            rows=self.rows(resolver=176),
+            baseline_history=self.baseline_history(),
+        )
 
         self.assertEqual(summary["overall_condition"], "elevated_but_stable")
         self.assertEqual(summary["likely_issue"], "Established degraded resolver baseline")
@@ -123,6 +141,26 @@ class IntervalSummaryTest(unittest.TestCase):
         self.assertEqual(gateway_failure["metrics"]["gateway"]["state"], "elevated")
         self.assertIn("Gateway", gateway_failure["affected_services"])
 
+    def test_single_gateway_excursion_does_not_override_interval_likely_issue(self):
+        rows = self.rows(resolver=195)
+        gateway_rows = [row for row in rows if row["host"] == "192.168.1.1"]
+        gateway_rows[0]["p95_ms"] = "180"
+        summary = self.build(rows=rows, baseline_history=self.baseline_history())
+
+        self.assertEqual(summary["metrics"]["gateway"]["state"], "isolated_excursion")
+        self.assertEqual(summary["likely_issue"], "Resolver provider path")
+        self.assertNotIn("Gateway", summary["affected_services"])
+
+    def test_qualified_gateway_and_resolver_degradation_is_mixed(self):
+        summary = self.build(
+            rows=self.rows(gateway=180, resolver=195),
+            baseline_history=self.baseline_history(),
+        )
+
+        self.assertEqual(summary["likely_issue"], "Mixed local and upstream evidence")
+        self.assertIn("Gateway", summary["affected_services"])
+        self.assertIn("Resolver probes", summary["affected_services"])
+
     def test_incident_overlap_none_partial_one_and_multiple(self):
         incidents = [
             {"id": "before", "target_class": "resolver_probe", "start": (self.start - dt.timedelta(hours=1)).isoformat(), "end": (self.start - dt.timedelta(minutes=30)).isoformat()},
@@ -139,6 +177,31 @@ class IntervalSummaryTest(unittest.TestCase):
     def test_invalid_interval_rejected(self):
         with self.assertRaises(ValueError):
             self.module.build_interval_summary(rows=[], start=self.end, end=self.start, generated_at=self.end)
+
+    def test_historical_interval_does_not_reuse_current_application_or_baseline_state(self):
+        summary = self.module.build_interval_summary(
+            rows=self.rows(resolver=176),
+            start=self.start,
+            end=self.end,
+            generated_at=self.end + dt.timedelta(hours=4),
+            incidents=[],
+            health_dimensions=self.health(),
+            application_experience=self.app(),
+            baseline_history=self.baseline_history(),
+            source_path="data/test.csv",
+        )
+
+        self.assertEqual(summary["current_or_historical"], "historical")
+        self.assertEqual(summary["application_summary"]["state"], "unknown")
+        self.assertEqual(
+            summary["application_summary"]["temporal_scope"],
+            "current_only_unavailable_for_historical_interval",
+        )
+        self.assertEqual(
+            summary["metrics"]["resolver"]["learned_normal_state"],
+            "fallback_absolute_threshold",
+        )
+        self.assertNotEqual(summary["overall_condition"], "elevated_but_stable")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from health_model import (
     is_turbulence_bucket,
 )
 from health_dimensions import semantic_health_dimensions
+from semantic_health import SEMANTIC_MODEL_VERSION
 from target_metadata import target_metadata
 
 
@@ -234,9 +235,19 @@ def normalize_rows(rows):
             "jitter": safe_float(row.get("jitter_ms") if "jitter_ms" in row else row.get("jitter")),
             "loss": safe_float(row.get("loss_pct") if "loss_pct" in row else row.get("loss")),
             "max_ms": safe_float(row.get("max_ms"), None),
+            "absolute_threshold_excursion": False,
+            "operator_bad": bool(row.get("operator_bad") or row.get("operatorBad") or row.get("raw_bad") or row.get("rawBad")),
             "raw_bad": bool(row.get("raw_bad") or row.get("rawBad")),
             "sustained_bad": bool(row.get("is_bad") or row.get("isBad") or row.get("sustained_bad")),
         }
+        if sample["kind"] == "wan":
+            sample["absolute_threshold_excursion"] = bool(
+                row.get("absolute_threshold_excursion")
+                or row.get("absoluteThresholdExcursion")
+                or (sample["p95"] or 0.0) > WAN_BAD["p95"]
+                or (sample["jitter"] or 0.0) > WAN_BAD["jitter"]
+                or (sample["loss"] or 0.0) > WAN_BAD["loss"]
+            )
         samples.append(sample)
     return sorted(samples, key=lambda item: (item["t"], item["host"]))
 
@@ -252,8 +263,14 @@ def merge_marked_wan(rows, wan_series_marked):
             continue
         match = marked.get((sample["t"], sample["host"], sample["target_class"]))
         if match:
-            sample["raw_bad"] = bool(match.get("raw_bad"))
+            sample["absolute_threshold_excursion"] = bool(match.get("absolute_threshold_excursion"))
+            sample["operator_bad"] = bool(match.get("operator_bad", match.get("raw_bad")))
+            sample["raw_bad"] = sample["operator_bad"]
             sample["sustained_bad"] = bool(match.get("is_bad"))
+            sample["learned_normal_state"] = match.get("learned_normal_state")
+            sample["guardrail_breaches"] = list(match.get("semantic_guardrail_breaches") or [])
+            if "incident_eligible" in match:
+                sample["incident_eligible"] = bool(match.get("incident_eligible"))
     return samples
 
 
@@ -343,6 +360,8 @@ def annotate_adaptive_eligibility(samples, health_dimensions):
 
 
 def event_sample_is_incident_eligible(sample):
+    if "incident_eligible" in sample:
+        return bool(sample.get("incident_eligible"))
     if sample.get("target_class") != "resolver_probe":
         return bool(sample.get("raw_bad"))
     if sample.get("adaptive_recovery_candidate"):
@@ -369,6 +388,8 @@ def target_group_summaries(samples):
             "sample_count": 0,
             "host_counts": {},
             "raw_bad_count": 0,
+            "absolute_excursion_count": 0,
+            "operator_bad_count": 0,
             "sustained_bad_count": 0,
         })
         group["sample_count"] += 1
@@ -377,6 +398,10 @@ def target_group_summaries(samples):
             group["host_counts"][host] = group["host_counts"].get(host, 0) + 1
         if sample.get("raw_bad"):
             group["raw_bad_count"] += 1
+        if sample.get("absolute_threshold_excursion"):
+            group["absolute_excursion_count"] += 1
+        if sample.get("operator_bad"):
+            group["operator_bad_count"] += 1
         if sample.get("sustained_bad"):
             group["sustained_bad_count"] += 1
     return groups
@@ -414,6 +439,8 @@ def summarize(samples, kind):
         buckets = classify_buckets(rows)
         summary.update({
             "raw_bad_count": len([row for row in rows if row.get("raw_bad")]),
+            "absolute_excursion_count": len([row for row in rows if row.get("absolute_threshold_excursion")]),
+            "operator_bad_count": len([row for row in rows if row.get("operator_bad")]),
             "sustained_bad_count": len([row for row in rows if row.get("sustained_bad")]),
             "turbulence_bucket_count": len([bucket for bucket in buckets if bucket["turbulence"]]),
             "bad_bucket_count": len([bucket for bucket in buckets if bucket["sustained_bad_count"] > 0]),
@@ -463,6 +490,7 @@ def classify_buckets(wan_samples):
             raw_run = raw_run + 1 if row.get("raw_bad") else 0
             max_raw_run = max(max_raw_run, raw_run)
         raw_bad = len([row for row in rows if row.get("raw_bad")])
+        absolute_excursions = len([row for row in rows if row.get("absolute_threshold_excursion")])
         sustained_bad = len([row for row in rows if row.get("sustained_bad")])
         turbulence = is_turbulence_bucket(raw_bad, sustained_bad, max_raw_run)
         if sustained_bad:
@@ -492,6 +520,8 @@ def classify_buckets(wan_samples):
             "target_hosts": host_counts(rows),
             "sample_count": len(rows),
             "raw_bad_count": raw_bad,
+            "absolute_excursion_count": absolute_excursions,
+            "operator_bad_count": len([row for row in rows if row.get("operator_bad")]),
             "sustained_bad_count": sustained_bad,
             "max_raw_bad_run": max_raw_run,
             "turbulence": turbulence,
@@ -1266,7 +1296,7 @@ def application_story(health_dimensions):
     application = dimensions.get("application_experience") if isinstance(dimensions.get("application_experience"), dict) else {}
     failures = (application.get("failure_counts") or {}).get("total", 0) if isinstance(application, dict) else 0
     if application.get("is_current") and failures == 0:
-        return "DNS and HTTPS checks continued to succeed."
+        return "The current DNS and HTTPS snapshot is succeeding; it does not establish application state across the historical incident."
     if application.get("is_current") and failures:
         return "Current DNS or HTTPS checks reported failures."
     return "Current DNS and HTTPS check evidence was unavailable."
@@ -1555,7 +1585,7 @@ def application_replay_milestone(selected_event, health_dimensions, phases, like
     if not application or application.get("status") == "missing":
         return None
     failures = (application.get("failure_counts") or {}).get("total", 0)
-    title = "DNS and web checks stayed available" if failures == 0 else "DNS or web checks reported failures"
+    title = "Current DNS and web snapshot is available" if failures == 0 else "Current DNS or web snapshot reported failures"
     summary = application_story(health_dimensions)
     timestamp = application.get("generated_at") or (selected_event or {}).get("confirmed_at")
     return replay_milestone(
@@ -1582,13 +1612,25 @@ def external_context_replay_milestone(selected_event, internet_context, phases, 
     status = internet_context.get("status")
     if status in {None, "normal", "healthy"}:
         return None
-    timestamp = internet_context.get("generated_at") or (selected_event or {}).get("confirmed_at")
+    timed_items = [
+        item for item in (internet_context.get("items") or [])
+        if isinstance(item, dict) and parse_ts(item.get("started") or item.get("start") or item.get("event_start"))
+    ]
+    if not timed_items:
+        return None
+    incident_start = parse_ts((selected_event or {}).get("first_anomalous_at") or (selected_event or {}).get("confirmed_at"))
+    timed_items.sort(
+        key=lambda item: abs((parse_ts(item.get("started") or item.get("start") or item.get("event_start")) - incident_start).total_seconds())
+        if incident_start else 0
+    )
+    provider_event = timed_items[0]
+    timestamp = provider_event.get("started") or provider_event.get("start") or provider_event.get("event_start")
     return replay_milestone(
         "external-context-changed",
         timestamp,
         "external_context_changed",
-        "External context changed",
-        internet_context.get("summary") or "External context reported a material change during the incident window.",
+        "External provider event reported",
+        (provider_event.get("description") or internet_context.get("summary") or "External context reported a material event near the incident window.") + " This is supporting context, not causal proof.",
         (phases.get("during") or {}).get("affected_services", []),
         (phases.get("during") or {}).get("healthy_comparisons", []),
         likely,
@@ -1777,6 +1819,12 @@ def compact_samples(samples, limit=240):
         "jitter_ms": rounded(sample.get("jitter")),
         "loss_pct": rounded(sample.get("loss"), 2),
         "max_ms": rounded(sample.get("max_ms")),
+        "absolute_threshold_excursion": bool(sample.get("absolute_threshold_excursion")),
+        "operator_bad": bool(sample.get("operator_bad")),
+        "sustained_bad": bool(sample.get("sustained_bad")),
+        "learned_normal_state": sample.get("learned_normal_state"),
+        "guardrail_breaches": list(sample.get("guardrail_breaches") or []),
+        "incident_eligible": bool(sample.get("incident_eligible")),
     } for sample in selected]
 
 
@@ -1836,9 +1884,18 @@ def build_automatic_investigation(
     event_midpoint = midpoint(parse_ts(event_start), parse_ts(event_end)) or telemetry_latest_at
     internet_context = internet_conditions_context(event_midpoint)
     replay = incident_replay(selected, phases, scope, recovery, phase_attribution, health_dimensions, internet_context)
+    scoped_health_dimensions = health_dimensions if isinstance(health_dimensions, dict) else None
+    if scoped_health_dimensions:
+        scoped_health_dimensions = dict(scoped_health_dimensions)
+        application = scoped_health_dimensions.get("application_experience")
+        if isinstance(application, dict):
+            application = dict(application)
+            application["temporal_scope"] = "current_snapshot_only"
+            scoped_health_dimensions["application_experience"] = application
     payload = {
         "artifact_type": "completed_investigation_snapshot" if historical and selected else "current_investigation",
         "schema_version": 2,
+        "semantic_model_version": SEMANTIC_MODEL_VERSION,
         "mode": "automatic",
         "generated_at": iso(generated_at),
         "generator": dict(INVESTIGATION_GENERATOR),
@@ -1875,7 +1932,7 @@ def build_automatic_investigation(
         "operator_brief": brief,
         "impact_assessment": (health_dimensions or {}).get("user_impact") if isinstance(health_dimensions, dict) else None,
         "dependency_state": (health_dimensions or {}).get("dependency_groups") if isinstance(health_dimensions, dict) else [],
-        "health_dimensions": health_dimensions if isinstance(health_dimensions, dict) else None,
+        "health_dimensions": scoped_health_dimensions,
         "deterministic_operator_interpretation": (health_dimensions or {}).get("deterministic_operator_interpretation") if isinstance(health_dimensions, dict) else None,
         "scope_impact": scope,
         "recovery_progress": recovery,

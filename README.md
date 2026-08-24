@@ -73,7 +73,10 @@ Prime Observer now separates five concerns:
 - Interpretation: an OpenRouter-backed operator narrative that explains likely meaning, uncertainty, and safe next actions from deterministic evidence.
 - Projection: local JSON artifacts consumed by the dashboard and investigation viewer.
 
-This keeps Prime Observer evidence-first while reducing browser-side reasoning drift. The dashboard is increasingly a projection consumer rather than the sole reasoning engine.
+This keeps Prime Observer evidence-first and prevents browser-side reasoning
+drift. The dashboard renders Python-owned semantic projections; when they are
+unavailable, semantic fields remain unavailable while raw charts may still
+render.
 
 See `docs/artifact-architecture.md` for the authoritative artifact reference.
 
@@ -155,13 +158,20 @@ must not contradict deterministic attribution, scope, or lifecycle fields.
 
 ### Sustained Bad Moments
 
-Raw WAN degradation is currently defined as:
+An absolute WAN threshold excursion is factual safety evidence defined as:
 
 - p95 latency > 140 ms
 - or jitter > 50 ms
 - or packet loss > 1%
 
-Sustained degradation requires persistence across consecutive samples.
+For resolver probes, that excursion is compared with the valid learned range
+before it becomes an operator-facing bad sample. A resolver excursion within an
+accepted elevated-but-stable baseline is retained as raw evidence without
+automatically becoming a bad moment. Loss, timeout, DNS/HTTPS failure, gateway
+problems, correlated degradation, rapid worsening, and severe excursions remain
+guardrails. Without a valid learned baseline, the fixed thresholds remain the
+authoritative fallback. Sustained degradation requires persistence across
+consecutive operator-facing bad samples.
 
 A canonical WAN bad moment is a 15-minute bucket in which one or more WAN
 target groups shows sustained degradation according to these thresholds. WAN
@@ -177,17 +187,17 @@ It is informational rather than operationally significant. This keeps brief inst
 ### Heatmap And Charts
 
 The WAN bad moments heatmap uses composite WAN evidence from internet probes
-and resolver probes after target grouping. Within each target group, samples
-are collapsed by timestamp to the worst p95 sample before the dashboard marks
-raw and sustained bad moments.
+and resolver probes after Python-owned semantic evaluation. The same evaluator
+feeds the latest interval summary and current investigation production.
 
 The two visualizations answer different questions:
 
 - The WAN Internet Probe and WAN Resolver Probe chart lines show p95 latency
   values over time for their target groups.
 - The heatmap shows 15-minute composite WAN buckets.
-- A raw bad sample is any internet or resolver probe sample with p95 latency >
-  140 ms, jitter > 50 ms, or packet loss > 1%.
+- An absolute excursion is any internet or resolver probe sample with p95
+  latency > 140 ms, jitter > 50 ms, or packet loss > 1%. Absolute excursions
+  and operator-facing bad samples are intentionally distinct.
 - A dark gray bucket means at least one WAN target group had sustained
   degradation in that bucket.
 - An amber bucket means turbulence: one or more WAN target groups had enough
@@ -197,7 +207,7 @@ The two visualizations answer different questions:
   contributed evidence. LAN gateway counts are shown separately for the same
   interval.
 
-Because bad-moment evidence includes jitter and packet loss, the p95 latency
+Because bad-moment evidence includes learned comparison, jitter, and packet loss, the p95 latency
 line can appear to improve while the heatmap remains dark. That is expected
 when packet loss or jitter is persistent even though p95 latency has fallen.
 
@@ -910,7 +920,7 @@ New features should first ask: "Can this be communicated visually?"
 
 ## Testing
 
-The project currently has approximately 466 tests. Test count is not a goal;
+The project currently has approximately 526 tests. Test count is not a goal;
 the focus is unique, high-value coverage. Test-suite maintenance prioritizes:
 
 - unique/high-value tests

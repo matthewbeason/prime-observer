@@ -128,8 +128,8 @@ Stage ownership:
   provider-neutral attribution domain, confidence, supporting evidence, evidence
   against, and unresolved evidence while retaining the legacy fields unchanged
 - Unavailable behavior: no dedicated unavailable artifact; current-attribution
-  rendering can fall back to `viz/observations.json` first and to browser-side
-  deterministic computation last
+  rendering can fall back to `viz/observations.json`, but the browser does not
+  compute attribution when both generated sources are unavailable
 - Authoritative: no, for current Observation semantics; yes, as the preserved
   backward-compatible attribution export
 - Generated: yes
@@ -147,10 +147,10 @@ Stage ownership:
   `provenance`, `model_version`, and `generated_at`
 - Optional fields: observation `confidence`, `explanation`, and provenance
   materialization details
-- Unavailable behavior: no dedicated unavailable artifact; the dashboard falls
-  back to legacy attribution and then browser computation, while investigation
-  generation records unavailable projection provenance if the file is missing or
-  unreadable
+- Unavailable behavior: no dedicated unavailable artifact; the dashboard may
+  render the legacy generated attribution export, but attribution remains
+  unavailable when generated sources are missing. Investigation generation
+  records unavailable projection provenance if the file is missing or unreadable.
 - Authoritative: yes
 - Generated: yes
 - Should be committed: no
@@ -163,12 +163,18 @@ Stage ownership:
   classification, target-group buckets, composite WAN buckets, LAN evidence, and
   additive Phase 2 health dimensions
 - Required fields: `schema_version`, `generated_at`, `model_version`,
+  `semantic_model_version`,
   `dashboard_window`, `wan_samples`, `wan_target_group_buckets`,
   `composite_wan_buckets`, `lan_evidence`, and `attribution_evidence_counts`
 - Optional fields: Phase 2 adds `health_dimensions` and `dependency_groups`
-  without changing existing fields or renderer behavior
-- Unavailable behavior: no dedicated unavailable artifact; the dashboard can
-  still use existing fallback logic when the artifact is unavailable or malformed
+  without changing existing fields or renderer behavior. Semantic consistency
+  fields expose absolute excursions, learned-normal state, guardrail breaches,
+  operator badness, incident eligibility, and the shared evaluator version.
+  Compatibility `rawBad` counts now represent operator-bad samples; explicit
+  `absoluteExcursions` counts preserve fixed-threshold facts separately.
+- Unavailable behavior: the dashboard keeps raw latency charts available but
+  marks semantic health and the heatmap unavailable. It does not reclassify raw
+  telemetry in JavaScript.
 - Authoritative: yes, for generated dashboard health classification and Phase 2
   health dimensions
 - Generated: yes
@@ -392,24 +398,19 @@ browser renders the sequence and expandable evidence details without calculating
 ordering, meaning, lifecycle, likely issue, or metrics. Older artifacts without
 `incident_replay` continue to use the established timeline fallback.
 
-Adaptive Baseline Phase A adds advisory resolver-member metadata under
+Adaptive Baseline Phase A introduced resolver-member metadata under
 `health_dimensions.adaptive_baseline.resolver_members` and each resolver
 dependency member's `adaptive_baseline` object. These fields include baseline
 state, model/version identifiers, learned range, baseline/evidence windows,
 deviation from baseline, absolute threshold state, guardrail breaches,
-incident-eligibility metadata, suppression reason, and confidence. Phase A does
-not redefine `raw_bad`, `is_bad`, buckets, incidents, recovery, attribution,
-impact, renderer behavior, historical snapshots, or Operator Assistant semantic
-hashing.
-
-Adaptive Baseline Phase B uses that advisory metadata only at the automatic
-incident eligibility and recovery boundary. Factual `raw_bad`, `is_bad`, bad
-bucket, observation, attribution, impact, collector, renderer, replay, and
-historical snapshot semantics remain unchanged. Current investigation artifacts
-may add `incident_suppressed`, `suppression_reason`, `adaptive_recovery`, and
-`baseline_transition` to explain when stable elevated resolver behavior was not
-selected as an active incident or when an older event recovered into an accepted
-degraded baseline.
+incident-eligibility metadata, suppression reason, and confidence. The current
+shared semantic evaluator uses those inputs for dashboard health, interval
+summary, observation/attribution production, and current investigation
+production. Raw measurements and absolute excursions remain factual and
+separate from operator-facing badness. Immutable completed snapshots are not
+rewritten. Current investigation artifacts may add `incident_suppressed`,
+`suppression_reason`, `adaptive_recovery`, and `baseline_transition` to explain
+accepted stable elevated behavior.
 
 Adaptive Baseline Phase C adds generated `viz/baseline_history.json` for durable
 per-target baseline memory. It contains schema/model versions, generated time,
@@ -432,7 +433,10 @@ contains schema/model versions, generated time, interval start/end/duration,
 current-or-historical classification, coverage, overall condition, user impact,
 application summary, likely issue, affected services, healthy services, incident
 overlap, baseline comparison, confidence, deterministic summary text, evidence
-references, and interval metrics. The browser only renders this artifact when
+references, interval metrics, and the shared semantic model version. Resolver
+classification uses the same evaluator and eligible baseline context as
+dashboard health. Current-only application and baseline projections are not
+substituted for arbitrary historical intervals. The browser only renders this artifact when
 its `start` and `end` exactly match the requested interval route. It does not
 infer interval health, issue type, affected scope, overlap, or narrative in
 JavaScript.

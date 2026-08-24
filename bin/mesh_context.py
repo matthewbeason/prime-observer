@@ -773,6 +773,7 @@ def _lan_evidence(
 
     return {
         "state": state,
+        "temporal_scope": "current_snapshot_only",
         "label": label,
         "summary": summary,
         "source_age_seconds": latest_freshness.get("age_seconds"),

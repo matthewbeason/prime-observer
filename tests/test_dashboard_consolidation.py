@@ -264,10 +264,11 @@ class DashboardConsolidationTest(unittest.TestCase):
 
     # ── Legacy artifact compatibility ─────────────────────────────────────────
 
-    def test_legacy_compatibility_mode_still_works(self):
-        # setLegacyCompatibilityMode must still exist and reference legacyCompatibilityDetails
-        fn = extract_function(self.html, "function setLegacyCompatibilityMode")
-        self.assertIn("legacyCompatibilityDetails", fn)
+    def test_missing_semantic_artifacts_fail_closed(self):
+        self.assertNotIn("function setLegacyCompatibilityMode", self.html)
+        self.assertNotIn("legacyCompatibilityDetails", self.html)
+        self.assertIn("Semantic health artifacts unavailable", self.html)
+        self.assertIn("function markSemanticUnavailable", self.html)
 
     def test_mobile_sync_simplified(self):
         fn = extract_function(self.html, "function updateMobileCurrentState")

@@ -233,7 +233,8 @@ class InvestigationModelTest(unittest.TestCase):
         self.assertEqual(record["incident_type"], "resolver_path_degradation")
         self.assertEqual(record["incident_id"], payload["selected_event"]["id"])
         self.assertIn("Prime Observer detected sustained degradation on resolver probes", record["narrative"])
-        self.assertIn("DNS and HTTPS checks continued to succeed", record["narrative"])
+        self.assertIn("current DNS and HTTPS snapshot is succeeding", record["narrative"])
+        self.assertIn("does not establish application state across the historical incident", record["narrative"])
         self.assertIn("dns provider path", record["narrative"].lower())
         self.assertEqual(record["likely_issue"], "DNS provider path")
         self.assertTrue(record["evidence_refs"])
@@ -420,12 +421,13 @@ class InvestigationModelTest(unittest.TestCase):
             self.module.VIZ_DIR = Path(tmp) / "viz"
             self.module.VIZ_DIR.mkdir()
             try:
+                provider_started = (self.base + dt.timedelta(minutes=1)).isoformat()
                 (self.module.VIZ_DIR / "internet_conditions.json").write_text(json.dumps({
                     "available": True,
                     "status": "disruption",
                     "generated_at": (self.base + dt.timedelta(minutes=4)).isoformat(),
                     "summary": "Ongoing Cox routing disruption reported.",
-                    "items": [],
+                    "items": [{"started": provider_started, "description": "Ongoing Cox routing disruption reported."}],
                 }))
                 payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
             finally:
@@ -434,6 +436,8 @@ class InvestigationModelTest(unittest.TestCase):
         external = [item for item in payload["incident_replay"]["milestones"] if item["state"] == "external_context_changed"]
         self.assertEqual(len(external), 1)
         self.assertIn("routing disruption", external[0]["summary"])
+        self.assertIn("supporting context, not causal proof", external[0]["summary"])
+        self.assertEqual(external[0]["timestamp"], provider_started)
 
     def test_incident_replay_milestones_include_evidence_refs_and_metrics(self):
         payload = self.build([self.row(0), self.row(1, p95=180, raw=True), self.row(2, p95=181, raw=True, sustained=True)])
@@ -442,6 +446,30 @@ class InvestigationModelTest(unittest.TestCase):
             self.assertTrue(milestone["evidence_refs"])
             self.assertIn("metrics_snapshot", milestone)
             self.assertIn("representative_metrics", milestone["metrics_snapshot"])
+
+    def test_current_investigation_keeps_absolute_and_operator_bad_counts_distinct(self):
+        row = self.row(1, p95=180, raw=True)
+        samples = self.module.merge_marked_wan(
+            [row],
+            [{
+                "t": self.base + dt.timedelta(minutes=1),
+                "host": "45.90.30.134",
+                "target_class": "resolver_probe",
+                "p95": 180.0,
+                "jitter": 5.0,
+                "loss": 0.0,
+                "absolute_threshold_excursion": True,
+                "operator_bad": False,
+                "raw_bad": False,
+                "is_bad": False,
+                "learned_normal_state": "elevated_but_stable",
+            }],
+        )
+
+        resolver = self.module.target_group_summaries(samples)["resolver_probe"]
+        self.assertEqual(resolver["absolute_excursion_count"], 1)
+        self.assertEqual(resolver["operator_bad_count"], 0)
+        self.assertEqual(resolver["raw_bad_count"], 0)
 
     def test_baseline_ends_before_first_anomaly(self):
         payload = self.build([

@@ -161,6 +161,7 @@ class MeshContextTests(unittest.TestCase):
         self.assertEqual(result["latest_attempt"]["client_summary"]["by_medium"], {"wired": 1, "wireless": 1})
         self.assertEqual([item["role"] for item in result["latest_attempt"]["nodes"]], ["router", "satellite"])
         self.assertEqual(result["lan_evidence"]["state"], "current")
+        self.assertEqual(result["lan_evidence"]["temporal_scope"], "current_snapshot_only")
         self.assertEqual(result["lan_evidence"]["clients"]["total"], 2)
         self.assertNotIn(CLIENT_A, json.dumps(result["lan_evidence"]))
         self.assertNotIn(ROUTER_ID, json.dumps(result["lan_evidence"]))

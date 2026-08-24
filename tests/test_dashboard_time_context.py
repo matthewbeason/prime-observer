@@ -80,8 +80,7 @@ class DashboardTimeContextTest(unittest.TestCase):
         return selectedTimeSummaryText(bucket, evidence, null);
         """)
 
-        self.assertIn("Sustained degradation", result)
-        self.assertIn("Resolver probes", result)
+        self.assertEqual(result, "Semantic interval summary unavailable for this selection.")
 
     def test_graphs_highlight_selected_interval(self):
         self.assertIn("selectedInterval", self.html)

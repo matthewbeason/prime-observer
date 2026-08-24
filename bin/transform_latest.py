@@ -24,6 +24,13 @@ from health_model import (
     lan_elevation,
 )
 from health_dimensions import evaluate_health_dimensions, load_application_experience, load_diagnostic_evidence, load_operator_impact_feedback
+from semantic_health import (
+    SEMANTIC_MODEL_VERSION,
+    application_checks_healthy,
+    durable_baseline_for_sample,
+    evaluate_wan_sample,
+    mark_wan_semantics,
+)
 from observation_domain import (
     OBSERVATION_PROJECTION_MODEL_VERSION,
     build_attribution_observations,
@@ -85,7 +92,6 @@ BASELINE_HISTORY_STALE_DAYS = 21
 BASELINE_CHANGE_DELTA_PCT = 10.0
 BASELINE_HISTORY_RECENT_SAMPLES = 3
 BASELINE_RECOVERY_IMPROVEMENT_DELTA_PCT = 35.0
-RESOLVER_SEVERE_P95_MS = 500.0
 
 TARGET_COLUMNS = ("target_label", "target_class")
 BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct", "baseline_sample_count")
@@ -305,14 +311,7 @@ def load_baseline_history(path):
 
 
 def app_checks_healthy(application_experience):
-    if not isinstance(application_experience, dict) or not application_experience.get("is_current"):
-        return False
-    failures = (application_experience.get("failure_counts") or {}).get("total") or 0
-    https = application_experience.get("https_transaction") if isinstance(application_experience.get("https_transaction"), dict) else {}
-    dns = application_experience.get("dns_transactions") if isinstance(application_experience.get("dns_transactions"), list) else []
-    system_ok = any(item.get("role") == "system" and item.get("success") and not item.get("timeout") for item in dns if isinstance(item, dict))
-    direct_ok = any(item.get("role") != "system" and item.get("success") and not item.get("timeout") for item in dns if isinstance(item, dict))
-    return failures == 0 and bool(https.get("success")) and not https.get("timeout") and system_ok and direct_ok
+    return application_checks_healthy(application_experience)
 
 
 def observed_impact_safe(operator_impact_feedback):
@@ -613,76 +612,30 @@ def is_wan_bad_row(sample):
 
 
 def mark_persistent_wan_bad(series, min_streak=WAN_BAD_PERSISTENCE):
-    streaks = {}
-    marked = []
-
-    for sample in series:
-        key = (sample.get("phase"), sample.get("target_class"))
-        raw_bad = is_wan_bad_row(sample)
-        streaks[key] = streaks.get(key, 0) + 1 if raw_bad else 0
-        item = dict(sample)
-        item["raw_bad"] = raw_bad
-        item["is_bad"] = streaks[key] >= min_streak
-        marked.append(item)
-
-    return marked
+    return mark_wan_semantics(series, min_streak=min_streak)
 
 
 def durable_baseline_for_dashboard_sample(sample, baseline_history):
-    if not isinstance(baseline_history, dict):
-        return None
-    if baseline_history.get("schema_version") != BASELINE_HISTORY_SCHEMA_VERSION:
-        return None
-    targets = baseline_history.get("targets") if isinstance(baseline_history.get("targets"), dict) else {}
-    baseline = targets.get(baseline_target_key(sample))
-    if not isinstance(baseline, dict):
-        return None
-    if baseline.get("sample_count", 0) < BASELINE_HISTORY_MIN_SAMPLES:
-        return None
-    guardrail = baseline.get("guardrail_status") if isinstance(baseline.get("guardrail_status"), dict) else {}
-    if guardrail.get("status") == "breached":
-        return None
-    if baseline.get("median") is None or baseline.get("p95") is None:
-        return None
-    return baseline
+    return durable_baseline_for_sample(sample, baseline_history)
 
 
-def resolver_dashboard_raw_bad(sample, *, baseline_history=None, application_experience=None):
-    if sample.get("target_class") != "resolver_probe":
-        return is_wan_bad_row(sample)
-    if (sample.get("loss") or 0.0) > WAN_BAD["loss"] or sample.get("timeout"):
-        return True
-    if not app_checks_healthy(application_experience):
-        return is_wan_bad_row(sample)
-    baseline = durable_baseline_for_dashboard_sample(sample, baseline_history)
-    if not baseline:
-        return is_wan_bad_row(sample)
-    blocked_reasons = (baseline.get("blocked_update") or {}).get("reasons") or []
-    if "rapid_worsening" in blocked_reasons:
-        return is_wan_bad_row(sample)
-    if (sample.get("jitter") or 0.0) > WAN_BAD["jitter"]:
-        return True
-    if (sample.get("p95") or 0.0) >= RESOLVER_SEVERE_P95_MS:
-        return True
-    return (sample.get("p95") or 0.0) > (baseline.get("p95") or WAN_BAD["p95"])
+def resolver_dashboard_raw_bad(sample, *, baseline_history=None, application_experience=None, health_dimensions=None):
+    return evaluate_wan_sample(
+        sample,
+        baseline_history=baseline_history,
+        application_experience=application_experience,
+        health_dimensions=health_dimensions,
+    )["operator_bad"]
 
 
-def mark_dashboard_wan_bad(series, *, baseline_history=None, application_experience=None, min_streak=WAN_BAD_PERSISTENCE):
-    if not isinstance(baseline_history, dict):
-        return mark_persistent_wan_bad(series, min_streak=min_streak)
-
-    streaks = {}
-    marked = []
-    for sample in series:
-        key = (sample.get("phase"), sample.get("target_class"), sample.get("host"))
-        raw_bad = resolver_dashboard_raw_bad(sample, baseline_history=baseline_history, application_experience=application_experience)
-        streaks[key] = streaks.get(key, 0) + 1 if raw_bad else 0
-        item = dict(sample)
-        item["raw_bad"] = raw_bad
-        item["is_bad"] = streaks[key] >= min_streak
-        marked.append(item)
-
-    return marked
+def mark_dashboard_wan_bad(series, *, baseline_history=None, application_experience=None, health_dimensions=None, min_streak=WAN_BAD_PERSISTENCE):
+    return mark_wan_semantics(
+        series,
+        baseline_history=baseline_history,
+        application_experience=application_experience,
+        health_dimensions=health_dimensions,
+        min_streak=min_streak,
+    )
 
 
 def classify_buckets(wan_series):
@@ -705,9 +658,10 @@ def classify_buckets(wan_series):
         total = len(rows)
         bad = len([d for d in rows if d.get("is_bad")])
         raw_bad = len([d for d in rows if d.get("raw_bad")])
-        p95_bad = len([d for d in rows if d.get("raw_bad") and d.get("p95", 0.0) > WAN_BAD["p95"]])
-        jitter_bad = len([d for d in rows if d.get("raw_bad") and d.get("jitter", 0.0) > WAN_BAD["jitter"]])
-        loss_bad = len([d for d in rows if d.get("raw_bad") and d.get("loss", 0.0) > WAN_BAD["loss"]])
+        absolute_excursions = len([d for d in rows if d.get("absolute_threshold_excursion")])
+        p95_bad = len([d for d in rows if d.get("absolute_threshold_excursion") and d.get("p95", 0.0) > WAN_BAD["p95"]])
+        jitter_bad = len([d for d in rows if d.get("absolute_threshold_excursion") and d.get("jitter", 0.0) > WAN_BAD["jitter"]])
+        loss_bad = len([d for d in rows if d.get("absolute_threshold_excursion") and d.get("loss", 0.0) > WAN_BAD["loss"]])
         raw_run = 0
         max_raw_run = 0
 
@@ -723,6 +677,7 @@ def classify_buckets(wan_series):
             "total": total,
             "bad": bad,
             "raw_bad": raw_bad,
+            "absolute_excursions": absolute_excursions,
             "p95_bad": p95_bad,
             "jitter_bad": jitter_bad,
             "loss_bad": loss_bad,
@@ -955,21 +910,23 @@ def compute_recent_attribution(lan_series, wan_series_marked, generated_at):
 
 def find_sustained_wan_incidents(wan_series_marked):
     incidents = []
-    run = []
-
+    grouped = defaultdict(list)
     for sample in wan_series_marked:
-        if sample.get("raw_bad"):
-            run.append(sample)
-            continue
-
+        key = (sample.get("phase"), sample.get("target_class"), sample.get("host"))
+        grouped[key].append(sample)
+    for rows in grouped.values():
+        run = []
+        for sample in sorted(rows, key=lambda item: item.get("t")):
+            if sample.get("raw_bad"):
+                run.append(sample)
+                continue
+            if len(run) >= WAN_BAD_PERSISTENCE:
+                incidents.append(run)
+            run = []
         if len(run) >= WAN_BAD_PERSISTENCE:
             incidents.append(run)
-        run = []
 
-    if len(run) >= WAN_BAD_PERSISTENCE:
-        incidents.append(run)
-
-    return incidents
+    return sorted(incidents, key=lambda run: (run[0].get("t"), run[0].get("target_class") or "", run[0].get("host") or ""))
 
 
 def lan_evidence_for_interval(lan_series, start, end):
@@ -1091,9 +1048,20 @@ def compute_window_attribution(incidents, lan_series, wan_series_marked):
     }
 
 
-def compute_network_attribution(rows, generated_at, health_dimensions=None):
-    lan_series, wan_series = to_dashboard_series(rows)
-    wan_series_marked = mark_persistent_wan_bad(wan_series)
+def compute_network_attribution(
+    rows,
+    generated_at,
+    health_dimensions=None,
+    baseline_history=None,
+    application_experience=None,
+):
+    lan_series, wan_series = to_dashboard_series(rows, preserve_wan_hosts=True)
+    wan_series_marked = mark_dashboard_wan_bad(
+        wan_series,
+        baseline_history=baseline_history,
+        application_experience=application_experience,
+        health_dimensions=health_dimensions,
+    )
     current = compute_recent_attribution(lan_series, wan_series_marked, generated_at)
     incident_runs = find_sustained_wan_incidents(wan_series_marked)
     incidents = [classify_incident(run, lan_series) for run in incident_runs]
@@ -1184,6 +1152,7 @@ def dashboard_bucket(bucket, generated_at):
         "total": bucket.get("total", 0),
         "bad": bucket.get("bad", 0),
         "rawBad": bucket.get("raw_bad", 0),
+        "absoluteExcursions": bucket.get("absolute_excursions", 0),
         "p95Bad": bucket.get("p95_bad", 0),
         "jitterBad": bucket.get("jitter_bad", 0),
         "lossBad": bucket.get("loss_bad", 0),
@@ -1202,6 +1171,7 @@ def empty_dashboard_group():
         "total": 0,
         "bad": 0,
         "rawBad": 0,
+        "absoluteExcursions": 0,
         "p95Bad": 0,
         "jitterBad": 0,
         "lossBad": 0,
@@ -1237,6 +1207,7 @@ def build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at):
             "total": 0,
             "bad": 0,
             "rawBad": 0,
+            "absoluteExcursions": 0,
             "p95Bad": 0,
             "jitterBad": 0,
             "lossBad": 0,
@@ -1247,6 +1218,7 @@ def build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at):
         obj["total"] += group["total"]
         obj["bad"] += group["bad"]
         obj["rawBad"] += group["rawBad"]
+        obj["absoluteExcursions"] += group["absoluteExcursions"]
         obj["p95Bad"] += group["p95Bad"]
         obj["jitterBad"] += group["jitterBad"]
         obj["lossBad"] += group["lossBad"]
@@ -1270,9 +1242,11 @@ def build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at):
         bucket["selectedEvidence"] = {
             "internetSustainedBadSamples": bucket["groups"]["internet_probe"]["bad"],
             "internetRawBadSamples": bucket["groups"]["internet_probe"]["rawBad"],
+            "internetAbsoluteExcursionSamples": bucket["groups"]["internet_probe"]["absoluteExcursions"],
             "internetSamples": bucket["groups"]["internet_probe"]["total"],
             "resolverSustainedBadSamples": bucket["groups"]["resolver_probe"]["bad"],
             "resolverRawBadSamples": bucket["groups"]["resolver_probe"]["rawBad"],
+            "resolverAbsoluteExcursionSamples": bucket["groups"]["resolver_probe"]["absoluteExcursions"],
             "resolverSamples": bucket["groups"]["resolver_probe"]["total"],
             **lan_bucket_evidence(lan_series, bucket["t"], bucket["t2"]),
         }
@@ -1285,7 +1259,12 @@ def build_composite_dashboard_buckets(wan_buckets, lan_series, generated_at):
 
 def build_dashboard_health(rows, attribution, generated_at, health_dimensions=None, baseline_history=None, application_experience=None):
     lan_series, wan_series = to_dashboard_series(rows, preserve_wan_hosts=isinstance(baseline_history, dict))
-    wan_series_marked = mark_dashboard_wan_bad(wan_series, baseline_history=baseline_history, application_experience=application_experience)
+    wan_series_marked = mark_dashboard_wan_bad(
+        wan_series,
+        baseline_history=baseline_history,
+        application_experience=application_experience,
+        health_dimensions=health_dimensions,
+    )
     wan_buckets = classify_buckets(wan_series_marked)
     window_groups = target_group_summary(wan_series_marked)
     window_lan = lan_elevation(lan_series)
@@ -1296,6 +1275,7 @@ def build_dashboard_health(rows, attribution, generated_at, health_dimensions=No
         "schema_version": 1,
         "generated_at": generated_at.isoformat(),
         "model_version": "prime_observer.dashboard_health.v1",
+        "semantic_model_version": SEMANTIC_MODEL_VERSION,
         "dashboard_window": {
             "hours": WINDOW_HOURS,
             "start": window_start.isoformat() if window_start else None,
@@ -1309,6 +1289,11 @@ def build_dashboard_health(rows, attribution, generated_at, health_dimensions=No
                 "phase": sample.get("phase"),
                 "host": sample.get("host"),
                 "targetClass": sample.get("target_class"),
+                "absoluteThresholdExcursion": sample.get("absolute_threshold_excursion", False),
+                "learnedNormalState": sample.get("learned_normal_state"),
+                "guardrailBreaches": sample.get("semantic_guardrail_breaches") or [],
+                "operatorBad": sample.get("operator_bad", False),
+                "incidentEligible": sample.get("incident_eligible", False),
                 "rawBad": sample.get("raw_bad", False),
                 "isBad": sample.get("is_bad", False),
             }
@@ -1454,7 +1439,13 @@ def main():
         operator_impact_feedback=operator_impact_feedback,
         baseline_history=baseline_history,
     )
-    attribution = compute_network_attribution(rows_out, now, health_dimensions=health_dimensions)
+    attribution = compute_network_attribution(
+        rows_out,
+        now,
+        health_dimensions=health_dimensions,
+        baseline_history=baseline_history,
+        application_experience=application_experience,
+    )
     write_json_atomic(ATTRIBUTION_OUT, attribution)
     dashboard_health = build_dashboard_health(
         rows_out,
@@ -1465,8 +1456,13 @@ def main():
         application_experience=application_experience,
     )
     write_json_atomic(DASHBOARD_HEALTH_OUT, dashboard_health)
-    lan_series, wan_series = to_dashboard_series(rows_out)
-    wan_series_marked = mark_persistent_wan_bad(wan_series)
+    lan_series, wan_series = to_dashboard_series(rows_out, preserve_wan_hosts=True)
+    wan_series_marked = mark_dashboard_wan_bad(
+        wan_series,
+        baseline_history=baseline_history,
+        application_experience=application_experience,
+        health_dimensions=health_dimensions,
+    )
     incident_runs = find_sustained_wan_incidents(wan_series_marked)
     incidents = [classify_incident(run, lan_series) for run in incident_runs]
     interval_start, interval_end = latest_bucket_interval(rows_out, generated_at=now)
@@ -1478,6 +1474,7 @@ def main():
         incidents=incidents,
         health_dimensions=health_dimensions,
         application_experience=application_experience,
+        baseline_history=baseline_history,
         source_path=f"data/{src.name}",
     )
     write_json_atomic(INTERVAL_SUMMARY_OUT, interval_summary)
