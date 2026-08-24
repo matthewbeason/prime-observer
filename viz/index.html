@@ -531,6 +531,27 @@
     .tip .list-line{color:var(--muted-strong);margin-top:2px;}
     .tip .muted{color:var(--muted);}
     .tip .strong{font-weight:760;}
+    .mesh-context{
+      display:grid;
+      gap:9px;
+      margin:2px 0 12px;
+      padding:11px 12px;
+      border:1px solid var(--border);
+      border-radius:16px;
+      background:rgba(255,255,255,.42);
+    }
+    .mesh-context-primary{
+      display:flex;
+      align-items:center;
+      gap:9px;
+      flex-wrap:wrap;
+    }
+    .mesh-context-summary{font-size:12px;color:var(--muted-strong);line-height:1.45;}
+    .mesh-context-facts{display:flex;gap:8px 16px;flex-wrap:wrap;font-size:12px;color:var(--muted-strong);}
+    .mesh-context-facts b{color:var(--ink);font-weight:760;}
+    .mesh-context details{font-size:12px;color:var(--muted-strong);}
+    .mesh-context details summary{cursor:pointer;font-weight:720;color:var(--muted-strong);}
+    .mesh-context-details{display:grid;gap:5px;margin-top:8px;line-height:1.45;}
     table{border-collapse:collapse;width:100%;font-size:12px;}
     th,td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top;}
     th{color:#34302a;font-weight:800;background:rgba(245,239,231,.88);}
@@ -552,6 +573,7 @@
       .pill,.badge{font-size:10px;}
       .metric-line{font-size:12px;}
       .tip{max-width:min(320px, calc(100vw - 24px));}
+      .mesh-context-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;}
     }
     @media (max-width: 767px){
       body{padding:16px 12px 28px;}
@@ -912,7 +934,29 @@
       <div class="panel-kicker" id="lanPanelKicker">Local Path Instrument</div>
       <div class="section-title">
         <h3 id="lanHeading">LAN (Gateway) — p95 latency (ms)</h3>
-        <div class="legend" id="lanLegend">Same path styling as WAN chart</div>
+        <div class="legend" id="lanLegend">Gateway latency remains the measured LAN series • Mesh Signal adds current attachment and collection context only</div>
+      </div>
+      <div class="mesh-context" id="meshContext" aria-live="polite" aria-atomic="true">
+        <div class="mesh-context-primary">
+          <span class="pill" id="meshContextState">Mesh evidence loading</span>
+          <span class="mesh-context-summary" id="meshContextSummary">LAN telemetry is available independently.</span>
+        </div>
+        <div class="mesh-context-facts">
+          <span><b>Probe attachment:</b> <span id="meshContextProbeHost">—</span></span>
+          <span><b>Nodes:</b> <span id="meshContextNodes">—</span></span>
+          <span><b>Clients:</b> <span id="meshContextClients">—</span></span>
+          <span><b>Medium:</b> <span id="meshContextMedium">—</span></span>
+          <span><b>Associations:</b> <span id="meshContextAssociations">—</span></span>
+        </div>
+        <details id="meshContextDetails">
+          <summary>Mesh evidence details &gt;</summary>
+          <div class="mesh-context-details">
+            <div><b>Satellites:</b> <span id="meshContextSatellites">—</span></div>
+            <div><b>Bands:</b> <span id="meshContextBands">—</span></div>
+            <div><b>Inventory lineage:</b> <span id="meshContextLineage">—</span></div>
+            <div id="meshContextQualityNote">Relative signal and apparent link-rate values are not physical measurements or throughput.</div>
+          </div>
+        </details>
       </div>
       <svg id="lan" width="1100" height="250" role="img" aria-labelledby="lanHeading lanLegend"></svg>
       <div class="panel-footer">Data: <span class="mono">latest.csv</span> • Refresh: 5s</div>
@@ -1017,6 +1061,7 @@
     const NEXTDNS_URL = "./nextdns_summary.json";
     const INTERNET_CONDITIONS_URL = "./internet_conditions.json";
     const APS_POWER_CONTEXT_URL = "./aps_power_context.json";
+    const MESH_CONTEXT_URL = "./mesh_context.json";
     const NEXTDNS_STALE_MINUTES = 60;
     const GATEWAY_HOST = "192.168.1.1";
     const TARGET_METADATA = {
@@ -1909,6 +1954,7 @@
       });
       renderLine("#lan", currentVizState.lanSeries, {
         label: "LAN p95",
+        meshEvidence: currentVizState.meshEvidence,
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
         xDomain: currentVizState.xDomain,
@@ -3816,6 +3862,142 @@
     function computeTurbulenceBuckets(wanSeries){ return classifyBuckets(wanSeries).filter(d => d.isTurbulence); }
     function computeRawSpikeMarkers(wanSeries){ return wanSeries.filter(d => d.rawBad && !d.isBad).map(d => ({ ...d })); }
 
+    function meshLineageLabel(evidence){
+      if (!evidence || evidence.lineage === "unavailable") return "unavailable";
+      const observed = parseTs(evidence.observed_at || "");
+      const age = observed ? ` · ${toCompactRelativeAge(observed)}` : "";
+      if (evidence.lineage === "last_good") return `last known good${age}`;
+      if (evidence.collection_status === "partial") return `latest attempt (partial)${age}`;
+      return `latest attempt${age}`;
+    }
+
+    function meshCount(value){
+      return Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
+    }
+
+    function meshBandLabel(value){
+      if (value === "2_4_ghz") return "2.4 GHz";
+      if (value === "5_ghz") return "5 GHz";
+      return null;
+    }
+
+    function meshProbeHostText(probeHost){
+      const state = String(probeHost?.mapping_state || "client_family_unavailable");
+      if (state !== "matched" || !probeHost?.attachment){
+        return ({
+          identity_withheld: "Unavailable — local identity withheld by Mesh Signal",
+          identity_unavailable: "Unavailable — local interface identity not discovered",
+          not_found: "Unavailable — no unique attached-client match",
+          ambiguous: "Unavailable — multiple attached-client matches",
+          client_family_unavailable: "Unavailable — client evidence not collected",
+        })[state] || "Unavailable";
+      }
+      const attachment = probeHost.attachment;
+      const node = attachment.node_name_local
+        || (attachment.node_role === "router" ? "Router" : attachment.node_role === "satellite" ? "Satellite" : "Node not resolved");
+      const parts = [node];
+      if (attachment.medium && attachment.medium !== "unknown") parts.push(attachment.medium);
+      const band = meshBandLabel(attachment.band);
+      if (band) parts.push(band);
+      if (Number.isFinite(attachment.signal_quality_raw_relative)) parts.push(`relative signal ${attachment.signal_quality_raw_relative}`);
+      if (Number.isFinite(attachment.link_rate_mbps_apparent)) parts.push(`apparent link ${attachment.link_rate_mbps_apparent} Mbps`);
+      const qualifier = probeHost.lineage === "last_good"
+        ? "Last known"
+        : probeHost.freshness?.state === "expired" ? "Expired"
+        : probeHost.freshness?.state === "stale" ? "Stale"
+        : probeHost.collection_status === "partial" ? "Partial collection" : null;
+      return `${qualifier ? `${qualifier}: ` : ""}${parts.join(" · ")}`;
+    }
+
+    function renderMeshContext(payload){
+      const evidence = payload?.lan_evidence;
+      const state = String(evidence?.state || "unavailable");
+      const label = String(evidence?.label || "Mesh evidence unavailable");
+      const tone = state === "current" ? "ok" : ["partial", "stale"].includes(state) ? "watch" : "neutral";
+      applyPillState(document.getElementById("meshContextState"), label, tone);
+      document.getElementById("meshContextSummary").textContent = String(
+        evidence?.summary || "Mesh evidence is unavailable; LAN telemetry remains available."
+      );
+
+      const satellites = evidence?.satellites || {};
+      const clients = evidence?.clients || {};
+      document.getElementById("meshContextProbeHost").textContent = meshProbeHostText(evidence?.probe_host);
+      const clientTotal = meshCount(clients.total);
+      const wired = meshCount(clients.by_medium?.wired);
+      const wireless = meshCount(clients.by_medium?.wireless);
+      const resolved = meshCount(clients.resolved_associations);
+      const notResolved = meshCount(clients.not_resolved_associations);
+      const satelliteTotal = meshCount(satellites.total);
+      const nodeParts = [];
+      if (evidence?.router?.reported === true) nodeParts.push("router reported");
+      else if (evidence?.router?.reported === false) nodeParts.push("router state unknown");
+      if (satelliteTotal != null) nodeParts.push(`${satelliteTotal} satellite${satelliteTotal === 1 ? "" : "s"} reported`);
+      document.getElementById("meshContextNodes").textContent = nodeParts.join(" · ") || "—";
+      document.getElementById("meshContextClients").textContent = clientTotal == null ? "—" : `${clientTotal} attached`;
+      document.getElementById("meshContextMedium").textContent = clientTotal === 0
+        ? "0 wired · 0 wireless"
+        : wired == null || wireless == null ? "—" : `${wired} wired · ${wireless} wireless`;
+      document.getElementById("meshContextAssociations").textContent = clientTotal === 0
+        ? "0/0 resolved"
+        : resolved == null || clientTotal == null
+          ? "—" : `${resolved}/${clientTotal} resolved${notResolved ? ` · ${notResolved} not resolved` : ""}`;
+
+      const online = meshCount(satellites.by_state?.online);
+      const offline = meshCount(satellites.by_state?.offline);
+      const unknown = meshCount(satellites.by_state?.unknown);
+      const satelliteParts = satelliteTotal == null ? [] : [`${satelliteTotal} reported`];
+      if (online) satelliteParts.push(`${online} online`);
+      if (offline) satelliteParts.push(`${offline} reported offline`);
+      if (unknown) satelliteParts.push(`${unknown} state unknown`);
+      document.getElementById("meshContextSatellites").textContent = satelliteParts.join(" · ") || "—";
+
+      const band24 = meshCount(clients.by_band?.["2_4_ghz"]);
+      const band5 = meshCount(clients.by_band?.["5_ghz"]);
+      const bandUnknown = meshCount(clients.by_band?.unknown);
+      const bandParts = [];
+      if (band24 != null) bandParts.push(`2.4 GHz ${band24}`);
+      if (band5 != null) bandParts.push(`5 GHz ${band5}`);
+      if (bandUnknown) bandParts.push(`not reported ${bandUnknown}`);
+      document.getElementById("meshContextBands").textContent = bandParts.join(" · ") || "—";
+      document.getElementById("meshContextLineage").textContent = [
+        `router ${meshLineageLabel(evidence?.router)}`,
+        `satellites ${meshLineageLabel(satellites)}`,
+        `clients ${meshLineageLabel(clients)}`,
+      ].join(" · ");
+      document.getElementById("meshContextQualityNote").textContent =
+        "Probe signal is a raw relative vendor metric and apparent link rate is not measured throughput. Attachment is snapshot context, not historical evidence for chart samples.";
+    }
+
+    function escapeTooltipText(value){
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function meshLanTooltipHtml(evidence){
+      if (!evidence){
+        return '<div class="section"><div class="list-line muted">Mesh evidence unavailable; LAN telemetry is unaffected.</div></div>';
+      }
+      const clients = meshCount(evidence.clients?.total);
+      const wireless = meshCount(evidence.clients?.by_medium?.wireless);
+      const satellites = meshCount(evidence.satellites?.total);
+      const probeHost = meshProbeHostText(evidence.probe_host);
+      const inventory = [
+        satellites == null ? null : `${satellites} satellite${satellites === 1 ? "" : "s"} reported`,
+        clients == null ? null : `${clients} attached client${clients === 1 ? "" : "s"}`,
+        wireless == null ? null : `${wireless} wireless`,
+      ].filter(Boolean).join(" · ");
+      return `<div class="section">
+        <div class="list-line strong">${escapeTooltipText(evidence.label || "Mesh evidence")}</div>
+        <div class="list-line"><span class="strong">Probe attachment:</span> ${escapeTooltipText(probeHost)}</div>
+        <div class="list-line">${escapeTooltipText(inventory || evidence.summary || "Inventory unavailable")}</div>
+        <div class="list-line muted">Snapshot context only; relative signal is vendor-defined and apparent link rate is not measured throughput.</div>
+      </div>`;
+    }
+
     function renderLine(svgSel, seriesArr, opts={}) {
       const svg = d3.select(svgSel);
       svg.selectAll("*").remove();
@@ -3960,6 +4142,7 @@
           if (selectedInterval && d.t >= selectedInterval.start && d.t < selectedInterval.end) extra = '<div class="section"><div class="list-line muted">Inside selected heatmap interval.</div></div>';
           if (opts.selectedEvidence) extra += selectedBucketEvidenceHtml(opts.selectedEvidence);
           if (d.rawBad && !d.isBad) extra += '<div class="section"><div class="list-line muted">Isolated raw spike.</div></div>';
+          if (svgSel === "#lan") extra += meshLanTooltipHtml(opts.meshEvidence);
           const html = `<div class="t"><b>${pathTagLabel(d.phase)}</b> • ${d.targetLabel || d.host} • ${d.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"})}</div>
                         <div class="headline">${opts.label || "p95"}: ${fmt1(d.p95)} ms</div>
                         <div class="list-line muted">jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%</div>${extra}`;
@@ -3970,7 +4153,7 @@
 
     async function tick() {
       try {
-        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload, operationalLearningsPayload, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload] = await Promise.all([
+        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload, operationalLearningsPayload, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, meshContextPayload] = await Promise.all([
           loadData(),
           loadDashboardHealthPayload(),
           loadObservationsPayload(),
@@ -3983,6 +4166,7 @@
           loadOptionalJson(INTERVAL_SUMMARY_URL),
           loadOptionalJson(INTERNET_CONDITIONS_URL),
           loadOptionalJson(APS_POWER_CONTEXT_URL),
+          loadOptionalJson(MESH_CONTEXT_URL),
         ]);
         currentTimeContextPayload = timeContextPayload;
         const dashboardHealth = normalizeDashboardHealthPayload(dashboardHealthPayload);
@@ -4025,9 +4209,11 @@
           compositeWanBuckets
         );
 
-        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, currentCondition: dashboardHealth?.healthDimensions?.current_condition || null, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, incidentSimilarityPayload, operationalLearningsPayload };
+        const meshEvidence = meshContextPayload?.lan_evidence || null;
+        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, currentCondition: dashboardHealth?.healthDimensions?.current_condition || null, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, incidentSimilarityPayload, operationalLearningsPayload, meshEvidence };
 
         updateConnectionCard(raw);
+        renderMeshContext(meshContextPayload);
         computeUserNoticeability(noticeSummary);
         computeNoticeabilityForecast(noticeSummary, patternSummary);
         updateAttributionCard(attribution, attributionEvidence);

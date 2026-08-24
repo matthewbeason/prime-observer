@@ -314,6 +314,30 @@ The application probe collector performs local DNS and HTTPS transaction checks
 and writes a deterministic artifact. The transform reads that artifact for
 impact-v2 evidence but never performs network calls itself.
 
+Optional local Mesh Signal evidence:
+
+```text
+MESH_SIGNAL_ARTIFACT_PATH
+        |
+        v
+mesh_signal.json (normalized by Mesh Signal)
+        |
+        v
+bin/mesh_context.py (invoked by transform_latest.py)
+        |
+        v
+viz/mesh_context.json
+```
+
+This is current local infrastructure evidence, not Environmental Context. Prime
+Observer validates and minimizes the normalized artifact without importing Mesh
+Signal or contacting the router. The projection is safe to be missing and does
+not yet affect health, attribution, Observations, investigations, Operator
+Assistant input, or the investigation renderer. Schema 0.3 `local`/`full`
+artifacts can be matched to the machine running Prime by intersecting private
+local interface addresses in Python. Those addresses, client IDs, MACs, and the
+client friendly name are never copied into `mesh_context.json`.
+
 Historical investigation:
 
 ```text
@@ -414,6 +438,20 @@ Projection roles:
 
 - `bin/transform_latest.py`
   Reads the newest historical telemetry file, keeps the last 24 hours, adds target label/class metadata, computes hourly WAN baselines from general internet probes, adds Pattern Confidence fields, writes `viz/latest.csv`, and exports Network Attribution results.
+
+- `bin/mesh_context.py`
+  Validates the optional normalized Mesh Signal artifact selected by
+  `MESH_SIGNAL_ARTIFACT_PATH` and atomically writes a Prime-owned current
+  evidence projection. It owns freshness, bounded summaries, family lineage,
+  last-good preservation, and schema 0.3 privacy-mode enforcement, and performs
+  no network calls. Local interface inspection is used only to match the probe
+  host when `privacy.exposure_mode` is `local` or `full`.
+
+- `viz/mesh_context.json`
+  Generated, uncommitted current Mesh evidence. It separates latest-attempt
+  facts from explicitly aged family-level last-good facts. It is not historical
+  storage. The dashboard consumes only its bounded `lan_evidence` projection;
+  investigations do not consume it.
 
 - `viz/latest.csv`
   Generated dashboard input containing the current 24-hour telemetry window.
@@ -520,6 +558,51 @@ and investigation generation add target metadata when possible.
 Optional DNS/security context:
 
 - NextDNS analytics summary via local generated JSON
+
+Optional local mesh infrastructure evidence:
+
+- Copy `.env.mesh.example` to the ignored `.env.mesh` and set
+  `MESH_SIGNAL_ARTIFACT_PATH` to the normalized `mesh_signal.json`. Relative
+  paths resolve from the Prime Observer repository root. A process environment
+  value overrides the local file when an explicit one-off source is needed.
+- `bin/transform_latest.py` reads this local configuration itself, so manual
+  runs and the existing transform LaunchAgent use the same unattended source
+  without adding a private path to a tracked plist or shell startup file. No
+  full source path is stored in the generated projection.
+- Mesh Signal owns its five-minute collection schedule, router credentials,
+  authentication, transport, and normalization. Prime Observer only reads the
+  artifact and never initiates collection.
+- Prime treats source data as fresh through 12 minutes, stale after 12 minutes,
+  and unavailable for current semantic use after 30 minutes. Collection
+  validity remains separate from freshness.
+
+Example setup when the repositories are siblings:
+
+```bash
+cp .env.mesh.example .env.mesh
+chmod 600 .env.mesh
+python3 bin/transform_latest.py
+```
+
+The LAN chart renders one compact Mesh evidence strip from
+`viz/mesh_context.json`: reported node and client counts, wired/wireless mix,
+association resolution, bands, collection freshness, family lineage, and—when
+schema 0.3 local identity permits a unique match—the LAN probe host's current
+node, medium, band, raw relative signal, and apparent link rate. LAN tooltips
+include the same snapshot context while explicitly warning that it is not
+historical evidence for the hovered sample. The UI does not show client names,
+addresses, MACs, or pseudonymous IDs, add Mesh series to the chart, infer signal
+health, or change LAN scale and interactions. Minimal exposure mode, an
+ambiguous/no match, a failed client family, and unavailable data produce bounded
+unavailable attachment text rather than a network-failure claim.
+
+A topology view is intentionally deferred. The probe-host attachment answers the
+high-value current path question without a router-and-satellite diagram, while
+the lack of point-in-time association history would still make topology mostly
+decorative during historical diagnosis. Raw relative signal and apparent link
+rate are displayed only for the uniquely matched probe host and retain those
+qualified labels; Prime does not classify them. Mesh evidence does not yet
+change Attribution, Observations, Investigation, or Operator Assistant inputs.
 
 ## Running The Dashboard
 

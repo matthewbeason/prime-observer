@@ -36,6 +36,8 @@ Prime Observer currently ships:
 - optional Cloudflare Radar Internet Conditions context
 - optional APS Power Infrastructure context
 - optional local Application Experience probes that feed estimated impact only
+- optional current-only Mesh Signal evidence rendered as compact LAN context,
+  with no health, attribution, investigation, or assistant consumer
 - local operator impact feedback that feeds observed impact only
 
 ## Recent Completed Work
@@ -108,6 +110,11 @@ Current artifact flow:
   from repeated completed incidents and durable baseline history
 - `bin/time_context.py` emits the default selected-time context for the dashboard
   workspace
+- `bin/mesh_context.py` validates the optional normalized Mesh Signal artifact
+  and atomically emits current local infrastructure evidence; it performs no
+  router or other network calls. Process configuration overrides the ignored
+  `.env.mesh`, allowing the existing transform LaunchAgent to discover the
+  artifact unattended without a tracked private path.
 - `viz/index.html` and `viz/investigate.html` consume generated local files
 
 Current projection state:
@@ -129,6 +136,13 @@ Current projection state:
   confidence and retirement handling
 - `viz/time_context.json` is the generated default time context used by the
   dashboard when no heatmap interval is selected
+- `viz/mesh_context.json` is the generated, uncommitted current Mesh evidence
+  projection. It keeps latest-attempt and independently aged family-level
+  last-good facts separate and is safe to be absent. Schema 0.3 local identity
+  can uniquely map the Prime host to a client using transient local-address
+  intersection; addresses, MACs, client IDs, and client names are not persisted.
+  Its minimized `lan_evidence` block renders the probe attachment beside the LAN
+  chart and does not alter chart scale, health, or attribution.
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten

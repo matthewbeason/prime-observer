@@ -46,6 +46,7 @@ build_hourly_baseline.py
 .env.cloudflare
 .env.openrouter
 .env.application_experience
+.env.mesh
 viz/nextdns_summary.json
 viz/internet_conditions.json
 viz/aps_power_context.json
@@ -54,6 +55,7 @@ viz/operator_impact_feedback.json
 viz/network_attribution.json
 viz/observations.json
 viz/dashboard_health.json
+viz/mesh_context.json
 viz/baseline_history.json
 viz/interval_summary.json
 viz/incident_similarity.json

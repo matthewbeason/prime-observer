@@ -44,6 +44,7 @@ from interval_summary import build_interval_summary, latest_bucket_interval
 from incident_similarity import build_incident_similarity, load_completed_snapshots
 from operational_learnings import build_operational_learnings
 from time_context import build_time_context
+from mesh_context import refresh_mesh_context
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -1372,6 +1373,12 @@ def load_optional_json(path):
 def main():
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
+    now = dt.datetime.now(dt.timezone.utc)
+    mesh_context = refresh_mesh_context(
+        VIZ_DIR / "mesh_context.json",
+        generated_at=now,
+    )
+
     src = newest_by_mtime()
     if not src:
         print(f"No telemetry CSV files found matching {TELEMETRY_PATTERN}.")
@@ -1379,7 +1386,6 @@ def main():
 
     baseline_by_hour, baseline_sample_counts, baseline_sources = compute_hourly_wan_baseline()
 
-    now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - WINDOW
 
     rows_out = []
@@ -1562,6 +1568,10 @@ def main():
     print(f"Wrote incident similarity artifact to {INCIDENT_SIMILARITY_OUT}")
     print(f"Wrote operational learnings artifact to {OPERATIONAL_LEARNINGS_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
+    print(
+        "Wrote Mesh Signal current projection to "
+        f"viz/mesh_context.json ({mesh_context['status']})"
+    )
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")
     print(
         f"Investigation history contains {history_write['snapshot_count']} immutable snapshots; "

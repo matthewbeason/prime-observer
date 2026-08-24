@@ -80,6 +80,9 @@ Stage ownership:
   fail-safe.
 - Local application-experience probes are synthetic checks, not provider context;
   they are collected separately and consumed by transform as local evidence.
+- Mesh Signal is an optional local infrastructure evidence source, not
+  Environmental Context. Prime Observer consumes only its normalized artifact;
+  it does not own router collection, credentials, transport, or firmware logic.
 - Bounded schemas: artifacts stay small, explicit, and tied to Prime Observer's
   six dashboard questions.
 - Provider independence: provider summaries remain separate from Observation,
@@ -168,6 +171,49 @@ Stage ownership:
   still use existing fallback logic when the artifact is unavailable or malformed
 - Authoritative: yes, for generated dashboard health classification and Phase 2
   health dimensions
+- Generated: yes
+- Should be committed: no
+
+### `viz/mesh_context.json`
+
+- Producer: `bin/mesh_context.py`, invoked by `bin/transform_latest.py`
+- Consumers: `viz/index.html` for compact LAN-panel context only
+- Purpose: Prime-owned, current-only projection of normalized Mesh Signal
+  router, satellite, client-association, and collection-quality evidence
+- Required fields: `schema_version`, `model_version`, `generated_at`, `status`,
+  `freshness`, `source`, `latest_attempt`, `last_good`, `lan_evidence`, `warnings`,
+  `limitations`, `summary`, `privacy`, and `provenance`
+- Input selection: process `MESH_SIGNAL_ARTIFACT_PATH`, then the same key in the
+  ignored repository-local `.env.mesh`; relative paths resolve from the Prime
+  Observer repository root. Missing configuration or input is a normal
+  unavailable state.
+- Freshness: fresh through 12 minutes, stale after 12 minutes, and unusable for
+  current semantics after 30 minutes; freshness does not rewrite collection
+  validity
+- Lineage: `latest_attempt` describes only the most recent artifact;
+  `last_good` retains independently timestamped complete family facts from a
+  previous valid projection. Retained facts are never labeled current, and an
+  identity-epoch change prevents cross-epoch retention.
+- Privacy: friendly names and pseudonymous stable IDs remain local-only;
+  rejection errors are bounded and never echo source values or the full source
+  path. Source schema 0.3 requires `privacy.exposure_mode`; `minimal` identity
+  fields are not assumed, while optional `local`/`full` address identity can be
+  consumed transiently for probe-host matching. Prime never persists source
+  local addresses or MAC addresses.
+- Unavailable behavior: missing, malformed, unsupported, privacy-rejected, or
+  failed input still produces an atomic bounded projection and cannot stop the
+  ordinary transform
+- Authoritative: yes, only for Prime's current Mesh evidence projection and its
+  freshness/lineage semantics; no, for health, attribution, Observation,
+  investigation, or Operator Assistant semantics
+- Historical: no; no JSONL or other Mesh history is written
+- UI boundary: `lan_evidence` is an address-, MAC-, client-name-, and stable-ID-
+  free presentation projection for the LAN panel. Its `probe_host` block may
+  contain the local associated-node display name plus medium, band, raw relative
+  signal, and apparent link rate after a unique Python-owned address match. The
+  browser renders those emitted facts, states, counts, and lineage but does not
+  derive health or attribution. Current Mesh context is not point-in-time
+  evidence for historical LAN samples.
 - Generated: yes
 - Should be committed: no
 
@@ -622,6 +668,9 @@ historical artifacts should pass a unique `--out` path.
   recommendations.
 - `viz/internet_conditions.json` is Environmental Context, not attribution,
   health scoring, or noticeability logic.
+- `viz/mesh_context.json` is current local infrastructure evidence, not
+  Environmental Context, historical evidence, attribution, health scoring, an
+  Observation, investigation evidence, or Operator Assistant input.
 - `viz/investigation.json` consumes telemetry plus additive Observation and
   provider context snapshots, but it does not rewrite those upstream artifacts
   into new semantics.

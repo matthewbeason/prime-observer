@@ -162,6 +162,11 @@ Typical validation scope:
 - `viz/nextdns_summary.json`: rerun `bin/fetch_nextdns_summary.py`
 - `viz/internet_conditions.json`: rerun `bin/fetch_cloudflare_radar.py`
 - `viz/aps_power_context.json`: rerun `bin/fetch_aps_power_context.py`
+- `viz/mesh_context.json`: rerun `bin/transform_latest.py` with either process
+  `MESH_SIGNAL_ARTIFACT_PATH` or the ignored `.env.mesh`; verify fresh, stale,
+  partial, minimal-exposure, uniquely matched, ambiguous/unmatched, and
+  unavailable LAN-panel rendering without changing the LAN scale. Confirm local
+  addresses, MACs, client IDs, and client names are absent from `lan_evidence`.
 
 ## Environmental Context Provider Validation
 

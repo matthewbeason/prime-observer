@@ -104,6 +104,14 @@ If something cannot be supported from the repository, mark it:
 - `bin/fetch_application_experience.py` generates
   `viz/application_experience.json`.
 - `bin/record_operator_impact.py` generates `viz/operator_impact_feedback.json`.
+- `bin/mesh_context.py` validates an optional normalized Mesh Signal artifact
+  and generates the current-only local infrastructure evidence projection
+  `viz/mesh_context.json`. It reads process configuration or ignored
+  `.env.mesh`, never contacts the router, supports source schemas 0.1 through
+  0.3, enforces schema 0.3 exposure modes, and emits minimized LAN display
+  evidence for the renderer. A schema 0.3 local-address match may expose only
+  the associated node's local display name and qualified attachment facts; it
+  never persists client addresses, MACs, IDs, or client names in LAN evidence.
 - `viz/index.html` renders the dashboard from generated local artifacts.
 - `viz/investigate.html` renders historical investigation evidence.
 
@@ -135,10 +143,12 @@ Do not:
 
 These are local/generated artifacts and must not be committed:
 
+- `.env.mesh`
 - `viz/latest.csv`
 - `viz/network_attribution.json`
 - `viz/observations.json`
 - `viz/dashboard_health.json`
+- `viz/mesh_context.json`
 - `viz/baseline_history.json`
 - `viz/interval_summary.json`
 - `viz/incident_similarity.json`
