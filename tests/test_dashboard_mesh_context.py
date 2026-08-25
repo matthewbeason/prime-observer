@@ -63,6 +63,7 @@ class DashboardMeshContextTests(unittest.TestCase):
             "meshContextSatellites",
             "meshContextBands",
             "meshContextLineage",
+            "meshContextHistory",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
 
@@ -84,10 +85,20 @@ class DashboardMeshContextTests(unittest.TestCase):
 
     def test_lan_tooltip_adds_snapshot_context_without_changing_chart_scale(self):
         self.assertIn('if (svgSel === "#lan") extra += meshLanTooltipHtml(opts.meshEvidence);', self.html)
-        self.assertIn("Snapshot context only; relative signal is vendor-defined", self.html)
+        self.assertIn("Historical changes are read-only derived evidence", self.html)
         self.assertIn("const lanYDomain = latencyDomainForSeries(currentVizState.lanSeries);", self.html)
         self.assertNotIn("meshSeries", self.html)
         self.assertNotIn("meshYDomain", self.html)
+
+    def test_history_markers_and_selected_interval_context_are_additive(self):
+        self.assertIn('id="selectedBucketMesh"', self.html)
+        self.assertIn('id="selectedBucketMeshDetail"', self.html)
+        self.assertIn('.attr("class", "mesh-change-line")', self.html)
+        self.assertIn('.attr("class", "mesh-change-hit")', self.html)
+        self.assertIn("function meshIntervalContext", self.html)
+        self.assertIn("Before: ${meshPeriodText(meshContext.before)}", self.html)
+        self.assertIn("Time adjacency only; no causal claim.", self.html)
+        self.assertIn("temporal alignment does not establish cause", self.html)
 
     def test_client_and_node_identifiers_do_not_enter_dashboard(self):
         self.assertNotIn("client_id", self.html)
@@ -122,14 +133,14 @@ class DashboardMeshContextRendererTests(unittest.TestCase):
             )
         )
 
-    def render(self, evidence):
+    def render(self, evidence, history=None):
         script = textwrap.dedent(
             f"""
             {self.functions}
             const ids = [
               "meshContextState", "meshContextSummary", "meshContextProbeHost", "meshContextNodes",
               "meshContextClients", "meshContextMedium", "meshContextAssociations",
-              "meshContextSatellites", "meshContextBands", "meshContextLineage",
+              "meshContextSatellites", "meshContextBands", "meshContextLineage", "meshContextHistory",
               "meshContextQualityNote"
             ];
             const nodes = Object.fromEntries(ids.map(id => [id, {{ textContent: "", className: "" }}]));
@@ -137,7 +148,7 @@ class DashboardMeshContextRendererTests(unittest.TestCase):
             function parseTs(value) {{ return value ? new Date(value) : null; }}
             function toCompactRelativeAge(_value) {{ return "age labeled"; }}
             function applyPillState(element, label, tone) {{ element.textContent = label; element.className = tone; }}
-            renderMeshContext({json.dumps({'lan_evidence': evidence})});
+            renderMeshContext({json.dumps({'lan_evidence': evidence, 'history_evidence': history})});
             console.log(JSON.stringify(Object.fromEntries(ids.map(id => [id, {{ text: nodes[id].textContent, className: nodes[id].className }}]))));
             """
         )
@@ -234,6 +245,16 @@ class DashboardMeshContextRendererTests(unittest.TestCase):
         self.assertEqual(rendered["meshContextState"], {"text": "Mesh evidence unavailable", "className": "neutral"})
         self.assertEqual(rendered["meshContextClients"]["text"], "—")
         self.assertIn("Unavailable", rendered["meshContextProbeHost"]["text"])
+
+    def test_history_coverage_is_rendered_without_health_language(self):
+        history = {
+            "state": "available",
+            "coverage": {"snapshot_count": 12},
+            "change_points": [{"observed_at": "2026-08-23T20:00:00Z"}, {"observed_at": "2026-08-23T20:05:00Z"}],
+        }
+        rendered = self.render(self.evidence("current", "Mesh evidence current"), history)
+        self.assertEqual(rendered["meshContextHistory"]["text"], "12 snapshots · 2 change times in view")
+        self.assertNotIn("healthy", rendered["meshContextHistory"]["text"].lower())
 
 
 if __name__ == "__main__":

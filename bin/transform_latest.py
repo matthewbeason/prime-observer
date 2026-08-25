@@ -1359,13 +1359,12 @@ def main():
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
     now = dt.datetime.now(dt.timezone.utc)
-    mesh_context = refresh_mesh_context(
-        VIZ_DIR / "mesh_context.json",
-        generated_at=now,
-    )
-
     src = newest_by_mtime()
     if not src:
+        refresh_mesh_context(
+            VIZ_DIR / "mesh_context.json",
+            generated_at=now,
+        )
         print(f"No telemetry CSV files found matching {TELEMETRY_PATTERN}.")
         return
 
@@ -1456,6 +1455,11 @@ def main():
         application_experience=application_experience,
     )
     write_json_atomic(DASHBOARD_HEALTH_OUT, dashboard_health)
+    mesh_context = refresh_mesh_context(
+        VIZ_DIR / "mesh_context.json",
+        generated_at=now,
+        interval_windows=dashboard_health.get("composite_wan_buckets"),
+    )
     lan_series, wan_series = to_dashboard_series(rows_out, preserve_wan_hosts=True)
     wan_series_marked = mark_dashboard_wan_bad(
         wan_series,
@@ -1566,7 +1570,7 @@ def main():
     print(f"Wrote operational learnings artifact to {OPERATIONAL_LEARNINGS_OUT}")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(
-        "Wrote Mesh Signal current projection to "
+        "Wrote Mesh Signal current and historical evidence projection to "
         f"viz/mesh_context.json ({mesh_context['status']})"
     )
     print(f"Investigation artifact {'updated' if investigation_changed else 'unchanged'} at {INVESTIGATION_OUT}")

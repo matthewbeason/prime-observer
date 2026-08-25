@@ -882,6 +882,11 @@
           <div class="value-inline" id="selectedBucketLan">—</div>
           <div class="detail-line" id="selectedBucketLanDetail">No interval selected.</div>
         </div>
+        <div class="detail-chip">
+          <h4>Mesh Changes</h4>
+          <div class="value-inline" id="selectedBucketMesh">—</div>
+          <div class="detail-line" id="selectedBucketMeshDetail">No interval selected.</div>
+        </div>
       </div>
       <div class="panel-actions">
         <span id="selectedBucketActionCopy">Need event-level tables or nearby context?</span>
@@ -912,7 +917,7 @@
       <div class="panel-kicker" id="lanPanelKicker">Local Path Instrument</div>
       <div class="section-title">
         <h3 id="lanHeading">LAN (Gateway) — p95 latency (ms)</h3>
-        <div class="legend" id="lanLegend">Gateway latency remains the measured LAN series • Mesh Signal adds current attachment and collection context only</div>
+        <div class="legend" id="lanLegend">Gateway latency remains the measured LAN series • purple markers = derived Mesh changes • temporal alignment does not establish cause</div>
       </div>
       <div class="mesh-context" id="meshContext" aria-live="polite" aria-atomic="true">
         <div class="mesh-context-primary">
@@ -932,6 +937,7 @@
             <div><b>Satellites:</b> <span id="meshContextSatellites">—</span></div>
             <div><b>Bands:</b> <span id="meshContextBands">—</span></div>
             <div><b>Inventory lineage:</b> <span id="meshContextLineage">—</span></div>
+            <div><b>Historical coverage:</b> <span id="meshContextHistory">—</span></div>
             <div id="meshContextQualityNote">Relative signal and apparent link-rate values are not physical measurements or throughput.</div>
           </div>
         </details>
@@ -1169,7 +1175,25 @@
       document.getElementById("mobileCompareWrap").innerHTML = html;
     }
 
-    function updateSelectedBucketPanel(bucket, evidence){
+    function meshIntervalContext(bucket, history){
+      if (!bucket || history?.state !== "available" || !Array.isArray(history.interval_contexts)) return null;
+      const start = bucket.t instanceof Date ? bucket.t.getTime() : parseTs(bucket.t)?.getTime();
+      const end = bucket.t2 instanceof Date ? bucket.t2.getTime() : parseTs(bucket.t2)?.getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      return history.interval_contexts.find(item => {
+        const itemStart = parseTs(item?.start)?.getTime();
+        const itemEnd = parseTs(item?.end)?.getTime();
+        return itemStart === start && itemEnd === end;
+      }) || null;
+    }
+
+    function meshPeriodText(period){
+      if (!period || period.coverage_state !== "observed") return "not covered";
+      const count = Number.isFinite(period.event_count) ? period.event_count : 0;
+      return count === 0 ? "no changes observed" : `${count} change${count === 1 ? "" : "s"}`;
+    }
+
+    function updateSelectedBucketPanel(bucket, evidence, meshHistory){
       const panel = document.getElementById("selectedBucketPanel");
       const headline = document.getElementById("selectedBucketHeadline");
       const legend = document.getElementById("selectedBucketLegend");
@@ -1183,10 +1207,12 @@
       const resolverDetail = document.getElementById("selectedBucketResolverDetail");
       const lan = document.getElementById("selectedBucketLan");
       const lanDetail = document.getElementById("selectedBucketLanDetail");
+      const mesh = document.getElementById("selectedBucketMesh");
+      const meshDetail = document.getElementById("selectedBucketMeshDetail");
       syncInvestigationLinks(bucket);
 
       const resetValue = el => { el.className = "value-inline"; };
-      [state, internet, resolver, lan].forEach(resetValue);
+      [state, internet, resolver, lan, mesh].forEach(resetValue);
 
       if (!bucket || !evidence){
         panel.classList.remove("has-selection");
@@ -1202,6 +1228,8 @@
         resolverDetail.textContent = "No interval selected.";
         lan.textContent = "—";
         lanDetail.textContent = "No interval selected.";
+        mesh.textContent = "—";
+        meshDetail.textContent = "No interval selected.";
         return;
       }
 
@@ -1232,6 +1260,26 @@
       lanDetail.textContent = evidence.lanSamples
         ? `${evidence.lanElevatedSamples} elevated LAN sample(s) in the selected interval.`
         : "No LAN samples in the selected interval.";
+
+      const meshContext = meshIntervalContext(bucket, meshHistory);
+      if (!meshContext){
+        mesh.textContent = "—";
+        mesh.classList.add("neutral");
+        meshDetail.textContent = meshHistory?.state === "available"
+          ? "No aligned Mesh history context was generated for this interval."
+          : "Mesh history is unavailable for this interval.";
+      } else {
+        const during = meshContext.during || {};
+        const count = Number.isFinite(during.event_count) ? during.event_count : 0;
+        mesh.textContent = during.coverage_state === "observed"
+          ? `${count} during`
+          : "Not covered";
+        mesh.classList.add(during.coverage_state !== "observed" ? "neutral" : count ? "info" : "ok");
+        const boundary = [meshContext.before, meshContext.during, meshContext.after].some(item => item?.lineage_boundary)
+          ? " • identity lineage boundary present"
+          : "";
+        meshDetail.textContent = `Before: ${meshPeriodText(meshContext.before)} • During: ${meshPeriodText(during)} • After: ${meshPeriodText(meshContext.after)}${boundary}. Time adjacency only; no causal claim.`;
+      }
     }
 
     function timeContextMatchesGenerated(bucket, generatedContext){
@@ -1869,12 +1917,13 @@
       renderLine("#lan", currentVizState.lanSeries, {
         label: "LAN p95",
         meshEvidence: currentVizState.meshEvidence,
+        meshHistory: currentVizState.meshHistory,
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
         xDomain: currentVizState.xDomain,
         yDomain: lanYDomain
       });
-      updateSelectedBucketPanel(currentVizState.selectedBucket, currentVizState.selectedEvidence);
+      updateSelectedBucketPanel(currentVizState.selectedBucket, currentVizState.selectedEvidence, currentVizState.meshHistory);
       syncDashboardTimeContext({
         selectedBucket: currentVizState.selectedBucket,
         selectedEvidence: currentVizState.selectedEvidence,
@@ -3343,6 +3392,7 @@
 
     function renderMeshContext(payload){
       const evidence = payload?.lan_evidence;
+      const history = payload?.history_evidence;
       const state = String(evidence?.state || "unavailable");
       const label = String(evidence?.label || "Mesh evidence unavailable");
       const tone = state === "current" ? "ok" : ["partial", "stale"].includes(state) ? "watch" : "neutral";
@@ -3396,8 +3446,13 @@
         `satellites ${meshLineageLabel(satellites)}`,
         `clients ${meshLineageLabel(clients)}`,
       ].join(" · ");
+      const snapshots = meshCount(history?.coverage?.snapshot_count);
+      const changePoints = Array.isArray(history?.change_points) ? history.change_points.length : null;
+      document.getElementById("meshContextHistory").textContent = history?.state === "available"
+        ? `${snapshots ?? 0} snapshot${snapshots === 1 ? "" : "s"} · ${changePoints ?? 0} change time${changePoints === 1 ? "" : "s"} in view`
+        : "Unavailable";
       document.getElementById("meshContextQualityNote").textContent =
-        "Probe signal is a raw relative vendor metric and apparent link rate is not measured throughput. Attachment is snapshot context, not historical evidence for chart samples.";
+        "Probe signal is a raw relative vendor metric and apparent link rate is not measured throughput. Historical changes are read-only derived evidence; alignment with latency does not establish cause.";
     }
 
     function escapeTooltipText(value){
@@ -3428,6 +3483,20 @@
         <div class="list-line">${escapeTooltipText(inventory || evidence.summary || "Inventory unavailable")}</div>
         <div class="list-line muted">Snapshot context only; relative signal is vendor-defined and apparent link rate is not measured throughput.</div>
       </div>`;
+    }
+
+    function meshChangeTooltipHtml(point){
+      const count = Number.isFinite(point?.event_count) ? point.event_count : 0;
+      const changes = Array.isArray(point?.changes) && point.changes.length
+        ? point.changes.join(" · ")
+        : "Derived Mesh change";
+      const boundary = point?.lineage_boundary
+        ? '<div class="list-line muted">Identity or exposure lineage boundary; continuity is not assumed.</div>'
+        : "";
+      return `<div class="t"><b>Mesh change evidence</b> • ${escapeTooltipText(point.t.toLocaleTimeString(undefined,{hour12:true,hour:"numeric",minute:"2-digit"}))}</div>
+        <div class="headline">${count} derived change${count === 1 ? "" : "s"}</div>
+        <div class="list-line">${escapeTooltipText(changes)}</div>
+        ${boundary}<div class="list-line muted">Read-only historical evidence. Temporal alignment does not establish cause.</div>`;
     }
 
     function renderLine(svgSel, seriesArr, opts={}) {
@@ -3581,6 +3650,52 @@
           tipShow(html, ev.clientX, ev.clientY);
         })
         .on("mouseleave", () => { focus.style("display","none"); tipHide(); });
+
+      if (svgSel === "#lan" && Array.isArray(opts.meshHistory?.change_points)){
+        const displayPoints = Array.isArray(opts.meshHistory.timeline_points)
+          ? opts.meshHistory.timeline_points
+          : opts.meshHistory.change_points;
+        const meshPoints = displayPoints
+          .map(item => ({ ...item, t: parseTs(item?.observed_at || "") }))
+          .filter(item => item.t && item.t >= xDomain[0] && item.t <= xDomain[1]);
+        const markerLayer = svg.append("g")
+          .attr("transform", `translate(${pad.l},${pad.t})`)
+          .attr("class", "mesh-change-markers");
+        markerLayer.selectAll(".mesh-change-line")
+          .data(meshPoints)
+          .enter()
+          .append("line")
+          .attr("class", "mesh-change-line")
+          .attr("x1", d => x(d.t))
+          .attr("x2", d => x(d.t))
+          .attr("y1", 0)
+          .attr("y2", innerH)
+          .attr("stroke", "rgba(111, 78, 155, 0.62)")
+          .attr("stroke-width", d => d.lineage_boundary ? 2.5 : 1.5)
+          .attr("stroke-dasharray", d => d.lineage_boundary ? "2 3" : "4 4")
+          .attr("pointer-events", "none");
+        markerLayer.selectAll(".mesh-change-hit")
+          .data(meshPoints)
+          .enter()
+          .append("circle")
+          .attr("class", "mesh-change-hit")
+          .attr("cx", d => x(d.t))
+          .attr("cy", 8)
+          .attr("r", 6)
+          .attr("fill", "rgba(111, 78, 155, 0.92)")
+          .attr("stroke", "white")
+          .attr("stroke-width", 1.5)
+          .attr("tabindex", 0)
+          .attr("role", "img")
+          .attr("aria-label", d => `${d.event_count || 0} derived Mesh change${d.event_count === 1 ? "" : "s"} at ${d.t.toLocaleTimeString()}`)
+          .on("mousemove", (ev, d) => tipShow(meshChangeTooltipHtml(d), ev.clientX, ev.clientY))
+          .on("focus", (ev, d) => {
+            const bounds = ev.currentTarget.getBoundingClientRect();
+            tipShow(meshChangeTooltipHtml(d), bounds.left, bounds.bottom);
+          })
+          .on("mouseleave", tipHide)
+          .on("blur", tipHide);
+      }
     }
 
     async function tick() {
@@ -3638,7 +3753,8 @@
         );
 
         const meshEvidence = meshContextPayload?.lan_evidence || null;
-        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, semanticAvailable: Boolean(dashboardHealth), currentCondition: dashboardHealth?.healthDimensions?.current_condition || null, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, incidentSimilarityPayload, operationalLearningsPayload, meshEvidence };
+        const meshHistory = meshContextPayload?.history_evidence || null;
+        currentVizState = { lanSeries, internetSeriesMarked, resolverSeriesMarked, compositeWanBuckets, badBuckets, turbulenceBuckets, rawSpikeMarkers, selectedBucket, selectedEvidence, xDomain, semanticAvailable: Boolean(dashboardHealth), currentCondition: dashboardHealth?.healthDimensions?.current_condition || null, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, incidentSimilarityPayload, operationalLearningsPayload, meshEvidence, meshHistory };
 
         updateConnectionCard(raw);
         renderMeshContext(meshContextPayload);

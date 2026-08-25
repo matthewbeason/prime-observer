@@ -4,6 +4,7 @@ import datetime as dt
 import importlib.util
 import json
 import os
+import sqlite3
 import stat
 import tempfile
 import unittest
@@ -17,7 +18,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
 
-from mesh_context import refresh_mesh_context  # noqa: E402
+from mesh_context import read_mesh_history, refresh_mesh_context  # noqa: E402
 
 
 UTC = dt.timezone.utc
@@ -151,6 +152,71 @@ class MeshContextTests(unittest.TestCase):
             self.write_source(payload)
         return refresh_mesh_context(self.output, source_path=self.source, generated_at=now)
 
+    def write_history(self):
+        path = self.root / "mesh_signal_history.sqlite3"
+        connection = sqlite3.connect(path)
+        connection.executescript(
+            """
+            CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO metadata VALUES ('history_schema_version', '0.1');
+            CREATE TABLE snapshots (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_id TEXT NOT NULL UNIQUE,
+                collected_at TEXT NOT NULL,
+                completed_at TEXT NOT NULL,
+                collection_status TEXT NOT NULL,
+                exposure_mode TEXT NOT NULL,
+                identity_epoch TEXT NOT NULL,
+                lineage_id TEXT NOT NULL,
+                artifact_schema_version TEXT NOT NULL,
+                artifact_json TEXT NOT NULL
+            );
+            CREATE TABLE events (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL UNIQUE,
+                event_type TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                snapshot_id TEXT NOT NULL,
+                previous_snapshot_id TEXT,
+                exposure_mode TEXT NOT NULL,
+                identity_epoch TEXT NOT NULL,
+                lineage_id TEXT NOT NULL,
+                family TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT,
+                evidence_json TEXT NOT NULL
+            );
+            """
+        )
+        times = ["2026-08-24T00:20:00Z", "2026-08-24T00:35:00Z", "2026-08-24T00:50:00Z"]
+        event_types = [
+            "client_changed_band",
+            "client_changed_node_association",
+            "identity_epoch_changed",
+        ]
+        for index, (timestamp, event_type) in enumerate(zip(times, event_types), 1):
+            snapshot_id = f"snapshot_sensitive_{index}"
+            connection.execute(
+                "INSERT INTO snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    index, snapshot_id, timestamp, timestamp, "complete", "local",
+                    "identity_sensitive_value", "lineage_sensitive_value", "0.3",
+                    '{"clients":[{"client_id":"client_sensitive","local_ip_addresses":["192.168.1.50"]}]}',
+                ),
+            )
+            connection.execute(
+                "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    index, f"event_sensitive_{index}", event_type, timestamp, snapshot_id,
+                    None if index == 1 else f"snapshot_sensitive_{index - 1}", "local",
+                    "identity_sensitive_value", "lineage_sensitive_value", "clients",
+                    "client", "client_sensitive", '{"before":{"band":"5_ghz"},"after":{"band":"2_4_ghz"}}',
+                ),
+            )
+        connection.commit()
+        connection.close()
+        return path
+
     def test_complete_fresh_projection_is_minimized_and_aggregated(self):
         result = self.refresh(source_payload())
         self.assertEqual(result["status"], "ok")
@@ -175,6 +241,64 @@ class MeshContextTests(unittest.TestCase):
         self.assertNotIn(str(self.root), serialized)
         self.assertEqual(result["warnings"], result["latest_attempt"]["warnings"])
         self.assertEqual(stat.S_IMODE(self.output.stat().st_mode), 0o600)
+
+    def test_history_is_read_only_minimized_and_aligned_before_during_after(self):
+        history = self.write_history()
+        before_stat = history.stat()
+        self.write_source(source_payload())
+        result = refresh_mesh_context(
+            self.output,
+            source_path=self.source,
+            history_path=history,
+            generated_at=NOW,
+            interval_windows=[{
+                "t": "2026-08-24T00:30:00Z",
+                "t2": "2026-08-24T00:45:00Z",
+            }],
+        )
+        after_stat = history.stat()
+        projected = result["history_evidence"]
+        self.assertEqual(projected["state"], "available")
+        self.assertEqual(projected["source_schema_version"], "0.1")
+        self.assertEqual(projected["coverage"]["snapshot_count"], 3)
+        context = projected["interval_contexts"][0]
+        self.assertEqual(context["before"]["event_count"], 1)
+        self.assertEqual(context["during"]["event_count"], 1)
+        self.assertEqual(context["after"]["event_count"], 1)
+        self.assertTrue(context["after"]["lineage_boundary"])
+        self.assertEqual(len(projected["timeline_points"]), 1)
+        self.assertEqual(projected["timeline_points"][0]["event_count"], 1)
+        self.assertEqual(projected["provenance"]["access_mode"], "sqlite_read_only")
+        self.assertFalse(projected["provenance"]["write_operations_performed"])
+        self.assertEqual(before_stat.st_size, after_stat.st_size)
+        self.assertEqual(before_stat.st_mtime_ns, after_stat.st_mtime_ns)
+        serialized = json.dumps(projected)
+        for forbidden in (
+            "client_sensitive", "identity_sensitive_value", "lineage_sensitive_value",
+            "snapshot_sensitive", "event_sensitive", "192.168.1.50", "evidence_json",
+        ):
+            self.assertNotIn(forbidden, serialized)
+
+    def test_history_schema_failure_is_bounded_and_does_not_block_current_projection(self):
+        history = self.write_history()
+        connection = sqlite3.connect(history)
+        connection.execute(
+            "UPDATE metadata SET value = '9.9' WHERE key = 'history_schema_version'"
+        )
+        connection.commit()
+        connection.close()
+        projected = read_mesh_history(history, generated_at=NOW)
+        self.assertEqual(projected["state"], "unsupported_history_schema")
+        self.assertNotIn(str(history), json.dumps(projected))
+        self.write_source(source_payload())
+        result = refresh_mesh_context(
+            self.output,
+            source_path=self.source,
+            history_path=history,
+            generated_at=NOW,
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["history_evidence"]["state"], "unsupported_history_schema")
 
     def test_schema_v03_local_maps_probe_host_without_persisting_identity_values(self):
         payload = source_payload(schema_version="0.3", exposure_mode="local")

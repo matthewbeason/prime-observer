@@ -328,9 +328,10 @@ Optional local Mesh Signal evidence:
 
 ```text
 MESH_SIGNAL_ARTIFACT_PATH
+MESH_SIGNAL_HISTORY_PATH (optional override)
         |
         v
-mesh_signal.json (normalized by Mesh Signal)
+mesh_signal.json + read-only mesh_signal_history.sqlite3
         |
         v
 bin/mesh_context.py (invoked by transform_latest.py)
@@ -339,11 +340,12 @@ bin/mesh_context.py (invoked by transform_latest.py)
 viz/mesh_context.json
 ```
 
-This is current local infrastructure evidence, not Environmental Context. Prime
-Observer validates and minimizes the normalized artifact without importing Mesh
-Signal or contacting the router. The projection is safe to be missing and does
-not yet affect health, attribution, Observations, investigations, Operator
-Assistant input, or the investigation renderer. Schema 0.3 `local`/`full`
+This is local infrastructure evidence, not Environmental Context. Prime Observer
+validates and minimizes the normalized artifact and reads the history database
+through a SQLite read-only connection without importing Mesh Signal or contacting
+the router. The projection is safe to be missing and does not affect health,
+attribution, Observations, investigations, Operator Assistant input, or the
+investigation renderer. Schema 0.3 `local`/`full`
 artifacts can be matched to the machine running Prime by intersecting private
 local interface addresses in Python. Those addresses, client IDs, MACs, and the
 client friendly name are never copied into `mesh_context.json`.
@@ -451,17 +453,19 @@ Projection roles:
 
 - `bin/mesh_context.py`
   Validates the optional normalized Mesh Signal artifact selected by
-  `MESH_SIGNAL_ARTIFACT_PATH` and atomically writes a Prime-owned current
-  evidence projection. It owns freshness, bounded summaries, family lineage,
-  last-good preservation, and schema 0.3 privacy-mode enforcement, and performs
-  no network calls. Local interface inspection is used only to match the probe
-  host when `privacy.exposure_mode` is `local` or `full`.
+  `MESH_SIGNAL_ARTIFACT_PATH`, reads Mesh Signal history schema 0.1 through a
+  read-only SQLite connection, and atomically writes a Prime-owned evidence
+  projection. It owns freshness, bounded summaries, family lineage, safe
+  before/during/after alignment, and schema 0.3 privacy-mode enforcement, and
+  performs no network calls. Local interface inspection is used only to match
+  the probe host when `privacy.exposure_mode` is `local` or `full`.
 
 - `viz/mesh_context.json`
-  Generated, uncommitted current Mesh evidence. It separates latest-attempt
-  facts from explicitly aged family-level last-good facts. It is not historical
-  storage. The dashboard consumes only its bounded `lan_evidence` projection;
-  investigations do not consume it.
+  Generated, uncommitted Mesh evidence. It separates latest-attempt facts from
+  explicitly aged family-level last-good facts and adds a bounded,
+  identity-minimized `history_evidence` projection. It is not historical
+  storage. The dashboard consumes the bounded `lan_evidence` and
+  `history_evidence` presentation blocks; investigations do not consume it.
 
 - `viz/latest.csv`
   Generated dashboard input containing the current 24-hour telemetry window.
@@ -575,6 +579,10 @@ Optional local mesh infrastructure evidence:
   `MESH_SIGNAL_ARTIFACT_PATH` to the normalized `mesh_signal.json`. Relative
   paths resolve from the Prime Observer repository root. A process environment
   value overrides the local file when an explicit one-off source is needed.
+- Prime reads Mesh Signal's standard owner-only SQLite history store by default.
+  `MESH_SIGNAL_HISTORY_PATH` is an optional process or `.env.mesh` override for
+  a nonstandard location. Prime opens the database in SQLite read-only mode and
+  never initiates collection, migration, retention, or compaction.
 - `bin/transform_latest.py` reads this local configuration itself, so manual
   runs and the existing transform LaunchAgent use the same unattended source
   without adding a private path to a tracked plist or shell startup file. No
@@ -599,20 +607,23 @@ The LAN chart renders one compact Mesh evidence strip from
 association resolution, bands, collection freshness, family lineage, and—when
 schema 0.3 local identity permits a unique match—the LAN probe host's current
 node, medium, band, raw relative signal, and apparent link rate. LAN tooltips
-include the same snapshot context while explicitly warning that it is not
-historical evidence for the hovered sample. The UI does not show client names,
-addresses, MACs, or pseudonymous IDs, add Mesh series to the chart, infer signal
-health, or change LAN scale and interactions. Minimal exposure mode, an
+include the same current snapshot context. Purple markers align Mesh Signal's
+derived, non-causal change times with the existing LAN timeline, and the
+selected interval card shows covered changes before, during, and after the exact
+15-minute Prime interval. The UI does not show client names, addresses, MACs,
+pseudonymous IDs, lineage IDs, identity epochs, snapshot bodies, or event
+evidence values; add a Mesh metric series; infer signal health; or change the
+LAN scale. Minimal exposure mode, an
 ambiguous/no match, a failed client family, and unavailable data produce bounded
 unavailable attachment text rather than a network-failure claim.
 
-A topology view is intentionally deferred. The probe-host attachment answers the
-high-value current path question without a router-and-satellite diagram, while
-the lack of point-in-time association history would still make topology mostly
-decorative during historical diagnosis. Raw relative signal and apparent link
+A topology view is intentionally deferred. The probe-host attachment and change
+markers answer the high-value current and temporal questions without a
+router-and-satellite diagram. Raw relative signal and apparent link
 rate are displayed only for the uniquely matched probe host and retain those
-qualified labels; Prime does not classify them. Mesh evidence does not yet
-change Attribution, Observations, Investigation, or Operator Assistant inputs.
+qualified labels; Prime does not classify them. Time adjacency never becomes a
+causal claim, and Mesh evidence does not change Attribution, Observations,
+Investigation, or Operator Assistant inputs.
 
 ## Running The Dashboard
 

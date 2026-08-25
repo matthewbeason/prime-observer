@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shlex
+import sqlite3
 import subprocess
 import tempfile
 from copy import deepcopy
@@ -19,8 +20,10 @@ from typing import Any
 SCHEMA_VERSION = 1
 MODEL_VERSION = "prime_observer.mesh_context.v1"
 SOURCE_ENV = "MESH_SIGNAL_ARTIFACT_PATH"
+HISTORY_ENV = "MESH_SIGNAL_HISTORY_PATH"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / ".env.mesh"
+DEFAULT_HISTORY_PATH = Path.home() / "Library" / "Application Support" / "MeshSignal" / "mesh_signal_history.sqlite3"
 INTENDED_POLL_SECONDS = 5 * 60
 FRESH_THROUGH_SECONDS = 12 * 60
 CURRENT_USE_THROUGH_SECONDS = 30 * 60
@@ -44,6 +47,25 @@ IPV6_PATTERN = re.compile(
 )
 FORBIDDEN_KEYS = {
     "authorization", "cookie", "ip", "mac", "password", "ssid", "token", "wan_ip",
+}
+HISTORY_SCHEMA_VERSION = "0.1"
+HISTORY_EVENT_LABELS = {
+    "lineage_started": ("lineage", "Identity lineage started"),
+    "exposure_mode_changed": ("lineage", "Exposure mode changed"),
+    "identity_epoch_changed": ("lineage", "Identity continuity reset"),
+    "collection_became_unavailable": ("collection", "Collection became unavailable"),
+    "collection_became_available": ("collection", "Collection became available"),
+    "router_state_changed": ("router", "Router state changed"),
+    "satellite_appeared": ("satellite", "Satellite appeared"),
+    "satellite_disappeared": ("satellite", "Satellite disappeared"),
+    "satellite_state_changed": ("satellite", "Satellite state changed"),
+    "client_appeared": ("client", "Client appeared"),
+    "client_disappeared": ("client", "Client disappeared"),
+    "client_changed_node_association": ("client", "Client attachment changed"),
+    "client_changed_band": ("client", "Client band changed"),
+}
+LINEAGE_BOUNDARY_EVENTS = {
+    "lineage_started", "exposure_mode_changed", "identity_epoch_changed",
 }
 
 
@@ -78,6 +100,275 @@ def parse_ts(value: Any) -> dt.datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
     return parsed.astimezone(dt.timezone.utc)
+
+
+def _history_state(state: str, summary: str) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "source_schema_version": None,
+        "state": state,
+        "summary": summary,
+        "window": {"start": None, "end": None},
+        "coverage": {
+            "snapshot_count": 0,
+            "first_completed_at": None,
+            "last_completed_at": None,
+            "exposure_modes": [],
+        },
+        "change_points": [],
+        "timeline_points": [],
+        "interval_contexts": [],
+        "limitations": [
+            "Mesh history is temporal correlation evidence only and does not establish causation.",
+        ],
+        "provenance": {
+            "access_mode": "sqlite_read_only",
+            "write_operations_performed": False,
+            "source_reference": "mesh_signal_history_store",
+        },
+    }
+
+
+def _history_window(interval_windows: list[dict[str, Any]] | None, generated_at: dt.datetime):
+    parsed = []
+    for item in interval_windows or []:
+        if not isinstance(item, dict):
+            continue
+        start = parse_ts(item.get("t") or item.get("start"))
+        end = parse_ts(item.get("t2") or item.get("end"))
+        if start is not None and end is not None and end > start:
+            parsed.append((start, end))
+    if not parsed:
+        return generated_at - dt.timedelta(hours=24), generated_at, []
+    earliest = min(start for start, _ in parsed)
+    latest = max(end for _, end in parsed)
+    maximum_span = max((end - start for start, end in parsed), default=dt.timedelta(minutes=15))
+    return earliest - maximum_span, latest + maximum_span, parsed
+
+
+def _summarize_history_window(
+    events: list[dict[str, Any]],
+    snapshots: list[dict[str, Any]],
+    start: dt.datetime,
+    end: dt.datetime,
+) -> dict[str, Any]:
+    selected_events = [item for item in events if start <= item["observed"] < end]
+    selected_snapshots = [item for item in snapshots if start <= item["completed"] < end]
+    type_counts: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    for item in selected_events:
+        event_type = item["event_type"]
+        category = item["category"]
+        type_counts[event_type] = type_counts.get(event_type, 0) + 1
+        category_counts[category] = category_counts.get(category, 0) + 1
+    labels = []
+    for event_type, count in sorted(type_counts.items()):
+        label = HISTORY_EVENT_LABELS[event_type][1]
+        labels.append(f"{label} ({count})" if count != 1 else label)
+    statuses: dict[str, int] = {}
+    for item in selected_snapshots:
+        status = item["collection_status"]
+        statuses[status] = statuses.get(status, 0) + 1
+    return {
+        "start": iso_utc(start),
+        "end": iso_utc(end),
+        "coverage_state": "observed" if selected_snapshots else "unobserved",
+        "snapshot_count": len(selected_snapshots),
+        "collection_status_counts": dict(sorted(statuses.items())),
+        "event_count": len(selected_events),
+        "change_point_count": len({item["observed_at"] for item in selected_events}),
+        "category_counts": dict(sorted(category_counts.items())),
+        "event_type_counts": dict(sorted(type_counts.items())),
+        "changes": labels,
+        "lineage_boundary": any(item["lineage_boundary"] for item in selected_events),
+    }
+
+
+def read_mesh_history(
+    path: Path | None,
+    *,
+    generated_at: dt.datetime,
+    interval_windows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Read and minimize Mesh Signal history without opening a write-capable connection."""
+    if path is None:
+        return _history_state("not_configured", "Mesh history is not configured.")
+    if not path.exists():
+        return _history_state("missing", "Mesh history is not yet available.")
+
+    window_start, window_end, parsed_intervals = _history_window(interval_windows, generated_at)
+    connection = None
+    try:
+        uri = f"{path.expanduser().resolve().as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=2)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        schema_row = connection.execute(
+            "SELECT value FROM metadata WHERE key = 'history_schema_version'"
+        ).fetchone()
+        if schema_row is None or schema_row["value"] != HISTORY_SCHEMA_VERSION:
+            raise MeshContextError("unsupported_history_schema")
+        expected_columns = {
+            "snapshots": {
+                "sequence", "snapshot_id", "collected_at", "completed_at",
+                "collection_status", "exposure_mode", "identity_epoch", "lineage_id",
+                "artifact_schema_version", "artifact_json",
+            },
+            "events": {
+                "sequence", "event_id", "event_type", "observed_at", "snapshot_id",
+                "previous_snapshot_id", "exposure_mode", "identity_epoch", "lineage_id",
+                "family", "entity_type", "entity_id", "evidence_json",
+            },
+        }
+        for table, expected in expected_columns.items():
+            columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+            if columns != expected:
+                raise MeshContextError("history_schema_rejected")
+
+        start_text = iso_utc(window_start)
+        end_text = iso_utc(window_end)
+        snapshot_rows = connection.execute(
+            """
+            SELECT completed_at, collection_status, exposure_mode
+            FROM snapshots
+            WHERE completed_at >= ? AND completed_at < ?
+            ORDER BY completed_at, sequence
+            """,
+            (start_text, end_text),
+        ).fetchall()
+        event_rows = connection.execute(
+            """
+            SELECT event_type, observed_at, exposure_mode
+            FROM events
+            WHERE observed_at >= ? AND observed_at < ?
+            ORDER BY observed_at, sequence
+            """,
+            (start_text, end_text),
+        ).fetchall()
+    except FileNotFoundError:
+        return _history_state("missing", "Mesh history is not yet available.")
+    except MeshContextError as error:
+        return _history_state(error.code, "Mesh history contract is unsupported or invalid.")
+    except (OSError, sqlite3.Error):
+        return _history_state("unreadable", "Mesh history could not be read safely.")
+    finally:
+        if connection is not None:
+            connection.close()
+
+    snapshots = []
+    for row in snapshot_rows:
+        completed = parse_ts(row["completed_at"])
+        if (
+            completed is None
+            or row["collection_status"] not in SOURCE_STATUSES
+            or row["exposure_mode"] not in IDENTITY_EXPOSURE_MODES
+        ):
+            return _history_state("history_schema_rejected", "Mesh history contract is unsupported or invalid.")
+        snapshots.append({
+            "completed": completed,
+            "completed_at": iso_utc(completed),
+            "collection_status": row["collection_status"],
+            "exposure_mode": row["exposure_mode"],
+        })
+
+    events = []
+    for row in event_rows:
+        observed = parse_ts(row["observed_at"])
+        event_type = row["event_type"]
+        if (
+            observed is None
+            or event_type not in HISTORY_EVENT_LABELS
+            or row["exposure_mode"] not in IDENTITY_EXPOSURE_MODES
+        ):
+            return _history_state("history_schema_rejected", "Mesh history contract is unsupported or invalid.")
+        category, label = HISTORY_EVENT_LABELS[event_type]
+        events.append({
+            "observed": observed,
+            "observed_at": iso_utc(observed),
+            "event_type": event_type,
+            "category": category,
+            "label": label,
+            "exposure_mode": row["exposure_mode"],
+            "lineage_boundary": event_type in LINEAGE_BOUNDARY_EVENTS,
+        })
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in events:
+        point = grouped.setdefault(item["observed_at"], {
+            "observed_at": item["observed_at"],
+            "event_count": 0,
+            "category_counts": {},
+            "changes": [],
+            "exposure_mode": item["exposure_mode"],
+            "lineage_boundary": False,
+        })
+        point["event_count"] += 1
+        point["category_counts"][item["category"]] = point["category_counts"].get(item["category"], 0) + 1
+        if item["label"] not in point["changes"]:
+            point["changes"].append(item["label"])
+        point["lineage_boundary"] = point["lineage_boundary"] or item["lineage_boundary"]
+    change_points = []
+    for point in grouped.values():
+        point["category_counts"] = dict(sorted(point["category_counts"].items()))
+        point["changes"].sort()
+        change_points.append(point)
+
+    interval_contexts = []
+    timeline_points = []
+    for start, end in parsed_intervals:
+        span = end - start
+        context = {
+            "start": iso_utc(start),
+            "end": iso_utc(end),
+            "before": _summarize_history_window(events, snapshots, start - span, start),
+            "during": _summarize_history_window(events, snapshots, start, end),
+            "after": _summarize_history_window(events, snapshots, end, end + span),
+        }
+        interval_contexts.append(context)
+        during_events = [item for item in events if start <= item["observed"] < end]
+        if during_events:
+            timeline_points.append({
+                "observed_at": during_events[0]["observed_at"],
+                "interval_start": context["start"],
+                "interval_end": context["end"],
+                "event_count": len(during_events),
+                "category_counts": context["during"]["category_counts"],
+                "changes": context["during"]["changes"],
+                "exposure_mode": during_events[-1]["exposure_mode"],
+                "lineage_boundary": context["during"]["lineage_boundary"],
+            })
+
+    first = snapshots[0]["completed_at"] if snapshots else None
+    last = snapshots[-1]["completed_at"] if snapshots else None
+    return {
+        "schema_version": 1,
+        "source_schema_version": HISTORY_SCHEMA_VERSION,
+        "state": "available",
+        "summary": (
+            f"Mesh history covers {len(snapshots)} snapshot(s) and {len(events)} derived change(s) in the dashboard window."
+            if snapshots else "Mesh history is readable but has no snapshots in the dashboard window."
+        ),
+        "window": {"start": iso_utc(window_start), "end": iso_utc(window_end)},
+        "coverage": {
+            "snapshot_count": len(snapshots),
+            "first_completed_at": first,
+            "last_completed_at": last,
+            "exposure_modes": sorted({item["exposure_mode"] for item in snapshots}),
+        },
+        "change_points": change_points,
+        "timeline_points": timeline_points,
+        "interval_contexts": interval_contexts,
+        "limitations": [
+            "Mesh history is temporal correlation evidence only and does not establish causation.",
+            "Adjacent exposure or identity lineages are displayed as boundaries, not continuous entity history.",
+            "No source identifiers, snapshot bodies, or event evidence values are copied into this projection.",
+        ],
+        "provenance": {
+            "access_mode": "sqlite_read_only",
+            "write_operations_performed": False,
+            "source_reference": "mesh_signal_history_store",
+        },
+    }
 
 
 def _is_int(value: Any) -> bool:
@@ -822,6 +1113,7 @@ def build_projection(
     existing_projection: dict[str, Any] | None = None,
     source_reference: str = "configured_mesh_signal_artifact",
     probe_local_addresses: set[str] | None = None,
+    history_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     last_good = _existing_last_good(existing_projection, generated_at)
     limitations: list[str] = []
@@ -984,6 +1276,9 @@ def build_projection(
         "latest_attempt": latest_attempt,
         "last_good": last_good,
         "lan_evidence": lan_evidence,
+        "history_evidence": history_evidence or _history_state(
+            "not_configured", "Mesh history is not configured."
+        ),
         "warnings": latest_attempt["warnings"],
         "freshness_policy": {
             "intended_poll_seconds": INTENDED_POLL_SECONDS,
@@ -1042,8 +1337,9 @@ def read_local_config(path: Path) -> dict[str, str]:
             key, value = tokens[0].split("=", 1)
         else:
             continue
-        if key.strip() == SOURCE_ENV:
-            values[SOURCE_ENV] = value.strip()
+        key = key.strip()
+        if key in {SOURCE_ENV, HISTORY_ENV}:
+            values[key] = value.strip()
     return values
 
 
@@ -1064,6 +1360,24 @@ def configured_source_path(
     if not candidate.is_absolute():
         candidate = project_root / candidate
     return candidate, reference
+
+
+def configured_history_path(
+    *,
+    environ: dict[str, str],
+    config_path: Path,
+    project_root: Path,
+    use_default: bool,
+) -> Path | None:
+    raw_path = str(environ.get(HISTORY_ENV, "")).strip()
+    if not raw_path:
+        raw_path = read_local_config(config_path).get(HISTORY_ENV, "").strip()
+    if not raw_path:
+        return DEFAULT_HISTORY_PATH if use_default else None
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -1096,6 +1410,8 @@ def refresh_mesh_context(
     config_path: Path = DEFAULT_CONFIG_PATH,
     project_root: Path = PROJECT_ROOT,
     probe_local_addresses: set[str] | None = None,
+    history_path: Path | None = None,
+    interval_windows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     generated = generated_at or utc_now()
     existing = load_existing(output_path)
@@ -1107,6 +1423,14 @@ def refresh_mesh_context(
             environ=env,
             config_path=config_path,
             project_root=project_root,
+        )
+    configured_history = history_path
+    if configured_history is None:
+        configured_history = configured_history_path(
+            environ=env,
+            config_path=config_path,
+            project_root=project_root,
+            use_default=source_path is None and project_root == PROJECT_ROOT,
         )
     source_payload = None
     state = "not_configured"
@@ -1134,6 +1458,11 @@ def refresh_mesh_context(
             discover_probe_local_addresses()
             if probe_local_addresses is None and state == "valid"
             else (probe_local_addresses or set())
+        ),
+        history_evidence=read_mesh_history(
+            configured_history,
+            generated_at=generated,
+            interval_windows=interval_windows,
         ),
     )
     write_json_atomic(output_path, projection)

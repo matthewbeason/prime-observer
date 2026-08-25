@@ -184,15 +184,20 @@ Stage ownership:
 
 - Producer: `bin/mesh_context.py`, invoked by `bin/transform_latest.py`
 - Consumers: `viz/index.html` for compact LAN-panel context only
-- Purpose: Prime-owned, current-only projection of normalized Mesh Signal
-  router, satellite, client-association, and collection-quality evidence
+- Purpose: Prime-owned projection of current normalized Mesh Signal evidence
+  plus minimized historical change timing from the owner-only SQLite store
 - Required fields: `schema_version`, `model_version`, `generated_at`, `status`,
-  `freshness`, `source`, `latest_attempt`, `last_good`, `lan_evidence`, `warnings`,
+  `freshness`, `source`, `latest_attempt`, `last_good`, `lan_evidence`,
+  `history_evidence`, `warnings`,
   `limitations`, `summary`, `privacy`, and `provenance`
 - Input selection: process `MESH_SIGNAL_ARTIFACT_PATH`, then the same key in the
   ignored repository-local `.env.mesh`; relative paths resolve from the Prime
   Observer repository root. Missing configuration or input is a normal
   unavailable state.
+- History input selection: process `MESH_SIGNAL_HISTORY_PATH`, then the same key
+  in `.env.mesh`, then Mesh Signal's standard owner-only Application Support
+  path. The database is opened with SQLite `mode=ro` and `query_only`; Prime
+  performs no schema creation, migration, retention, or collection.
 - Freshness: fresh through 12 minutes, stale after 12 minutes, and unusable for
   current semantics after 30 minutes; freshness does not rewrite collection
   validity
@@ -209,10 +214,13 @@ Stage ownership:
 - Unavailable behavior: missing, malformed, unsupported, privacy-rejected, or
   failed input still produces an atomic bounded projection and cannot stop the
   ordinary transform
-- Authoritative: yes, only for Prime's current Mesh evidence projection and its
-  freshness/lineage semantics; no, for health, attribution, Observation,
-  investigation, or Operator Assistant semantics
-- Historical: no; no JSONL or other Mesh history is written
+- Authoritative: yes, only for Prime's Mesh evidence projection, freshness,
+  lineage boundaries, and deterministic before/during/after interval alignment;
+  no, for causation, health, attribution, Observation, investigation, or
+  Operator Assistant semantics
+- Historical: `history_evidence` is a bounded read-only projection of Mesh
+  history schema 0.1. It copies no canonical snapshot JSON, evidence JSON,
+  source IDs, entity IDs, identity epochs, or lineage IDs and writes no history.
 - UI boundary: `lan_evidence` is an address-, MAC-, client-name-, and stable-ID-
   free presentation projection for the LAN panel. Its `probe_host` block may
   contain the local associated-node display name plus medium, band, raw relative
@@ -672,9 +680,10 @@ historical artifacts should pass a unique `--out` path.
   recommendations.
 - `viz/internet_conditions.json` is Environmental Context, not attribution,
   health scoring, or noticeability logic.
-- `viz/mesh_context.json` is current local infrastructure evidence, not
-  Environmental Context, historical evidence, attribution, health scoring, an
-  Observation, investigation evidence, or Operator Assistant input.
+- `viz/mesh_context.json` is current and historical local infrastructure
+  evidence, not Environmental Context, attribution, health scoring, a causal
+  conclusion, an Observation, investigation evidence, or Operator Assistant
+  input.
 - `viz/investigation.json` consumes telemetry plus additive Observation and
   provider context snapshots, but it does not rewrite those upstream artifacts
   into new semantics.

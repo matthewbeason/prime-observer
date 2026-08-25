@@ -167,6 +167,12 @@ Typical validation scope:
   partial, minimal-exposure, uniquely matched, ambiguous/unmatched, and
   unavailable LAN-panel rendering without changing the LAN scale. Confirm local
   addresses, MACs, client IDs, and client names are absent from `lan_evidence`.
+  For history schema 0.1, verify the source database size and mtime remain
+  unchanged, before/during/after interval summaries match source event times,
+  lineage boundaries do not imply continuity, and source/entity/snapshot/event
+  IDs, identity epochs, lineage IDs, snapshot JSON, and evidence JSON are absent
+  from `history_evidence`. Browser smoke must cover Mesh markers, marker
+  tooltips, selected-interval Mesh context, and the explicit non-causal label.
 
 ## Environmental Context Provider Validation
 
