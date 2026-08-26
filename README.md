@@ -54,14 +54,17 @@ Prime Observer is more opinionated:
   keeping static thresholds as safety guardrails.
 - It attempts lightweight LAN vs WAN attribution.
 - It can include optional DNS/security context without becoming a DNS analytics platform.
-- It runs locally with flat CSV and JSON files.
+- It runs locally with deterministic CSV/JSON contracts. A rebuildable SQLite
+  shadow store currently validates Prime-owned raw observation durability but
+  is not a production semantic source.
 - Optional integrations fail safely.
 - Evidence remains the source of truth for measured facts.
 - Observation projection is the source of truth for deterministic interpretation that Prime Observer owns.
 - OpenRouter-backed Operator Assistant output is the primary operator-facing interpretation when it is valid for the current evidence package.
 - A deterministic Operator Assessment remains available when a safe current LLM result is unavailable.
 
-No cloud backend, database, or heavy observability stack is required.
+No cloud backend or heavy observability stack is required. Current behavior
+does not depend on the Phase 1 SQLite shadow database.
 
 ## Evidence Model
 
@@ -237,10 +240,16 @@ The dashboard does not call the NextDNS API directly and does not expose secrets
 
 ## Architecture
 
-Prime Observer uses a lightweight local file pipeline.
+Prime Observer uses a lightweight local file pipeline. SQLite is currently an
+independent shadow sink only.
 
 ```text
-data/bakeoff_YYYYMMDD.csv
+bin/collector.py
+        |
+        v
+data/bakeoff_YYYYMMDD.csv  (authoritative)
+        |
+        +--> bin/storage.py --> data/prime_observer.db  (shadow only)
         |
         v
 bin/transform_latest.py
@@ -447,6 +456,20 @@ Projection roles:
 
 - `data/bakeoff_YYYYMMDD.csv`
   Historical telemetry files. The name is legacy; the product is now framed around WAN health and user experience observability.
+
+- `bin/storage.py`
+  Owns explicit schema initialization, idempotent historical and collection
+  shadow ingestion, transactions, provenance, integrity checks, and
+  validation-only queries for `data/prime_observer.db`. Storage Phase 2 adds a
+  read-only bounded raw query helper and `bin/evaluate_storage_read_path.py`
+  parity/benchmark harness. CSV remains
+  authoritative; no production semantic producer reads SQLite. See
+  `docs/storage.md`.
+
+- `data/prime_observer.db`
+  Generated mode-`0600` Phase 1 shadow database for Prime-owned raw probe
+  observations. It is ignored by Git, rebuildable from retained CSV, and never
+  served to the browser.
 
 - `bin/transform_latest.py`
   Reads the newest historical telemetry file, keeps the last 24 hours, adds target label/class metadata, computes hourly WAN baselines from general internet probes, adds Pattern Confidence fields, writes `viz/latest.csv`, and exports Network Attribution results.

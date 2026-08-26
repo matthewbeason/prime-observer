@@ -7,8 +7,10 @@ import re
 import shutil
 import statistics
 import subprocess
+import sys
 from pathlib import Path
 
+import storage
 from target_metadata import TARGETS, target_metadata
 
 PING_COUNT = 10
@@ -193,6 +195,23 @@ def main():
             }
             row.update(ping_target(host, PING_COUNT))
             w.writerow(row)
+
+    # Phase 1 shadow write: CSV above remains authoritative. A missing, locked,
+    # incompatible, or unwritable database must never invalidate collection.
+    connection = None
+    try:
+        connection = storage.connect()
+        # Re-reading the bounded daily file also catches a prior collection
+        # cycle whose shadow write failed or was interrupted.
+        storage.ingest_csv(connection, dayfile, source_kind="collector_shadow")
+    except Exception as exc:
+        print(
+            f"Warning: SQLite shadow ingestion failed; CSV collection remains authoritative: {exc}",
+            file=sys.stderr,
+        )
+    finally:
+        if connection is not None:
+            connection.close()
 
 if __name__ == "__main__":
     main()

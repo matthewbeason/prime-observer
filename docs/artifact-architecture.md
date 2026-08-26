@@ -22,11 +22,11 @@ and explicit.
   `viz/investigate.html` consume generated local artifacts rather than calling
   providers directly or owning the primary semantic model.
 - Artifacts are local-first because the repository operates through local files,
-  local scripts, and static views rather than a database or cloud backend.
-- Generated JSON and CSV artifacts are canonical. A future PostgreSQL or
-  Supabase database, if justified by query, collaboration, or multi-user needs,
-  should consume artifacts as an optional index/projection rather than replace
-  them.
+  local scripts, and static views rather than a cloud backend.
+- Generated JSON and CSV artifacts remain canonical production contracts.
+  `data/prime_observer.db` is currently a rebuildable, non-authoritative shadow
+  copy of Prime-owned raw observations; see `docs/storage.md`. A future
+  authority cutover requires a separate explicit phase.
 - Additive artifacts are preferred because Prime Observer preserves existing
   contracts such as `viz/latest.csv` and `viz/network_attribution.json` while
   introducing newer projections such as `viz/observations.json` and optional
@@ -45,9 +45,10 @@ Collection
 
 Stage ownership:
 
-- Collection: Python-owned. Local telemetry comes from
-  `data/bakeoff_YYYYMMDD.csv`. Optional provider summaries come from local
-  Python fetchers.
+- Collection: Python-owned. `bin/collector.py` appends authoritative local
+  telemetry to `data/bakeoff_YYYYMMDD.csv`, then attempts non-authoritative
+  shadow ingestion through `bin/storage.py`. Optional provider summaries come
+  from local Python fetchers.
 - Normalization: Python-owned. `bin/transform_latest.py` adds target metadata,
   baseline fields, grouped WAN/LAN evidence, and deterministic attribution
   inputs.
@@ -700,6 +701,9 @@ historical artifacts should pass a unique `--out` path.
 ## Relationships
 
 - `viz/latest.csv` is factual telemetry projection, not attribution.
+- `data/prime_observer.db` is a validation-only shadow of Prime-owned raw probe
+  observations. It is not an artifact consumed by transforms or the browser,
+  and it is not authoritative in Storage Phase 1.
 - `viz/network_attribution.json` is a preserved compatibility export, not the
   authoritative Observation projection.
 - `viz/observations.json` is Observation, not raw evidence.

@@ -1,5 +1,9 @@
 # Data
 data/
+data/prime_observer.db
+data/prime_observer.db-journal
+data/prime_observer.db-wal
+data/prime_observer.db-shm
 viz/latest.csv
 *.csv
 
