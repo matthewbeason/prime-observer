@@ -1,0 +1,68 @@
+{
+  "cloudflare_first": {
+    "provider": "cloudflare_radar",
+    "status": "disruption",
+    "generated_at": "2026-08-26T12:05:00Z",
+    "items": [
+      {
+        "signal": "outage",
+        "provider_event_id": "radar-outage-1",
+        "started": "2026-08-26T12:00:00Z",
+        "ended": null,
+        "region": "Arizona",
+        "description": "Regional Internet outage",
+        "reference": "https://radar.cloudflare.com/outage/example"
+      }
+    ]
+  },
+  "cloudflare_updated": {
+    "provider": "cloudflare_radar",
+    "status": "advisory",
+    "generated_at": "2026-08-26T12:30:00Z",
+    "items": [
+      {
+        "signal": "outage",
+        "provider_event_id": "radar-outage-1",
+        "started": "2026-08-26T12:00:00Z",
+        "ended": "2026-08-26T12:20:00Z",
+        "region": "Arizona",
+        "description": "Regional Internet outage ended",
+        "reference": "https://radar.cloudflare.com/outage/example"
+      }
+    ]
+  },
+  "aps_with_start": {
+    "provider": "aps",
+    "status": "events_reported",
+    "generated_at": "2026-08-26T12:07:00Z",
+    "provider_updated_at": "2026-08-26T12:06:00Z",
+    "items": [
+      {
+        "event_type": "unplanned_outage",
+        "provider_event_id": "APS-42",
+        "event_start": "2026-08-26T12:02:00Z",
+        "affected_area": "Phoenix: Example boundary",
+        "customer_count": 12,
+        "estimated_restoration_time": "2026-08-26T14:00:00Z",
+        "source_layer": "outages",
+        "source_reference": "https://outagemap.aps.com/outageviewer/"
+      }
+    ]
+  },
+  "aps_snapshot_only": {
+    "provider": "aps",
+    "status": "events_reported",
+    "generated_at": "2026-08-26T12:07:00Z",
+    "provider_updated_at": "2026-08-26T12:06:00Z",
+    "items": [
+      {
+        "event_type": "unplanned_outage",
+        "provider_event_id": "APS-43",
+        "event_start": null,
+        "affected_area": "APS service territory",
+        "estimated_restoration_time": "2026-08-26T14:00:00Z",
+        "source_layer": "outages"
+      }
+    ]
+  }
+}

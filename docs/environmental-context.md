@@ -204,6 +204,77 @@ APS Power Infrastructure now follows the same pattern:
 - browser consumption happens from generated local artifact data
 - provider failure writes an `unavailable` artifact
 
+## Historical Event Preparation
+
+`bin/external_context_history.py` defines the backend-neutral preparation
+boundary for future durable Internet Conditions and APS history. It does not
+read or write a history store. Current provider artifacts remain snapshot
+artifacts; the module only normalizes them into canonical event observations,
+folds repeated observations by stable identity, and aligns already-collected
+canonical records with a Prime interval.
+
+The canonical event contract is intentionally small:
+
+- `provider`, `event_type`, and `stable_event_key`
+- `event_start` and `event_end` only when the provider supplies those meanings
+- `observed_first`, `observed_last`, and `prime_collection_time`
+- `provider_updated_at` only when the provider exposes an update timestamp
+- `temporal_precision` and `temporal_status`
+- `status`, `resolution`, `label`, `supporting_detail`, `provenance`, and
+  explicit `limitations`
+
+Prime collection time is never substituted for provider event time. An event
+with no provider start is `snapshot_only` and cannot be historically aligned.
+An event with a start but no end is not assumed to continue indefinitely. A
+Prime observation collected inside the interval can establish overlap at that
+observation time, while leaving the provider event end unknown. A
+later complete response that omits an event may establish only
+`absent_from_later_complete_snapshot`; it does not establish the actual event
+end.
+
+Python emits interval relationships as `overlaps`, `precedes`, `follows`,
+`uncertain`, or `snapshot_only`, together with the alignment basis and temporal
+limitations. Browser code does not calculate identity, lifecycle, or overlap.
+No relationship changes health, attribution, incident eligibility, user impact,
+or causality.
+
+### Cloudflare identity and time semantics
+
+- Outage annotations use Cloudflare `id`; `startDate` and optional `endDate`
+  are provider event times.
+- Traffic anomalies use `uuid`; `startDate` and optional `endDate` are provider
+  event times. Status remains provider detail.
+- BGP route leaks use numeric `id`; `min_ts` is retained as the earliest event
+  time when present, `max_ts` is an event end only when `finished` is true, and
+  `detected_ts` remains separate provider detection detail.
+- The artifact `generated_at` is Prime collection time, never event occurrence
+  time. These provider responses expose no record-update timestamp currently
+  used by Prime.
+
+If a Cloudflare provider ID is absent, the fallback fingerprint uses the
+smallest available stable-looking event fields: signal, provider start,
+reference, and region. Provider edits can change that key and sparse records can
+collide, so this limitation travels with the canonical record.
+
+### APS identity and time semantics
+
+- `Ticket` is the preferred provider event identifier.
+- `off` is the provider outage/event start when present.
+- `etr` is an estimated restoration forecast. It is supporting detail, never
+  `event_start` or `event_end`.
+- Update-layer `TIMESTAMP` is `provider_updated_at` for the provider dataset; it
+  is not an individual outage occurrence time.
+- `outagestatus` and `datastatus` remain provider detail. Disappearance from the
+  current map does not by itself prove restoration or an actual end time.
+
+When no APS ticket exists, the fallback fingerprint uses source layer, event
+type, provider start, and affected-area label. Area-label edits can change the
+key, and same-area events without a start can collide.
+
+Long-term persistence remains undecided. This phase deliberately adds no JSON
+history and no database; a future store should consume and return this contract
+without moving its semantics into the backend.
+
 ## Good Candidate Providers
 
 Good candidate providers usually have these traits:

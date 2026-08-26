@@ -71,6 +71,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
                 "result": {
                     "annotations": [
                         {
+                            "id": "outage-az-1",
                             "startDate": "2026-06-29T17:30:00Z",
                             "scope": "Arizona",
                             "description": "Regional packet loss event",
@@ -144,6 +145,7 @@ class FetchCloudflareRadarTest(unittest.TestCase):
         self.assertEqual(payload["items"][0]["region"], "Arizona")
         self.assertEqual(payload["items"][0]["signal"], "outage")
         self.assertEqual(payload["items"][0]["description"], "Regional packet loss event")
+        self.assertEqual(payload["items"][0]["provider_event_id"], "outage-az-1")
         self.assertEqual(payload["items"][1]["region"], "United States")
         self.assertEqual(payload["items"][1]["description"], "regional power issue")
         self.assertEqual(payload["items"][2]["signal"], "traffic_anomaly")
@@ -379,12 +381,15 @@ class FetchCloudflareRadarTest(unittest.TestCase):
             asn_traffic_fetcher=lambda *_: {"success": True, "result": {"trafficAnomalies": []}},
             route_leaks_fetcher=lambda *_, **__: {
                 "success": True,
-                "result": {"events": [{"id": 43, "detected_ts": "2026-06-29T17:30:00Z", "max_ts": "2026-06-29T17:40:00Z", "finished": True, "leak_asn": 64501, "countries": ["US"]}]},
+                "result": {"events": [{"id": 43, "min_ts": "2026-06-29T17:20:00Z", "detected_ts": "2026-06-29T17:30:00Z", "max_ts": "2026-06-29T17:40:00Z", "finished": True, "leak_asn": 64501, "countries": ["US"]}]},
             },
         )
 
         self.assertEqual(payload["status"], "advisory")
         self.assertEqual(payload["signal_results"]["bgp_route_leaks_asn"]["status"], "advisory")
+        self.assertEqual(payload["items"][0]["started"], "2026-06-29T17:20:00Z")
+        self.assertEqual(payload["items"][0]["ended"], "2026-06-29T17:40:00Z")
+        self.assertEqual(payload["items"][0]["detected_at"], "2026-06-29T17:30:00Z")
 
     def test_all_signal_failures_return_unavailable_with_partial_metadata(self):
         now = self.module.parse_ts("2026-06-29T18:00:00Z")

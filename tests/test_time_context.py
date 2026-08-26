@@ -35,11 +35,19 @@ class TimeContextTest(unittest.TestCase):
             **kwargs,
         )
 
+    def snapshot(self, provider, items):
+        return {
+            "provider": provider,
+            "status": "events_reported" if items else "normal",
+            "generated_at": "2026-08-05T12:00:00+00:00",
+            "items": items,
+        }
+
     def test_no_selection_defaults_to_current_context(self):
         payload = self.build(mode="current", incidents=[])
 
-        self.assertEqual(payload["schema_version"], 1)
-        self.assertEqual(payload["model_version"], "prime_observer.time_context.v1")
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["model_version"], "prime_observer.time_context.v2")
         self.assertEqual(payload["mode"], "current")
         self.assertFalse(payload["overlaps_incident"])
 
@@ -54,14 +62,14 @@ class TimeContextTest(unittest.TestCase):
 
     def test_external_context_overlap_is_recorded(self):
         payload = self.build(
-            external_contexts=[{"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}]}],
+            external_contexts=[self.snapshot("cloudflare_radar", [{"signal": "outage", "provider_event_id": "cf-1", "started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}])],
         )
 
         self.assertTrue(payload["overlaps_external_context"])
 
     def test_external_context_non_overlap_is_ignored(self):
         payload = self.build(
-            external_contexts=[{"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T10:00:00+00:00", "ended": "2026-08-05T10:10:00+00:00"}]}],
+            external_contexts=[self.snapshot("cloudflare_radar", [{"signal": "outage", "provider_event_id": "cf-1", "started": "2026-08-05T10:00:00+00:00", "ended": "2026-08-05T10:10:00+00:00"}])],
         )
 
         self.assertFalse(payload["overlaps_external_context"])
@@ -69,8 +77,8 @@ class TimeContextTest(unittest.TestCase):
     def test_overlapping_external_event_sources_names_sources(self):
         payload = self.build(
             external_contexts=[
-                {"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}]},
-                {"provider": "aps", "items": []},
+                self.snapshot("cloudflare_radar", [{"signal": "outage", "provider_event_id": "cf-1", "started": "2026-08-05T11:55:00+00:00", "ended": "2026-08-05T12:10:00+00:00"}]),
+                self.snapshot("aps", []),
             ],
         )
 
@@ -80,8 +88,8 @@ class TimeContextTest(unittest.TestCase):
     def test_overlapping_external_event_sources_empty_when_no_overlap(self):
         payload = self.build(
             external_contexts=[
-                {"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T14:00:00+00:00", "ended": "2026-08-05T14:10:00+00:00"}]},
-                {"provider": "aps", "items": []},
+                self.snapshot("cloudflare_radar", [{"signal": "outage", "provider_event_id": "cf-1", "started": "2026-08-05T14:00:00+00:00", "ended": "2026-08-05T14:10:00+00:00"}]),
+                self.snapshot("aps", []),
             ],
         )
 
@@ -91,8 +99,8 @@ class TimeContextTest(unittest.TestCase):
     def test_overlapping_external_event_sources_multiple_providers(self):
         payload = self.build(
             external_contexts=[
-                {"provider": "cloudflare_radar", "items": [{"started": "2026-08-05T11:50:00+00:00", "ended": "2026-08-05T11:58:00+00:00"}]},
-                {"provider": "aps", "items": [{"started": "2026-08-05T11:52:00+00:00", "estimated_restoration_time": "2026-08-05T12:30:00+00:00"}]},
+                self.snapshot("cloudflare_radar", [{"signal": "outage", "provider_event_id": "cf-1", "started": "2026-08-05T11:50:00+00:00", "ended": "2026-08-05T11:58:00+00:00"}]),
+                self.snapshot("aps", [{"event_type": "outage", "provider_event_id": "aps-1", "event_start": "2026-08-05T11:52:00+00:00", "estimated_restoration_time": "2026-08-05T12:30:00+00:00"}]),
             ],
         )
 
@@ -102,7 +110,7 @@ class TimeContextTest(unittest.TestCase):
 
     def test_unknown_provider_not_included_in_sources(self):
         payload = self.build(
-            external_contexts=[{"provider": "unknown_provider", "items": [{"started": "2026-08-05T11:50:00+00:00", "ended": "2026-08-05T11:58:00+00:00"}]}],
+            external_contexts=[self.snapshot("unknown_provider", [{"started": "2026-08-05T11:50:00+00:00", "ended": "2026-08-05T11:58:00+00:00"}])],
         )
 
         self.assertEqual(payload["overlapping_external_event_sources"], [])

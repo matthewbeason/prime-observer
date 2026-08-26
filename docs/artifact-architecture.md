@@ -259,7 +259,8 @@ Stage ownership:
 - Optional fields: `query_mode`, `query_target_label`, `query_target_id`,
   `provider_display_name`, `fallback_used`, `model_version`, `checked_window`,
   `signal_results`, `degradation`, `limitations`, and item-level `reference` or
-  route-leak event metadata; `scope.region` may be `null`; `items` may be empty
+  route-leak event metadata, plus item-level `provider_event_id` and
+  `detected_at` where supplied; `scope.region` may be `null`; `items` may be empty
   for `normal` or `unavailable`
 - Internet Conditions v2 keeps Cloudflare Radar as the implemented provider and,
   in configured ASN mode, independently records AS traffic anomalies,
@@ -270,6 +271,27 @@ Stage ownership:
   instead of failing the dashboard. Partial provider failures preserve successful
   signal results and list unavailable lanes under `degradation`.
 - Authoritative: yes, for the current local Internet Conditions summary
+- Generated: yes
+- Should be committed: no
+
+### `viz/aps_power_context.json`
+
+- Producer: `bin/fetch_aps_power_context.py`
+- Consumers: `viz/index.html`; `bin/build_investigation.py`;
+  `bin/transform_latest.py` through `bin/time_context.py`
+- Purpose: optional current APS Power Infrastructure snapshot
+- Required fields: `schema_version`, `generated_at`, `provider`, `status`,
+  `summary`, `scope`, `signals_checked`, and `items`
+- Optional fields: dataset-level `provider_updated_at`; item-level
+  `provider_event_id`, `event_start`, `estimated_restoration_time`,
+  `provider_status`, `data_status`, `source_layer`, `affected_area`,
+  `customer_count`, and `source_reference`
+- Temporal behavior: `event_start` comes only from APS `off`;
+  `provider_updated_at` comes from update-layer `TIMESTAMP`; estimated
+  restoration remains forecast detail and is never an event end
+- Unavailable behavior: the producer writes an explicit `unavailable` artifact
+  instead of failing the dashboard
+- Authoritative: yes, for the current local APS summary only
 - Generated: yes
 - Should be committed: no
 
@@ -490,7 +512,7 @@ not summarize, score, infer recurrence, or call an LLM.
 Temporal Workspace Phase 1 adds generated `viz/time_context.json` for the
 default selected time context. It contains schema/model versions, mode, start,
 end, optional selected/overlapping incident ids, incident overlap, external
-context overlap, and generated time. Python owns the generated default context.
+context overlap, Python-aligned external events, and generated time. Python owns the generated default context.
 The dashboard can project heatmap selection into that same shape from existing
 Python-owned bucket and interval artifacts, but it does not classify interval
 health, infer incident overlap, call collectors, or invoke OpenRouter.
@@ -501,8 +523,13 @@ health, infer incident overlap, call collectors, or invoke OpenRouter.
 - Consumers: `viz/index.html`
 - Purpose: additive selected-time context record for the dashboard workspace
 - Required fields: `schema_version`, `model_version`, `mode`, `start`, `end`,
-  `overlaps_incident`, `overlaps_external_context`, and `generated_at`
+  `overlaps_incident`, `overlaps_external_context`, `external_events`,
+  `external_context_note`, and `generated_at`
 - Optional fields: `selected_incident_id`, `incident_id`
+- External event alignment is produced by `bin/external_context_history.py` from
+  provider event times. Collection time, provider update time, and APS estimated
+  restoration are never substituted for event start/end. Snapshot-only records
+  remain explicitly unaligned.
 - Unavailable behavior: dashboard falls back to a safe current context and keeps
   existing dashboard and Investigation behavior
 - Authoritative: yes, for the generated default time context
@@ -680,6 +707,8 @@ historical artifacts should pass a unique `--out` path.
   recommendations.
 - `viz/internet_conditions.json` is Environmental Context, not attribution,
   health scoring, or noticeability logic.
+- `bin/external_context_history.py` defines provider identity, observation
+  lifecycle, and interval alignment without selecting a persistent backend.
 - `viz/mesh_context.json` is current and historical local infrastructure
   evidence, not Environmental Context, attribution, health scoring, a causal
   conclusion, an Observation, investigation evidence, or Operator Assistant

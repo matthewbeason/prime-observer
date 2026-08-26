@@ -697,6 +697,7 @@ def internet_conditions_context(event_midpoint_utc):
             "reference": item.get("reference"),
         }
         for key in (
+            "provider_event_id",
             "entity_type",
             "event_status",
             "uuid",
@@ -708,6 +709,7 @@ def internet_conditions_context(event_midpoint_utc):
             "prefix_count",
             "origin_count",
             "leak_count",
+            "detected_at",
         ):
             if key in item:
                 copied[key] = item.get(key)
@@ -734,6 +736,8 @@ def internet_conditions_context(event_midpoint_utc):
         "source_file": source_file,
         "provider": payload.get("provider"),
         "generated_at": payload.get("generated_at"),
+        "temporal_scope": "current_snapshot_only",
+        "historically_aligned": False,
         "status": status,
         "summary": payload.get("summary"),
         "query_mode": payload.get("query_mode"),
@@ -765,7 +769,7 @@ def internet_conditions_context(event_midpoint_utc):
             if generated_at is not None
             else None
         ),
-        "note": "Internet Conditions reflects the closest available Environmental Context snapshot generated locally; it is not historical proof or attribution.",
+        "note": "Internet Conditions is a current snapshot copied for reference; it is not historical proof or attribution and is not historically aligned. Provider event times must be aligned by Python-owned historical-event logic.",
     }
 
 
@@ -803,6 +807,9 @@ def power_infrastructure_context(event_midpoint_utc):
         "source_file": source_file,
         "provider": payload.get("provider"),
         "generated_at": payload.get("generated_at"),
+        "provider_updated_at": payload.get("provider_updated_at"),
+        "temporal_scope": "current_snapshot_only",
+        "historically_aligned": False,
         "status": status,
         "summary": payload.get("summary"),
         "scope": {
@@ -814,9 +821,14 @@ def power_infrastructure_context(event_midpoint_utc):
         "items": [
             {
                 "event_type": item.get("event_type"),
+                "provider_event_id": item.get("provider_event_id"),
+                "event_start": item.get("event_start"),
                 "affected_area": item.get("affected_area"),
                 "customer_count": item.get("customer_count"),
                 "estimated_restoration_time": item.get("estimated_restoration_time"),
+                "provider_status": item.get("provider_status"),
+                "data_status": item.get("data_status"),
+                "source_layer": item.get("source_layer"),
                 "source_reference": item.get("source_reference"),
             }
             for item in items[:5]
@@ -827,7 +839,7 @@ def power_infrastructure_context(event_midpoint_utc):
             if generated_at is not None
             else None
         ),
-        "note": "Power Infrastructure context reflects the closest available generated Environmental Context snapshot locally; it is not historical proof or attribution.",
+        "note": "Power Infrastructure is a current snapshot copied for reference; it is not historical proof or attribution and is not historically aligned. Estimated restoration is a forecast, not an event end.",
     }
 
 

@@ -875,6 +875,12 @@ locally generated Environmental Context snapshot only; it does not provide
 historical proof, attribution, noticeability, health changes, or investigation
 scoring.
 
+`bin/external_context_history.py` prepares provider-neutral event identity,
+observation lifecycle, and Python-owned interval relationships for a future
+historical store. It does not persist history. Provider event time, provider
+update time, Prime collection time, and APS estimated restoration remain
+separate; snapshot-only context is never presented as historically aligned.
+
 ## Optional APS Power Infrastructure Context
 
 APS Power Infrastructure support is optional.

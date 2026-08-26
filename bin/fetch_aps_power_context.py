@@ -163,7 +163,7 @@ def update_properties(update_layer_url, timeout, *, fetcher=fetch_json):
     return attrs if isinstance(attrs, dict) else {}
 
 
-def item_from_feature(feature, fallback_event_type):
+def item_from_feature(feature, fallback_event_type, source_layer):
     attrs = feature.get("attributes") if isinstance(feature, dict) else {}
     if not isinstance(attrs, dict):
         return None
@@ -176,6 +176,8 @@ def item_from_feature(feature, fallback_event_type):
 
     item = {
         "event_type": normalize_event_type(attrs.get("outagetype") or fallback_event_type),
+        "provider_event_id": str(attrs.get("Ticket") or "").strip() or None,
+        "event_start": iso_utc(parse_epoch_millis(attrs.get("off"))) if attrs.get("off") else None,
         "affected_area": summarize_area(
             attrs.get("City"),
             attrs.get("APSArea"),
@@ -183,6 +185,9 @@ def item_from_feature(feature, fallback_event_type):
         ),
         "customer_count": customers,
         "estimated_restoration_time": iso_utc(parse_epoch_millis(attrs.get("etr"))) if attrs.get("etr") else None,
+        "provider_status": attrs.get("outagestatus"),
+        "data_status": str(attrs.get("datastatus") or "").strip() or None,
+        "source_layer": source_layer,
         "source_reference": provider_reference(attrs),
     }
 
@@ -230,13 +235,13 @@ def build_payload(timeout=DEFAULT_TIMEOUT_SECONDS, *, config_fetcher=fetch_json)
     outage_features = query_features(
         outage_layer_url,
         timeout,
-        ["APSArea", "City", "Boundary", "customers", "etr", "outagetype", "MediaLink"],
+        ["Ticket", "off", "APSArea", "City", "Boundary", "customers", "etr", "outagetype", "outagestatus", "datastatus", "MediaLink"],
         fetcher=config_fetcher,
     )
     psps_features = query_features(
         psps_layer_url,
         timeout,
-        ["APSArea", "City", "Boundary", "customers", "etr", "outagetype", "MediaLink", "Cause"],
+        ["Ticket", "off", "APSArea", "City", "Boundary", "customers", "etr", "outagetype", "outagestatus", "datastatus", "MediaLink", "Cause"],
         fetcher=config_fetcher,
     )
     update_properties_row = update_properties(update_layer_url, timeout, fetcher=config_fetcher)
@@ -245,11 +250,11 @@ def build_payload(timeout=DEFAULT_TIMEOUT_SECONDS, *, config_fetcher=fetch_json)
 
     items = []
     for feature in outage_features:
-        item = item_from_feature(feature, "unplanned_outage")
+        item = item_from_feature(feature, "unplanned_outage", "outages")
         if item is not None:
             items.append(item)
     for feature in psps_features:
-        item = item_from_feature(feature, "psps_event")
+        item = item_from_feature(feature, "psps_event", "psps_events")
         if item is not None:
             items.append(item)
 
@@ -267,6 +272,7 @@ def build_payload(timeout=DEFAULT_TIMEOUT_SECONDS, *, config_fetcher=fetch_json)
         build_summary(items, provider_update_at),
     )
     payload["items"] = items
+    payload["provider_updated_at"] = provider_update_at
     return payload
 
 

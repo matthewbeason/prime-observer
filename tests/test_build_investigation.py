@@ -306,6 +306,8 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(context["scope"]["label"], "United States context")
         self.assertEqual(context["signals_checked"], ["Outages", "Traffic anomalies"])
         self.assertEqual(context["items"][0]["region"], "Arizona")
+        self.assertEqual(context["temporal_scope"], "current_snapshot_only")
+        self.assertFalse(context["historically_aligned"])
         self.assertNotIn("ignored_field", context["items"][0])
         self.assertEqual(context["minutes_from_event_midpoint"], 4.0)
         self.assertIn("not historical proof or attribution", context["note"])
@@ -490,6 +492,8 @@ class BuildInvestigationTest(unittest.TestCase):
             items=[
                 {
                     "event_type": "unplanned_outage",
+                    "provider_event_id": "APS-1001",
+                    "event_start": "2026-06-08T11:45:00Z",
                     "affected_area": "Phoenix • Metro Phoenix: West Highland Ave to West Coolidge St",
                     "customer_count": 13,
                     "estimated_restoration_time": "2026-06-08T13:35:00Z",
@@ -520,7 +524,11 @@ class BuildInvestigationTest(unittest.TestCase):
         self.assertEqual(context["scope"]["label"], "APS service territory")
         self.assertEqual(context["signals_checked"], ["Current outages", "PSPS events", "Update properties"])
         self.assertEqual(context["items"][0]["event_type"], "unplanned_outage")
+        self.assertEqual(context["items"][0]["provider_event_id"], "APS-1001")
+        self.assertEqual(context["items"][0]["event_start"], "2026-06-08T11:45:00Z")
         self.assertEqual(context["items"][0]["customer_count"], 13)
+        self.assertEqual(context["temporal_scope"], "current_snapshot_only")
+        self.assertFalse(context["historically_aligned"])
         self.assertNotIn("ignored_field", context["items"][0])
         self.assertEqual(context["minutes_from_event_midpoint"], 4.0)
         self.assertIn("not historical proof or attribution", context["note"])

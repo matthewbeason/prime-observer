@@ -62,12 +62,16 @@ class FetchApsPowerContextTest(unittest.TestCase):
                     "features": [
                         {
                             "attributes": {
+                                "Ticket": "APS-1001",
+                                "off": 1783359900000,
                                 "APSArea": "Metro Phoenix",
                                 "City": "Phoenix",
                                 "Boundary": "West Highland Ave to West Coolidge St",
                                 "customers": 13,
                                 "etr": 1783361700000,
                                 "outagetype": "Unplanned Outage",
+                                "outagestatus": 1,
+                                "datastatus": "current",
                                 "MediaLink": None,
                             }
                         },
@@ -107,9 +111,15 @@ class FetchApsPowerContextTest(unittest.TestCase):
         self.assertEqual(payload["signals_checked"], ["Current outages", "PSPS events", "Update properties"])
         self.assertEqual(len(payload["items"]), 2)
         self.assertEqual(payload["items"][0]["event_type"], "unplanned_outage")
+        self.assertEqual(payload["items"][0]["provider_event_id"], "APS-1001")
+        self.assertEqual(payload["items"][0]["event_start"], "2026-07-06T17:45:00Z")
+        self.assertEqual(payload["items"][0]["provider_status"], 1)
+        self.assertEqual(payload["items"][0]["data_status"], "current")
+        self.assertEqual(payload["items"][0]["source_layer"], "outages")
         self.assertEqual(payload["items"][0]["customer_count"], 13)
         self.assertEqual(payload["items"][0]["source_reference"], "https://outagemap.aps.com/outageviewer/")
         self.assertIn("2 APS power event(s) affecting 20 customers.", payload["summary"])
+        self.assertEqual(payload["provider_updated_at"], "2026-07-06T23:05:06Z")
 
     def test_build_payload_returns_normal_when_no_events(self):
         config = {

@@ -84,7 +84,7 @@ def internet_conditions_context(event_midpoint_utc):
         return None
 
     source_file = source_path(path)
-    note = "Internet Conditions reflects the closest available Environmental Context snapshot generated locally; it is not historical proof or attribution."
+    note = "Internet Conditions is a current snapshot copied for reference; it is not historical proof or attribution and is not historically aligned. Provider event times require Python-owned historical alignment."
     try:
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
@@ -113,6 +113,7 @@ def internet_conditions_context(event_midpoint_utc):
             "reference": item.get("reference"),
         }
         for key in (
+            "provider_event_id",
             "entity_type",
             "event_status",
             "uuid",
@@ -124,6 +125,7 @@ def internet_conditions_context(event_midpoint_utc):
             "prefix_count",
             "origin_count",
             "leak_count",
+            "detected_at",
         ):
             if key in item:
                 copied[key] = item.get(key)
@@ -158,6 +160,8 @@ def internet_conditions_context(event_midpoint_utc):
         "source_file": source_file,
         "provider": payload.get("provider"),
         "generated_at": payload.get("generated_at"),
+        "temporal_scope": "current_snapshot_only",
+        "historically_aligned": False,
         "status": status,
         "summary": payload.get("summary"),
         "query_mode": payload.get("query_mode"),

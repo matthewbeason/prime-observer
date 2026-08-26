@@ -5,9 +5,15 @@ import datetime as dt
 import json
 from pathlib import Path
 
+from external_context_history import (
+    align_events_to_interval,
+    canonical_events_from_snapshot,
+    merge_event_observations,
+)
 
-SCHEMA_VERSION = 1
-MODEL_VERSION = "prime_observer.time_context.v1"
+
+SCHEMA_VERSION = 2
+MODEL_VERSION = "prime_observer.time_context.v2"
 
 # Canonical labels for each external-context provider, keyed by the provider
 # field emitted by the respective fetch scripts.
@@ -17,22 +23,19 @@ EXTERNAL_CONTEXT_SOURCE_LABELS = {
 }
 
 
-def overlapping_external_sources(start_ts, end_ts, external_contexts):
-    """Return the list of external-context source labels whose events overlap [start_ts, end_ts)."""
+def overlapping_external_sources(aligned_events):
+    """Return source labels only for producer-confirmed provider-time overlap."""
     seen: set = set()
     sources = []
-    for payload in external_contexts or []:
-        if not isinstance(payload, dict):
+    for event in aligned_events or []:
+        if not isinstance(event, dict) or event.get("relationship") != "overlaps":
             continue
-        raw_provider = str(payload.get("provider") or "").strip().lower()
+        raw_provider = str(event.get("provider") or "").strip().lower()
         label = EXTERNAL_CONTEXT_SOURCE_LABELS.get(raw_provider)
         if not label or label in seen:
             continue
-        for item_start, item_end in external_event_windows(payload):
-            if interval_overlaps(start_ts, end_ts, item_start, item_end):
-                sources.append(label)
-                seen.add(label)
-                break
+        sources.append(label)
+        seen.add(label)
     return sources
 
 
@@ -61,21 +64,7 @@ def incident_window(incident):
     )
 
 
-def external_event_windows(payload):
-    if not isinstance(payload, dict):
-        return []
-    windows = []
-    for item in payload.get("items") or []:
-        if not isinstance(item, dict):
-            continue
-        start = parse_ts(item.get("started") or item.get("start") or item.get("event_start") or item.get("updated_at"))
-        end = parse_ts(item.get("ended") or item.get("end") or item.get("event_end") or item.get("estimated_restoration_time")) or start
-        if start:
-            windows.append((start, end))
-    return windows
-
-
-def build_time_context(*, start, end, generated_at, incidents=None, selected_incident_id=None, mode="current", external_contexts=None):
+def build_time_context(*, start, end, generated_at, incidents=None, selected_incident_id=None, mode="current", external_contexts=None, external_events=None):
     start_ts = parse_ts(start)
     end_ts = parse_ts(end)
     generated_ts = parse_ts(generated_at) or dt.datetime.now(dt.timezone.utc)
@@ -90,7 +79,12 @@ def build_time_context(*, start, end, generated_at, incidents=None, selected_inc
             overlapping_incident = incident
             break
 
-    ext_sources = overlapping_external_sources(start_ts, end_ts, external_contexts)
+    canonical_events = list(external_events or [])
+    for snapshot in external_contexts or []:
+        canonical_events.extend(canonical_events_from_snapshot(snapshot))
+    canonical_events = merge_event_observations([], canonical_events)
+    aligned_external_events = align_events_to_interval(canonical_events, start_ts, end_ts)
+    ext_sources = overlapping_external_sources(aligned_external_events)
     external_overlap = bool(ext_sources)
 
     incident_id = None
@@ -108,6 +102,8 @@ def build_time_context(*, start, end, generated_at, incidents=None, selected_inc
         "incident_id": incident_id,
         "overlaps_external_context": external_overlap,
         "overlapping_external_event_sources": ext_sources,
+        "external_events": aligned_external_events,
+        "external_context_note": "Provider event-time overlap is supporting evidence only; it does not determine health, attribution, incident eligibility, impact, or causality.",
         "generated_at": iso(generated_ts),
     }
 

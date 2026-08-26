@@ -546,6 +546,10 @@ generated `viz/internet_conditions.json` fields. It represents the closest
 available locally generated Environmental Context snapshot, not historical
 proof of what happened during the event window.
 
+Copied provider context is marked `temporal_scope: current_snapshot_only` and
+`historically_aligned: false`. Historical alignment belongs to the canonical
+Python event contract and must not be inferred from snapshot generation time.
+
 Replay milestones use a bounded provider item's real event start time. Artifact
 generation time is never substituted as the provider event time, and temporal
 proximity remains supporting context rather than causal proof.
@@ -560,6 +564,10 @@ Power Infrastructure context, when present, is copied only from the existing
 generated `viz/aps_power_context.json` fields. It represents the closest
 available locally generated provider snapshot, not historical proof of what
 happened during the event window.
+
+APS outage start, provider update time, and estimated restoration remain
+separate fields. Estimated restoration is never treated as event occurrence or
+event end.
 
 The copied Power Infrastructure context is supporting evidence only. It may
 include provider, generated time, status, summary, scope, signals checked,

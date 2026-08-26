@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
-import tempfile
 import textwrap
 import unittest
 from pathlib import Path
@@ -46,67 +44,66 @@ class DashboardMeshContextTests(unittest.TestCase):
     def setUpClass(cls):
         cls.html = INDEX.read_text(encoding="utf-8")
 
-    def test_mesh_context_is_compact_and_located_inside_lan_panel(self):
-        lan_panel = self.html.index('id="lanPanelKicker"')
-        context = self.html.index('id="meshContext"')
-        lan_chart = self.html.index('id="lan"')
-        self.assertLess(lan_panel, context)
-        self.assertLess(context, lan_chart)
-        for element_id in (
-            "meshContextState",
-            "meshContextSummary",
-            "meshContextProbeHost",
-            "meshContextNodes",
-            "meshContextClients",
-            "meshContextMedium",
-            "meshContextAssociations",
-            "meshContextSatellites",
-            "meshContextBands",
-            "meshContextLineage",
-            "meshContextHistory",
-        ):
-            self.assertIn(f'id="{element_id}"', self.html)
+    def test_current_inventory_is_removed_from_historical_lan_panel(self):
+        lan_panel = self.html[self.html.index('id="lanPanelKicker"'):self.html.index('id="lan"')]
+        self.assertNotIn('id="meshContext"', lan_panel)
+        self.assertNotIn("Probe attachment", lan_panel)
+        self.assertNotIn("Associations", lan_panel)
+        self.assertNotIn("renderMeshContext", self.html)
+        self.assertNotIn("meshLanTooltipHtml", self.html)
+        self.assertNotIn("meshContextPayload?.lan_evidence", self.html)
 
-    def test_dashboard_reads_only_prime_mesh_projection(self):
+    def test_dashboard_reads_only_prime_mesh_history_projection(self):
         self.assertIn('const MESH_CONTEXT_URL = "./mesh_context.json";', self.html)
         self.assertIn("loadOptionalJson(MESH_CONTEXT_URL)", self.html)
-        self.assertIn("meshContextPayload?.lan_evidence", self.html)
+        self.assertIn("meshContextPayload?.history_evidence", self.html)
         self.assertNotIn("mesh_signal.json", self.html)
         self.assertNotIn("MESH_SIGNAL_ARTIFACT_PATH", self.html)
         self.assertNotIn("SOAP", self.html)
 
-    def test_mesh_statuses_and_last_good_lineage_remain_explicit(self):
-        self.assertIn('state === "current" ? "ok"', self.html)
-        self.assertIn('["partial", "stale"].includes(state)', self.html)
-        self.assertIn('evidence.lineage === "last_good"', self.html)
-        self.assertIn("last known good", self.html)
-        self.assertIn("LAN telemetry remains available", self.html)
-        self.assertIn("reported offline", self.html)
+    def test_vertical_mesh_event_lines_are_removed(self):
+        self.assertNotIn("mesh-change-line", self.html)
+        self.assertNotIn('stroke-dasharray", d => d.lineage_boundary', self.html)
+        self.assertIn('.attr("class", "mesh-change-hit")', self.html)
+        self.assertIn('.attr("cy", d => y(d.p95))', self.html)
 
-    def test_lan_tooltip_adds_snapshot_context_without_changing_chart_scale(self):
-        self.assertIn('if (svgSel === "#lan") extra += meshLanTooltipHtml(opts.meshEvidence);', self.html)
-        self.assertIn("Historical changes are read-only derived evidence", self.html)
+    def test_mesh_marker_style_is_provider_identity_only(self):
+        render_line = extract_function(self.html, "function renderLine")
+        marker_start = render_line.index('markerLayer.selectAll(".mesh-change-hit")')
+        marker_block = render_line[marker_start:]
+        self.assertIn('.attr("fill", "rgba(111, 78, 155, 0.92)")', marker_block)
+        self.assertNotIn("category_counts", marker_block)
+        self.assertNotIn("severity", marker_block)
+        self.assertNotIn("isBad", marker_block)
+
+    def test_tooltip_is_clamped_inside_mobile_viewport(self):
+        tip_show = extract_function(self.html, "function tipShow")
+        self.assertIn("Math.max(pad, Math.min(left, window.innerWidth - w - pad))", tip_show)
+        self.assertIn("Math.max(pad, Math.min(top, window.innerHeight - h - pad))", tip_show)
+
+    def test_lan_scale_and_ordinary_tooltip_semantics_remain_intact(self):
         self.assertIn("const lanYDomain = latencyDomainForSeries(currentVizState.lanSeries);", self.html)
         self.assertNotIn("meshSeries", self.html)
         self.assertNotIn("meshYDomain", self.html)
+        render_line = extract_function(self.html, "function renderLine")
+        self.assertIn("selectedBucketEvidenceHtml(opts.selectedEvidence)", render_line)
+        self.assertIn("Isolated operator-bad sample.", render_line)
+        self.assertIn("jitter ${fmt1(d.jitter)} ms • loss ${fmt1(d.loss)}%", render_line)
 
-    def test_history_markers_and_selected_interval_context_are_additive(self):
-        self.assertIn('id="selectedBucketMesh"', self.html)
-        self.assertIn('id="selectedBucketMeshDetail"', self.html)
-        self.assertIn('.attr("class", "mesh-change-line")', self.html)
-        self.assertIn('.attr("class", "mesh-change-hit")', self.html)
-        self.assertIn("function meshIntervalContext", self.html)
-        self.assertIn("Before: ${meshPeriodText(meshContext.before)}", self.html)
-        self.assertIn("Time adjacency only; no causal claim.", self.html)
-        self.assertIn("temporal alignment does not establish cause", self.html)
+    def test_selected_interval_uses_historical_change_wording_and_stays_quiet(self):
+        update_panel = extract_function(self.html, "function updateSelectedBucketPanel")
+        period_text = extract_function(self.html, "function meshPeriodText")
+        self.assertIn('id="selectedBucketMeshChip" hidden', self.html)
+        self.assertIn("meshChip.hidden = !meshContext || !hasMeaningfulMeshContext", update_panel)
+        self.assertIn("meshContext.before", update_panel)
+        self.assertIn("meshContext.during", update_panel)
+        self.assertIn("meshContext.after", update_panel)
+        self.assertIn('period.changes.join(" · ")', period_text)
+        self.assertIn("Time adjacency only; no causal claim.", update_panel)
 
     def test_client_and_node_identifiers_do_not_enter_dashboard(self):
-        self.assertNotIn("client_id", self.html)
-        self.assertNotIn("node_id", self.html)
-        self.assertNotIn("friendly_name", self.html)
-        self.assertIn("Probe signal is a raw relative vendor metric", self.html)
-        self.assertNotIn("local_ip_addresses", self.html)
-        self.assertNotIn("mac_address", self.html)
+        for forbidden in ("client_id", "node_id", "friendly_name", "local_ip_addresses", "mac_address"):
+            self.assertNotIn(forbidden, self.html)
 
     def test_no_topology_or_new_semantic_consumers_are_added(self):
         self.assertNotIn('id="meshTopology"', self.html)
@@ -117,144 +114,106 @@ class DashboardMeshContextTests(unittest.TestCase):
         self.assertNotIn("mesh_context", (ROOT / "bin" / "health_dimensions.py").read_text(encoding="utf-8"))
 
 
-@unittest.skipUnless(shutil.which("osascript"), "osascript is required for mesh renderer tests")
-class DashboardMeshContextRendererTests(unittest.TestCase):
+class DashboardMeshMarkerMatchingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.html = INDEX.read_text(encoding="utf-8")
-        cls.functions = "\n\n".join(
-            extract_function(cls.html, signature)
-            for signature in (
-                "function meshLineageLabel",
-                "function meshCount",
-                "function meshBandLabel",
-                "function meshProbeHostText",
-                "function renderMeshContext",
-            )
-        )
+        cls.marker_function = extract_function(cls.html, "function meshMarkersForLanSeries")
+        cls.tooltip_function = extract_function(cls.html, "function meshChangeTooltipHtml")
 
-    def render(self, evidence, history=None):
+    def run_markers(self, history, observations, tolerance_ms=120_000):
         script = textwrap.dedent(
             f"""
-            {self.functions}
-            const ids = [
-              "meshContextState", "meshContextSummary", "meshContextProbeHost", "meshContextNodes",
-              "meshContextClients", "meshContextMedium", "meshContextAssociations",
-              "meshContextSatellites", "meshContextBands", "meshContextLineage", "meshContextHistory",
-              "meshContextQualityNote"
-            ];
-            const nodes = Object.fromEntries(ids.map(id => [id, {{ textContent: "", className: "" }}]));
-            const document = {{ getElementById: id => nodes[id] }};
-            function parseTs(value) {{ return value ? new Date(value) : null; }}
-            function toCompactRelativeAge(_value) {{ return "age labeled"; }}
-            function applyPillState(element, label, tone) {{ element.textContent = label; element.className = tone; }}
-            renderMeshContext({json.dumps({'lan_evidence': evidence, 'history_evidence': history})});
-            console.log(JSON.stringify(Object.fromEntries(ids.map(id => [id, {{ text: nodes[id].textContent, className: nodes[id].className }}]))));
+            const MESH_LAN_MATCH_TOLERANCE_MS = 2 * 60 * 1000;
+            function parseTs(value) {{
+              if (!value) return null;
+              const parsed = new Date(value);
+              return Number.isFinite(parsed.getTime()) ? parsed : null;
+            }}
+            {self.marker_function}
+            const history = {json.dumps(history)};
+            const observations = {json.dumps(observations)}.map(item => ({{...item, t: new Date(item.t)}}));
+            const result = meshMarkersForLanSeries(history, observations, {tolerance_ms});
+            console.log(JSON.stringify(result.map(item => ({{
+              t: item.t.toISOString(), p95: item.p95, jitter: item.jitter,
+              event_times: item.event_times.map(value => value.toISOString()),
+              event_count: item.event_count, changes: item.changes,
+              category_counts: item.category_counts
+            }}))));
             """
         )
-        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
-            handle.write(script)
-            path = Path(handle.name)
-        try:
-            completed = subprocess.run(
-                ["osascript", "-l", "JavaScript", str(path)],
-                cwd=ROOT,
-                check=True,
-                text=True,
-                capture_output=True,
-            )
-        finally:
-            path.unlink(missing_ok=True)
-        output = (completed.stdout or completed.stderr).strip()
-        return json.loads(output.splitlines()[-1])
+        completed = subprocess.run(["node", "-e", script], cwd=ROOT, check=True, text=True, capture_output=True)
+        return json.loads(completed.stdout)
 
     @staticmethod
-    def evidence(state, label, *, client_lineage="latest_attempt", clients=2):
-        freshness = {"state": "fresh", "age_seconds": 60}
+    def point(observed_at, count=1, change="Client attachment changed", category="client"):
         return {
-            "state": state,
-            "label": label,
-            "summary": f"{label} summary",
-            "nodes": {"total_reported": 2 if clients is not None else None},
-            "router": {"lineage": "latest_attempt", "observed_at": "2026-08-23T20:00:00Z", "freshness": freshness},
-            "satellites": {
-                "lineage": "latest_attempt",
-                "collection_status": "complete",
-                "observed_at": "2026-08-23T20:00:00Z",
-                "freshness": freshness,
-                "total": 1 if clients is not None else None,
-                "by_state": {"online": 1, "offline": 0, "unknown": 0} if clients is not None else {},
-            },
-            "clients": {
-                "lineage": client_lineage,
-                "collection_status": "complete",
-                "observed_at": "2026-08-23T20:00:00Z" if clients is not None else None,
-                "freshness": freshness,
-                "total": clients,
-                "by_medium": {"wired": 1, "wireless": 1} if clients is not None else {},
-                "by_band": {"5_ghz": 1, "unknown": 1} if clients is not None else {},
-                "resolved_associations": clients,
-                "not_resolved_associations": 0 if clients is not None else None,
-            },
-            "probe_host": {
-                "mapping_state": "matched" if clients is not None else "client_family_unavailable",
-                "lineage": client_lineage,
-                "collection_status": "complete",
-                "observed_at": "2026-08-23T20:00:00Z" if clients is not None else None,
-                "freshness": freshness,
-                "attachment": {
-                    "node_role": "satellite",
-                    "node_name_local": "Office Satellite",
-                    "medium": "wireless",
-                    "band": "5_ghz",
-                    "association_resolution": "resolved",
-                    "signal_quality_raw_relative": 48,
-                    "link_rate_mbps_apparent": 433,
-                } if clients is not None else None,
-            },
+            "observed_at": observed_at,
+            "event_count": count,
+            "changes": [change],
+            "category_counts": {category: count},
+            "lineage_boundary": False,
         }
 
-    def test_fresh_complete_mesh_is_current_and_compact(self):
-        rendered = self.render(self.evidence("current", "Mesh evidence current"))
-        self.assertEqual(rendered["meshContextState"], {"text": "Mesh evidence current", "className": "ok"})
-        self.assertEqual(rendered["meshContextClients"]["text"], "2 attached")
-        self.assertEqual(rendered["meshContextAssociations"]["text"], "2/2 resolved")
-        self.assertEqual(
-            rendered["meshContextProbeHost"]["text"],
-            "Office Satellite · wireless · 5 GHz · relative signal 48 · apparent link 433 Mbps",
-        )
+    def test_marker_uses_nearest_real_lan_observation_without_interpolation(self):
+        history = {"state": "available", "change_points": [self.point("2026-08-25T16:00:50Z")]}
+        observations = [
+            {"t": "2026-08-25T16:00:00Z", "p95": 17.0, "jitter": 2.0},
+            {"t": "2026-08-25T16:01:00Z", "p95": 137.0, "jitter": 9.0},
+        ]
+        result = self.run_markers(history, observations)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["t"], "2026-08-25T16:01:00.000Z")
+        self.assertEqual(result[0]["p95"], 137.0)
+        self.assertEqual(result[0]["jitter"], 9.0)
+        self.assertEqual(result[0]["event_times"], ["2026-08-25T16:00:50.000Z"])
 
-    def test_partial_last_good_lineage_is_explicit(self):
-        rendered = self.render(
-            self.evidence("partial", "Mesh evidence partial", client_lineage="last_good")
-        )
-        self.assertEqual(rendered["meshContextState"]["className"], "watch")
-        self.assertIn("clients last known good", rendered["meshContextLineage"]["text"])
-        self.assertTrue(rendered["meshContextProbeHost"]["text"].startswith("Last known:"))
+    def test_event_without_nearby_lan_observation_creates_no_marker(self):
+        history = {"state": "available", "change_points": [self.point("2026-08-25T16:05:00Z")]}
+        observations = [{"t": "2026-08-25T16:00:00Z", "p95": 17.0, "jitter": 2.0}]
+        self.assertEqual(self.run_markers(history, observations), [])
 
-    def test_stale_mesh_is_age_labeled(self):
-        evidence = self.evidence("stale", "Mesh evidence stale")
-        evidence["probe_host"]["freshness"] = {"state": "stale", "age_seconds": 780}
-        rendered = self.render(evidence)
-        self.assertEqual(rendered["meshContextState"], {"text": "Mesh evidence stale", "className": "watch"})
-        self.assertIn("age labeled", rendered["meshContextLineage"]["text"])
-        self.assertTrue(rendered["meshContextProbeHost"]["text"].startswith("Stale:"))
-
-    def test_unavailable_mesh_does_not_look_like_network_failure(self):
-        rendered = self.render(self.evidence("unavailable", "Mesh evidence unavailable", clients=None))
-        self.assertEqual(rendered["meshContextState"], {"text": "Mesh evidence unavailable", "className": "neutral"})
-        self.assertEqual(rendered["meshContextClients"]["text"], "—")
-        self.assertIn("Unavailable", rendered["meshContextProbeHost"]["text"])
-
-    def test_history_coverage_is_rendered_without_health_language(self):
+    def test_multiple_events_on_one_observation_are_grouped(self):
         history = {
             "state": "available",
-            "coverage": {"snapshot_count": 12},
-            "change_points": [{"observed_at": "2026-08-23T20:00:00Z"}, {"observed_at": "2026-08-23T20:05:00Z"}],
+            "change_points": [
+                self.point("2026-08-25T16:00:40Z", 2, "Client presence changed", "client"),
+                self.point("2026-08-25T16:01:10Z", 1, "Satellite state changed", "satellite"),
+            ],
         }
-        rendered = self.render(self.evidence("current", "Mesh evidence current"), history)
-        self.assertEqual(rendered["meshContextHistory"]["text"], "12 snapshots · 2 change times in view")
-        self.assertNotIn("healthy", rendered["meshContextHistory"]["text"].lower())
+        observations = [{"t": "2026-08-25T16:01:00Z", "p95": 55.0, "jitter": 4.0}]
+        result = self.run_markers(history, observations)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["event_count"], 3)
+        self.assertEqual(result[0]["category_counts"], {"client": 2, "satellite": 1})
+        self.assertEqual(result[0]["changes"], ["Client presence changed", "Satellite state changed"])
+
+    def test_unavailable_or_missing_history_fails_safely(self):
+        observations = [{"t": "2026-08-25T16:01:00Z", "p95": 55.0}]
+        self.assertEqual(self.run_markers({"state": "missing"}, observations), [])
+        self.assertEqual(self.run_markers(None, observations), [])
+
+    def test_marker_tooltip_combines_lan_measurement_and_mesh_context(self):
+        script = textwrap.dedent(
+            f"""
+            function escapeTooltipText(value) {{ return String(value ?? ""); }}
+            function fmt1(value) {{ return Number(value).toFixed(1); }}
+            {self.tooltip_function}
+            const html = meshChangeTooltipHtml({{
+              t: new Date("2026-08-25T16:01:00Z"), p95: 137,
+              event_times: [new Date("2026-08-25T16:00:50Z")], event_count: 2,
+              changes: ["Client presence changed", "Association changed"], lineage_boundary: false
+            }});
+            console.log(html);
+            """
+        )
+        completed = subprocess.run(["node", "-e", script], cwd=ROOT, check=True, text=True, capture_output=True)
+        tooltip = completed.stdout
+        self.assertIn("Gateway p95: 137.0 ms", tooltip)
+        self.assertIn("Mesh changes:</span> 2", tooltip)
+        self.assertIn("Client presence changed · Association changed", tooltip)
+        self.assertIn("LAN observation", tooltip)
+        self.assertIn("Temporal alignment does not establish cause.", tooltip)
 
 
 if __name__ == "__main__":

@@ -495,6 +495,7 @@ def normalize_item(annotation):
         "ended": iso_utc(ended) if ended else None,
         "description": description_label(annotation),
         "reference": reference,
+        "provider_event_id": str(annotation.get("id") or "").strip() or None,
     }
 
 
@@ -511,11 +512,14 @@ def normalize_anomaly(anomaly):
         "entity_type": str(anomaly.get("type") or "").strip().upper() or None,
         "event_status": str(anomaly.get("status") or "").strip().lower() or None,
         "uuid": str(anomaly.get("uuid") or "").strip() or None,
+        "provider_event_id": str(anomaly.get("uuid") or "").strip() or None,
     }
 
 
 def normalize_route_leak(event):
-    detected = parse_ts(event.get("detected_ts")) or parse_ts(event.get("max_ts")) or parse_ts(event.get("min_ts"))
+    detected = parse_ts(event.get("detected_ts"))
+    started = parse_ts(event.get("min_ts")) or detected
+    latest = parse_ts(event.get("max_ts"))
     countries = event.get("countries") if isinstance(event.get("countries"), list) else []
     region = ", ".join(str(item).strip() for item in countries if str(item).strip()) or "Unknown region"
     event_id = event.get("id")
@@ -528,11 +532,13 @@ def normalize_route_leak(event):
     return {
         "signal": "bgp_route_leak",
         "region": region,
-        "started": iso_utc(detected) if detected else None,
-        "ended": None if event.get("finished") is False else iso_utc(parse_ts(event.get("max_ts")) or detected) if detected else None,
+        "started": iso_utc(started) if started else None,
+        "ended": iso_utc(latest) if event.get("finished") is True and latest else None,
         "description": description,
         "reference": "",
         "event_id": event_id,
+        "provider_event_id": str(event_id) if event_id is not None else None,
+        "detected_at": iso_utc(detected) if detected else None,
         "finished": event.get("finished"),
         "leak_asn": leak_asn,
         "countries": countries[:5],
