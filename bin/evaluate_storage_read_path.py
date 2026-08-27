@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compare bounded authoritative CSV reads with shadow SQLite reads.
+"""Compare bounded diagnostic CSV export reads with authoritative SQLite reads.
 
-Diagnostic only: this command reads retained telemetry and the shadow database,
+Diagnostic only: this command reads retained telemetry exports and the database,
 prints a report, and never writes runtime artifacts or changes production
 authority.
 """
@@ -257,7 +257,7 @@ def evaluate(args) -> dict[str, object]:
             )
     return {
         "diagnostic_only": True,
-        "authority": "csv",
+        "authority": "SQLite",
         "window": {"start": args.start, "end": args.end},
         "filters": {"hosts": args.host, "phases": args.phase},
         "comparison": compare_rows(first_csv or [], first_sqlite or []),

@@ -1,45 +1,44 @@
 # Storage
 
-This document defines Prime Observer's durable-storage boundary. Phases 1-3 add
-the SQLite shadow copy, bounded equivalence tooling, backup/restore, CSV rebuild,
-and operator health tooling. Storage Phase 4 makes SQLite the preferred source
-only for the low-risk raw history written to `viz/latest.csv`; CSV remains its
-immediate fallback and every semantic branch's authority. See
-`docs/storage-phase2-read-evaluation.md`.
+This document defines Prime Observer's durable-storage boundary. Storage Phase
+5 makes SQLite authoritative for Prime-owned raw observations after exact raw,
+semantic, baseline, investigation, artifact, recovery, and browser gates. CSV
+is now an optional human-readable export plus an explicit diagnostic and
+historical rebuild source.
 
-## Phase 1 authority boundary
+## Phase 5 authority boundary
 
-- `data/bakeoff_YYYYMMDD.csv` remains authoritative for collection history and
-  every production semantic reader.
-- `data/prime_observer.db` is a disposable, rebuildable shadow store used by
-  Python-owned ingestion, approved low-risk reads, and validation tooling.
+- `data/prime_observer.db` is authoritative for Prime-owned raw observations.
+- Normal production readers use `sqlite_only`; database failure fails safely
+  and never silently substitutes a possibly stale CSV export.
 - `bin/storage.py` owns SQLite persistence and raw queries;
   `bin/raw_observation_source.py` centrally owns production source selection,
-  verification, diagnostics, and CSV fallback. The browser never opens SQLite.
-- `bin/transform_latest.py` uses the boundary only for raw chart rows written to
-  `viz/latest.csv`. Its separate semantic input remains direct CSV.
+  verification and diagnostics. The browser never opens SQLite.
+- `bin/transform_latest.py` and `bin/build_investigation.py` route every raw
+  observation read through that boundary. SQL supplies rows and provenance;
+  unchanged Python owns all semantics.
 - Deterministic CSV/JSON files remain the browser and consumer contracts.
 - Completed incident snapshots under `viz/investigations/` remain immutable,
   write-once files.
 - Mesh Signal storage remains externally owned and read-only to Prime Observer.
-- Making SQLite authoritative requires a separate explicit phase and new
-  equivalence evidence. Phase 1 does not authorize that cutover.
+- CSV history remains available through explicit `csv_only`, rebuild, export,
+  and diagnostic equivalence workflows.
 
-Deleting, locking, corrupting, or making the shadow database unavailable causes
-the approved chart reader to report the reason and use CSV. The collector still
-finishes its CSV append first and reports a warning if shadow writing fails.
+Deleting, locking, corrupting, or making the database unavailable stops current
+semantic generation and makes collection fail. Recovery uses verified restore,
+`restore-latest`, or explicit CSV rebuild; no stale production fallback occurs.
 
 ## Audited collection path
 
 `bin/run_collector.sh` invokes one `bin/collector.py` cycle. The installed local
 LaunchAgent runs that wrapper every 30 seconds. A cycle reads `phase.txt`, takes
 one timestamp with a UTC offset, optionally collects one speed test for the
-cycle, probes each configured target, and appends one row per target to the
-local-day file `data/bakeoff_YYYYMMDD.csv`.
+cycle, probes each configured target, commits one idempotent batch to SQLite,
+then attempts the secondary local-day CSV export.
 
-The collector creates a missing daily file with a header and otherwise appends
-without rewriting or rotating retained evidence. Date-based naming is the only
-rotation mechanism. Traceroute runs when the minute-of-day is divisible by 15;
+CSV export is idempotent and optional: export failure does not invalidate an
+already committed observation, while SQLite failure makes the cycle fail before
+CSV export. Date-based naming is the only export rotation mechanism. Traceroute runs when the minute-of-day is divisible by 15;
 speed test runs when it is divisible by 30.
 
 The current 18-column schema is:
@@ -67,47 +66,39 @@ cycles are possible if collection is manually invoked near a scheduled cycle,
 and any retained file can be reprocessed during recovery, so storage identity
 cannot depend on insertion order or an assumed cadence.
 
-Production raw-reader inventory after Phase 4:
+Production raw-reader inventory after Phase 5:
 
-| Reader | Classification | Phase 4 source |
+| Reader | Classification | Phase 5 source |
 | --- | --- | --- |
-| `bin/transform_latest.py` raw input written to `viz/latest.csv` | Low-risk presentation canary | SQLite preferred; CSV fallback |
-| `bin/transform_latest.py` health, attribution, observation, interval, incident, similarity, and learning input | Semantic-critical | Direct authoritative CSV |
-| `bin/transform_latest.py` hourly and durable baseline history | Semantic-critical | Direct authoritative CSV |
-| `bin/build_investigation.py` requested-window history | Semantic-critical investigation evidence | Direct authoritative CSV |
-| `bin/build_hourly_baseline.py` standalone baseline history | Semantic-critical baseline | Direct authoritative CSV |
+| `bin/transform_latest.py` chart, health, attribution, observation, interval, incident, similarity, and learning input | Semantic-critical | Authoritative SQLite boundary |
+| `bin/transform_latest.py` hourly and durable baseline history | Semantic-critical and file-aware | SQLite with stored source provenance |
+| `bin/build_investigation.py` requested-window history | Semantic-critical investigation evidence | SQLite with stored source provenance |
 
 Repository inspection found no additional Category A raw readers, so the
 post-canary bounded bulk was empty. JSON consumers and browser renderers are not
 raw `bakeoff_*.csv` readers and remain database-unaware.
 
-## Phase 4 production read policy
+## Phase 5 production read policy
 
 `read_raw_observations(start, end, filters..., source_policy=...)` returns raw
 canonical observations plus source used, fallback reason, row count, time
 bounds, file/row work, elapsed time, reconciliation state, and optional exact
 comparison results. It performs no semantic classification.
 
-SQLite is eligible only when it opens read-only, schema version 1 is supported,
-`PRAGMA quick_check(1)` is `ok`, every selected CSV has zero rejected rows and
-matching stored multiplicity, and reconciliation covers the interval. Exact
-file fingerprints are accepted. For an append-only collector file, a request
-ending at or before its recorded latest reconciled timestamp is also safe when
-the full recorded byte prefix still hashes exactly; a request reaching into the
-unreconciled append tail uses CSV. Full `PRAGMA integrity_check` remains an
-operator/status action rather than a per-read cost.
+Routine authoritative reads require a read-only open and supported schema.
+Integrity and backup validity are operational gates rather than per-read costs.
+Explicit `verify_sqlite` retains `PRAGMA quick_check(1)`, exact source
+reconciliation, row/null/order/identity/multiplicity comparison, and visible
+mismatch reporting. Full `PRAGMA integrity_check` remains an operator/status
+action.
 
-`prefer_sqlite` is the production default. `verify_sqlite` reads both sources
+`sqlite_only` is the production default. `verify_sqlite` reads both sources
 and compares row count, every raw field and null, ordering, identities,
 timestamps, and multiplicity; any mismatch returns CSV.
-`PRIME_OBSERVER_RAW_READ_POLICY=verify_sqlite` enables verification, while
-`csv_only` provides an explicit authoritative comparison. Missing, locked,
-corrupt, incompatible, stale, or invalid SQLite reads are reported as
-`raw_observation_read` diagnostics and fall back to CSV.
-
-Phase 5 remains required before semantic-critical reader migration or raw
-authority cutover. CSV remains authoritative raw evidence and fallback;
-collection still writes CSV first and SQLite second.
+`PRIME_OBSERVER_RAW_READ_POLICY=verify_sqlite` enables verification;
+`verify_sqlite_use_csv` verifies both and returns the CSV result; `csv_only` is
+diagnostic/recovery only. Missing, locked, corrupt, incompatible, or invalid
+SQLite reads fail closed in normal production.
 
 ## Database and schema
 
@@ -159,34 +150,34 @@ together; malformed rows are rejected before the transaction and reported with
 source and record position. A database error rolls back the entire valid
 portion of that file. Source files are opened read-only and are never modified.
 
-After authoritative CSV append, normal collection re-ingests the bounded current
-daily file. Database constraints ignore rows already present. Re-reading the
-file also reconciles an earlier collection cycle whose shadow step was locked,
-interrupted, or unavailable. Any shadow exception is written to standard error
-and the collector still exits according to its existing CSV behavior.
+Normal collection commits the complete probe batch to SQLite first. Database
+constraints make duplicate retries harmless. Only after commit does it update
+the idempotent CSV export. An interruption before commit produces no successful
+cycle; an interruption or export failure after commit preserves authoritative
+evidence and is recoverable by explicit export/reconciliation.
 
 ## SQLite configuration
 
 - Rollback journal (`DELETE`) is retained for one local writer plus short-lived,
-  bounded Phase 4 reads; predictable durability and a simple quiesced-file
+  bounded authoritative reads; predictable durability and a simple quiesced-file
   backup boundary still matter more than read concurrency. WAL is not justified.
 - `synchronous=FULL` favors durable committed batches over marginal ingestion
   speed.
 - `busy_timeout=2000` gives a short local writer time to finish without allowing
-  optional shadow work to stall collection for a long period.
+  an authoritative write to stall indefinitely.
 - `foreign_keys=ON` enforces provenance cleanup if an observation is removed by
   future explicit tooling.
 - Connections are short-lived per collector cycle or command and are always
   closed by the caller. Transactions are scoped to one logical source batch.
 
-These choices must be revisited if a later phase introduces concurrent readers,
-long-lived processes, or SQLite authority.
+These choices must be revisited if a later phase introduces long-lived writers
+or materially different concurrency.
 
 ## Initialize, rebuild, reconcile, and inspect
 
-The shadow database is deliberately disposable. First stop the collector so the
-CSV corpus is stable. Move the database aside rather than deleting it if it may
-be useful for diagnosis, then run:
+For explicit historical rebuild, first stop the collector so the CSV corpus is
+stable. Preserve the current database for diagnosis, then use the tested
+`rebuild-from-csv` path. `init` and `ingest` remain import/diagnostic tools:
 
 ```bash
 python3 bin/storage.py init
@@ -199,8 +190,8 @@ Review all counts and rejection reasons before resuming collection. A second
 `ingest` run should insert zero observations; all valid rows should be reported
 as duplicates and the final row count should remain unchanged. `status` reports
 existence, version, size, integrity, timestamp bounds, target/source counts,
-the last ingested observation, the last collector-shadow observation, and
-whether every retained matching source still has the size, modification time,
+the latest committed observation, collector freshness, optional CSV export
+state, and whether every retained matching source still has the size, modification time,
 and SHA-256 fingerprint recorded by its last successful ingestion.
 
 A bounded validation query is available without changing production readers:
@@ -255,7 +246,7 @@ per-source diagnostic counts.
 ### Verified backup mechanism and destination
 
 `backup` uses Python's SQLite backup API to create a transactionally consistent
-standalone database in a private local temporary directory beside the shadow
+standalone database in a private local temporary directory beside the live
 store. It verifies schema, runs `PRAGMA integrity_check`, and records row count
 and observation timestamp bounds before copying that already-consistent file to
 the destination through a private partial file and atomic rename. The manifest
@@ -316,9 +307,8 @@ Any failure before placement leaves the live database untouched. If
 post-placement validation fails, Prime quarantines the failed candidate,
 automatically restores the preserved prior database when one existed, and
 reports the recovery. Successful output explicitly says collection can resume.
-The collector participates in the same short-lived Prime maintenance lock; CSV
-collection remains authoritative and a lock only makes optional shadow
-ingestion fail safely for that cycle.
+The collector participates in the same short-lived Prime maintenance lock; a
+lock or failed SQLite transaction makes the collection cycle fail visibly.
 
 `restore-latest` examines backups newest first and performs full verification.
 It skips corrupt, incomplete, hash-mismatched, or schema-incompatible candidates
@@ -327,7 +317,8 @@ selects by filename alone and never restores an unverified candidate.
 
 ### CSV rebuild escape hatch
 
-While CSV remains authoritative, `rebuild-from-csv` is the final recovery path.
+`rebuild-from-csv` is an explicit historical recovery path, not a transparent
+production fallback.
 It acquires the maintenance lock, builds a clean temporary schema, ingests all
 matching retained CSVs, rejects any rebuild with malformed rows, requires exact
 source reconciliation and clean integrity, and only then performs the same
@@ -364,11 +355,11 @@ launchctl bootstrap "gui/$(id -u)" \
 ```
 
 The recovery objective is one straightforward verified backup per day, a
-one-command latest-good restore, and a tested CSV rebuild path while CSV remains
-authoritative. Prime does not add replication, high availability, or manual DBA
+one-command latest-good restore, and a tested CSV rebuild path. Prime does not
+add replication, high availability, or manual DBA
 procedures for this personal local-first system.
 
-## Storage Phase 4 entry gates
+## Storage Phase 5 cutover evidence
 
 There is no arbitrary bake-period gate. A separately authorized reader cutover
 may proceed immediately only when all of these are current and passing:
@@ -381,8 +372,10 @@ may proceed immediately only when all of these are current and passing:
 - exact live CSV/SQLite reconciliation
 - exact Phase 2 full-row read equivalence
 
-Phase 4 passed these gates for the single approved low-risk chart path. SQLite
-remains shadow, rebuildable, and non-authoritative; CSV remains the authoritative
-raw source and immediate fallback; the browser remains a generated-artifact
-consumer with no database access; Mesh Signal remains a separate read-only
-source; and immutable incident snapshots remain files.
+Phase 5 passed exact raw and semantic comparison for chart, health, baseline,
+interval, attribution, observations, automatic/manual investigation,
+similarity, operational learning, and time-context outputs. The diagnostic
+harness is `bin/verify_semantic_storage.py`. The browser remains a generated-
+artifact consumer with no database access; Mesh Signal remains a separate
+read-only source; immutable incident snapshots remain files. Prime-managed
+verified backups live in iCloud, while the live database remains local.

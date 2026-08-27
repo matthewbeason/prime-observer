@@ -304,10 +304,10 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(source["source_kind"], "historical_csv")
         self.assertTrue(status["reconciliation_current"])
         self.assertEqual(
-            status["last_successfully_ingested_observation"]["source_file"],
+            status["latest_committed_observation"]["source_file"],
             str(path.resolve()),
         )
-        self.assertIsNone(status["last_successful_shadow"])
+        self.assertIsNone(status["last_successful_authoritative_collection"])
         with path.open("a") as handle:
             handle.write("\n")
         with closing(storage.connect(self.database)) as connection:
@@ -529,7 +529,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(duplicate["csv_duplicate_occurrences"], 1)
 
 
-class CollectorShadowFailureTest(unittest.TestCase):
+class CollectorAuthorityFailureTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.outdir = Path(self.tmp.name) / "data"
@@ -538,7 +538,7 @@ class CollectorShadowFailureTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_shadow_failure_does_not_break_authoritative_csv(self):
+    def test_authoritative_database_failure_prevents_csv_export_and_fails_cycle(self):
         ping_result = {
             "sent": 10,
             "received": 0,
@@ -560,14 +560,51 @@ class CollectorShadowFailureTest(unittest.TestCase):
             mock.patch.object(storage, "connect", side_effect=sqlite3.OperationalError("locked")),
             mock.patch("sys.stderr", new=stderr),
         ):
-            collector.main()
+            with self.assertRaises(sqlite3.OperationalError):
+                collector.main()
         files = list(self.outdir.glob("bakeoff_*.csv"))
-        self.assertEqual(len(files), 1)
-        with files[0].open(newline="") as handle:
-            rows = list(csv.DictReader(handle))
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["host"], "192.168.1.1")
-        self.assertIn("CSV collection remains authoritative", stderr.getvalue())
+        self.assertEqual(files, [])
+
+    def test_secondary_csv_export_failure_does_not_invalidate_commit(self):
+        database = self.outdir / "prime_observer.db"
+        storage.initialize_database(database)
+        ping_result = {
+            "sent": 10, "received": 10, "loss_pct": 0.0, "avg_ms": 1.0,
+            "p50_ms": 1.0, "p95_ms": 1.0, "max_ms": 1.0, "jitter_ms": 0.0,
+        }
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(collector, "OUTDIR", self.outdir),
+            mock.patch.object(collector, "TARGETS", ("192.168.1.1",)),
+            mock.patch.object(collector, "read_phase", return_value="test"),
+            mock.patch.object(collector, "ping_target", return_value=ping_result),
+            mock.patch.object(collector, "traceroute_snip", return_value=""),
+            mock.patch.object(collector, "run_ookla_speedtest", return_value=None),
+            mock.patch.object(storage, "DEFAULT_DATABASE", database),
+            mock.patch.object(collector, "export_rows_to_csv", side_effect=OSError("disk full")),
+            mock.patch("sys.stderr", new=stderr),
+        ):
+            collector.main()
+        with closing(storage.connect(database)) as connection:
+            self.assertEqual(storage.observation_count(connection), 1)
+        self.assertIn("optional CSV export failed", stderr.getvalue())
+
+    def test_duplicate_retry_and_csv_export_are_idempotent(self):
+        database = self.outdir / "prime_observer.db"
+        storage.initialize_database(database)
+        row = sample_row()
+        source_file = str((self.outdir / "bakeoff_20260826.csv").resolve())
+        with closing(storage.connect(database)) as connection:
+            first = storage.ingest_rows(connection, [row], source_file=source_file)
+            second = storage.ingest_rows(connection, [row], source_file=source_file)
+            self.assertEqual(storage.observation_count(connection), 1)
+        self.assertEqual(first.inserted_rows, 1)
+        self.assertEqual(second.duplicate_rows, 1)
+        export = self.outdir / "bakeoff_20260826.csv"
+        self.assertEqual(collector.export_rows_to_csv(export, [row]), 1)
+        self.assertEqual(collector.export_rows_to_csv(export, [row]), 0)
+        with export.open(newline="") as handle:
+            self.assertEqual(len(list(csv.DictReader(handle))), 1)
 
 
 if __name__ == "__main__":

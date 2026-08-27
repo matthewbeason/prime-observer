@@ -163,13 +163,47 @@ def ensure_csv(path: Path):
         with path.open("w", newline="") as f:
             csv.DictWriter(f, fieldnames=FIELDNAMES).writeheader()
 
+
+def export_rows_to_csv(path: Path, rows):
+    """Idempotently maintain the optional human-readable CSV export."""
+    existing = set()
+    if path.exists():
+        with path.open("r", newline="") as handle:
+            for row in csv.DictReader(handle):
+                existing.add(bytes(storage.normalize_observation(row)["observation_id"]))
+    ensure_csv(path)
+    missing = [
+        row
+        for row in rows
+        if bytes(storage.normalize_observation(row)["observation_id"]) not in existing
+    ]
+    if not missing:
+        return 0
+    with path.open("a", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=FIELDNAMES)
+        writer.writerows(missing)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return len(missing)
+
+
+def reconcile_csv_export(path: Path):
+    """Best-effort fingerprint/provenance refresh for diagnostic equivalence."""
+    connection = None
+    try:
+        with storage.exclusive_storage_lock(storage.DEFAULT_DATABASE):
+            connection = storage.connect(storage.DEFAULT_DATABASE)
+            return storage.ingest_csv(connection, path, source_kind="collector_shadow")
+    finally:
+        if connection is not None:
+            connection.close()
+
 def main():
     phase = read_phase()
     now = dt.datetime.now().astimezone()
     ts = now.isoformat(timespec="seconds")
 
     dayfile = OUTDIR / f"bakeoff_{now.strftime('%Y%m%d')}.csv"
-    ensure_csv(dayfile)
 
     bucket = minute_bucket(now)
     do_tr = (bucket % TRACEROUTE_EVERY_MIN == 0)
@@ -177,42 +211,61 @@ def main():
 
     st = run_ookla_speedtest() if do_st else None
 
-    with dayfile.open("a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        for host in TARGETS:
-            meta = target_metadata(host)
-            row = {
-                "ts": ts,
-                "phase_label": phase,
-                "host": host,
-                "target_label": meta["target_label"],
-                "target_class": meta["target_class"],
-                "traceroute_snip": traceroute_snip(host) if do_tr else "",
-                "speedtest_down_mbps": st["down_mbps"] if st else "",
-                "speedtest_up_mbps": st["up_mbps"] if st else "",
-                "speedtest_ping_ms": st["ping_ms"] if st else "",
-                "speedtest_raw_json": st["raw_json"] if st else "",
-            }
-            row.update(ping_target(host, PING_COUNT))
-            w.writerow(row)
+    rows = []
+    for host in TARGETS:
+        meta = target_metadata(host)
+        row = {
+            "ts": ts,
+            "phase_label": phase,
+            "host": host,
+            "target_label": meta["target_label"],
+            "target_class": meta["target_class"],
+            "traceroute_snip": traceroute_snip(host) if do_tr else "",
+            "speedtest_down_mbps": st["down_mbps"] if st else "",
+            "speedtest_up_mbps": st["up_mbps"] if st else "",
+            "speedtest_ping_ms": st["ping_ms"] if st else "",
+            "speedtest_raw_json": st["raw_json"] if st else "",
+        }
+        row.update(ping_target(host, PING_COUNT))
+        rows.append(row)
 
-    # Phase 1 shadow write: CSV above remains authoritative. A missing, locked,
-    # incompatible, or unwritable database must never invalidate collection.
+    # SQLite is authoritative: a collection cycle succeeds only after this
+    # transaction commits. The retained source_kind string is a schema-v1
+    # compatibility value; it no longer describes the authority relationship.
     connection = None
     try:
         with storage.exclusive_storage_lock(storage.DEFAULT_DATABASE):
-            connection = storage.connect()
-            # Re-reading the bounded daily file also catches a prior collection
-            # cycle whose shadow write failed or was interrupted.
-            storage.ingest_csv(connection, dayfile, source_kind="collector_shadow")
-    except Exception as exc:
-        print(
-            f"Warning: SQLite shadow ingestion failed; CSV collection remains authoritative: {exc}",
-            file=sys.stderr,
-        )
+            connection = storage.connect(storage.DEFAULT_DATABASE)
+            storage.ingest_rows(
+                connection,
+                rows,
+                source_file=storage.source_name(dayfile),
+                source_kind="collector_shadow",
+            )
+    except Exception:
+        # Do not report collection success when authoritative evidence was not
+        # durably accepted. The caller/LaunchAgent sees a non-zero exit.
+        raise
     finally:
         if connection is not None:
             connection.close()
+
+    try:
+        export_rows_to_csv(dayfile, rows)
+    except Exception as exc:
+        print(
+            f"Warning: authoritative SQLite committed; optional CSV export failed: {exc}",
+            file=sys.stderr,
+        )
+        return
+    try:
+        reconcile_csv_export(dayfile)
+    except Exception as exc:
+        print(
+            "Warning: authoritative SQLite and optional CSV export committed; "
+            f"diagnostic CSV reconciliation failed: {exc}",
+            file=sys.stderr,
+        )
 
 if __name__ == "__main__":
     main()

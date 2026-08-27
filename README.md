@@ -54,17 +54,17 @@ Prime Observer is more opinionated:
   keeping static thresholds as safety guardrails.
 - It attempts lightweight LAN vs WAN attribution.
 - It can include optional DNS/security context without becoming a DNS analytics platform.
-- It runs locally with deterministic CSV/JSON contracts. A rebuildable SQLite
-  shadow store currently validates Prime-owned raw observation durability but
-  is not a production semantic source.
+- It runs locally with SQLite-authoritative Prime-owned raw observations and
+  deterministic CSV/JSON consumer contracts. Python remains the semantic owner;
+  CSV is an optional export and explicit recovery source.
 - Optional integrations fail safely.
 - Evidence remains the source of truth for measured facts.
 - Observation projection is the source of truth for deterministic interpretation that Prime Observer owns.
 - OpenRouter-backed Operator Assistant output is the primary operator-facing interpretation when it is valid for the current evidence package.
 - A deterministic Operator Assessment remains available when a safe current LLM result is unavailable.
 
-No cloud backend or heavy observability stack is required. Current behavior
-does not depend on the Phase 1 SQLite shadow database.
+No cloud backend or heavy observability stack is required. The live database
+stays local; iCloud contains verified Prime-managed backups only.
 
 ## Evidence Model
 
@@ -240,16 +240,16 @@ The dashboard does not call the NextDNS API directly and does not expose secrets
 
 ## Architecture
 
-Prime Observer uses a lightweight local file pipeline. SQLite is currently an
-independent shadow sink only.
+Prime Observer uses a lightweight local pipeline with SQLite raw authority and
+deterministic generated artifacts.
 
 ```text
 bin/collector.py
         |
         v
-data/bakeoff_YYYYMMDD.csv  (authoritative)
+data/prime_observer.db  (authoritative raw observations)
         |
-        +--> bin/storage.py --> data/prime_observer.db  (shadow only)
+        +--> data/bakeoff_YYYYMMDD.csv  (optional export/recovery)
         |
         v
 bin/transform_latest.py
@@ -458,27 +458,25 @@ Projection roles:
   Historical telemetry files. The name is legacy; the product is now framed around WAN health and user experience observability.
 
 - `bin/storage.py`
-  Owns explicit schema initialization, idempotent historical and collection
-  shadow ingestion, transactions, provenance, integrity checks, and
+  Owns explicit schema initialization, idempotent historical and authoritative
+  collection ingestion, transactions, provenance, integrity checks, and
   bounded raw queries for `data/prime_observer.db`. Storage Phase 2 adds a
   read-only bounded raw query helper and `bin/evaluate_storage_read_path.py`
   parity/benchmark harness. Storage Phase 3 adds verified SQLite-native backup,
   deterministic retention, defensive restore/restore-latest, operator health,
-  and atomic CSV rebuild tooling. Storage Phase 4 adds
-  `bin/raw_observation_source.py`, which prefers SQLite only for the low-risk
-  raw history written to `viz/latest.csv`, reports source/fallback diagnostics,
-  and uses authoritative CSV on any unsafe read. Every semantic input remains
-  a direct CSV read. See
+  and atomic CSV rebuild tooling. Storage Phase 5 routes every semantic-critical
+  raw reader through `bin/raw_observation_source.py`, fails closed on normal
+  database failure, and preserves explicit CSV equivalence/recovery modes. See
   `docs/storage.md`.
 
 - `data/prime_observer.db`
-  Generated mode-`0600` Phase 1 shadow database for Prime-owned raw probe
-  observations. It is ignored by Git, rebuildable from retained CSV, and never
+  Generated mode-`0600` authoritative database for Prime-owned raw probe
+  observations. It is ignored by Git, recoverable from retained CSV, and never
   served to the browser.
 
 - `bin/transform_latest.py`
-  Uses the centralized raw source boundary for the low-risk current chart
-  projection, keeps a separate authoritative CSV read for semantics, adds
+  Uses the centralized authoritative raw source boundary for chart and semantic
+  inputs, adds
   target label/class metadata, computes hourly WAN baselines from general
   internet probes, writes `viz/latest.csv`, and exports Network Attribution.
 

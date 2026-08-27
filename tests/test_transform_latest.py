@@ -299,7 +299,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(by_view["current_attribution"]["state"]["label"], attribution["attribution_label"])
         self.assertEqual(by_view["window_attribution"]["state"]["label"], attribution["window_attribution"]["label"])
 
-    def test_chart_source_is_isolated_from_csv_authoritative_semantics(self):
+    def test_one_central_source_selection_drives_chart_and_semantics(self):
         now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         self.write_rows([
             self.telemetry_row((now - dt.timedelta(minutes=4)).isoformat(), "1.1.1.1", 25),
@@ -311,8 +311,8 @@ class TransformLatestTest(unittest.TestCase):
         with (
             mock.patch.object(
                 self.module,
-                "read_chart_projection_rows",
-                return_value=([], diagnostics),
+                "read_semantic_projection_rows",
+                return_value=([], self.module.ensure_fieldnames(self.module.storage.CSV_FIELDS), diagnostics),
             ),
             mock.patch.object(self.module, "log_read_diagnostics"),
         ):
@@ -321,7 +321,7 @@ class TransformLatestTest(unittest.TestCase):
         with self.module.OUT.open(newline="") as handle:
             self.assertEqual(list(csv.DictReader(handle)), [])
         attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
-        self.assertGreater(attribution["internet_probe_summary"]["sample_count"], 0)
+        self.assertEqual(attribution["internet_probe_summary"]["sample_count"], 0)
 
     def test_main_keeps_legacy_attribution_export_and_adds_projection(self):
         now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)

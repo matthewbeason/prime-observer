@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Prime Observer storage boundary for raw probe observations.
+"""Prime Observer storage boundary for authoritative raw probe observations.
 
-CSV remains authoritative. SQLite is a preferred, non-authoritative source for
-approved low-risk production readers and a shadow target for ingestion. This
-module owns raw persistence and bounded raw queries only; it owns no semantics.
+SQLite owns durable Prime observations. CSV is a secondary export and explicit
+recovery/diagnostic format. This module owns persistence and raw queries only;
+it owns no health, baseline, incident, attribution, or investigation semantics.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ TEXT_FIELDS = (
 
 
 class StorageError(RuntimeError):
-    """Base error for shadow storage failures."""
+    """Base error for authoritative storage failures."""
 
 
 class DatabaseNotInitialized(StorageError):
@@ -242,7 +242,7 @@ def _configure(connection: sqlite3.Connection) -> None:
 def connect(database: Path | str = DEFAULT_DATABASE) -> sqlite3.Connection:
     path = Path(database)
     if not path.exists():
-        raise DatabaseNotInitialized(f"shadow database does not exist: {path}")
+        raise DatabaseNotInitialized(f"authoritative database does not exist: {path}")
     connection = sqlite3.connect(path, timeout=BUSY_TIMEOUT_MS / 1000)
     connection.row_factory = sqlite3.Row
     try:
@@ -255,10 +255,10 @@ def connect(database: Path | str = DEFAULT_DATABASE) -> sqlite3.Connection:
 
 
 def connect_read_only(database: Path | str = DEFAULT_DATABASE) -> sqlite3.Connection:
-    """Open the shadow database without write authority for diagnostic reads."""
+    """Open the authoritative database without write authority."""
     path = Path(database)
     if not path.exists():
-        raise DatabaseNotInitialized(f"shadow database does not exist: {path}")
+        raise DatabaseNotInitialized(f"authoritative database does not exist: {path}")
     connection = sqlite3.connect(
         path.resolve().as_uri() + "?mode=ro",
         uri=True,
@@ -323,7 +323,7 @@ def verify_schema(connection: sqlite3.Connection) -> int:
             f"database schema {version} is newer than supported schema {SCHEMA_VERSION}"
         )
     if version == 0:
-        raise DatabaseNotInitialized("shadow database is uninitialized")
+        raise DatabaseNotInitialized("authoritative database is uninitialized")
     if version != SCHEMA_VERSION:
         raise DatabaseNotInitialized(
             f"database schema {version} is not supported by schema {SCHEMA_VERSION} code"
@@ -333,9 +333,9 @@ def verify_schema(connection: sqlite3.Connection) -> int:
             "SELECT schema_version FROM schema_metadata WHERE singleton = 1"
         ).fetchone()
     except sqlite3.DatabaseError as exc:
-        raise DatabaseNotInitialized("shadow database schema metadata is missing") from exc
+        raise DatabaseNotInitialized("authoritative database schema metadata is missing") from exc
     if recorded is None or int(recorded[0]) != version:
-        raise DatabaseNotInitialized("shadow database schema metadata does not match user_version")
+        raise DatabaseNotInitialized("authoritative database schema metadata does not match user_version")
     return version
 
 
@@ -825,25 +825,25 @@ def observations_between(
 
 RAW_OBSERVATION_SELECT = """
 SELECT
-    observed_at AS ts,
-    phase_label,
-    host,
-    target_label,
-    target_class,
-    sent,
-    received,
-    loss_pct,
-    avg_ms,
-    p50_ms,
-    p95_ms,
-    max_ms,
-    jitter_ms,
-    traceroute_snip,
-    speedtest_down_mbps,
-    speedtest_up_mbps,
-    speedtest_ping_ms,
-    speedtest_raw_json
-FROM raw_probe_observations
+    ro.observed_at AS ts,
+    ro.phase_label,
+    ro.host,
+    ro.target_label,
+    ro.target_class,
+    ro.sent,
+    ro.received,
+    ro.loss_pct,
+    ro.avg_ms,
+    ro.p50_ms,
+    ro.p95_ms,
+    ro.max_ms,
+    ro.jitter_ms,
+    ro.traceroute_snip,
+    ro.speedtest_down_mbps,
+    ro.speedtest_up_mbps,
+    ro.speedtest_ping_ms,
+    ro.speedtest_raw_json
+FROM raw_probe_observations ro
 """
 
 
@@ -854,6 +854,7 @@ def bounded_raw_observation_query(
     hosts: Sequence[str] = (),
     phases: Sequence[str] = (),
     source_files: Sequence[str] = (),
+    include_provenance: bool = False,
 ) -> tuple[str, tuple[object, ...]]:
     """Build a bounded raw-observation query without semantic classification."""
     start_dt = dt.datetime.fromisoformat(start)
@@ -867,28 +868,48 @@ def bounded_raw_observation_query(
 
     host_values = tuple(dict.fromkeys(str(value) for value in hosts))
     phase_values = tuple(dict.fromkeys(str(value) for value in phases))
-    clauses = ["observed_at_epoch_us BETWEEN ? AND ?"]
+    clauses = ["ro.observed_at_epoch_us BETWEEN ? AND ?"]
     parameters: list[object] = [start_us, end_us]
     if host_values:
-        clauses.append(f"host IN ({','.join('?' for _ in host_values)})")
+        clauses.append(f"ro.host IN ({','.join('?' for _ in host_values)})")
         parameters.extend(host_values)
     if phase_values:
-        clauses.append(f"phase_label IN ({','.join('?' for _ in phase_values)})")
+        clauses.append(f"ro.phase_label IN ({','.join('?' for _ in phase_values)})")
         parameters.extend(phase_values)
     source_values = tuple(dict.fromkeys(str(value) for value in source_files))
+    select = RAW_OBSERVATION_SELECT
     if source_values:
-        clauses.append(
-            "EXISTS (SELECT 1 FROM observation_sources os "
-            "JOIN source_files sf USING (source_id) "
-            "WHERE os.observation_id = raw_probe_observations.observation_id "
-            f"AND sf.source_file IN ({','.join('?' for _ in source_values)}))"
+        select = select.replace(
+            "FROM raw_probe_observations ro\n",
+            """FROM source_files filter_file
+JOIN observation_sources filter_source USING (source_id)
+JOIN raw_probe_observations ro USING (observation_id)
+""",
         )
+        clauses.append(f"filter_file.source_file IN ({','.join('?' for _ in source_values)})")
         parameters.extend(source_values)
+        if include_provenance:
+            select = select.replace(
+                "    ro.speedtest_raw_json\n",
+                "    ro.speedtest_raw_json,\n    filter_file.source_file AS _source_file,\n    filter_source.source_row AS _source_row\n",
+            )
+    elif include_provenance:
+        select = select.replace(
+            "FROM raw_probe_observations ro\n",
+            """FROM raw_probe_observations ro
+JOIN observation_sources filter_source USING (observation_id)
+JOIN source_files filter_file USING (source_id)
+""",
+        ).replace(
+            "    ro.speedtest_raw_json\n",
+            "    ro.speedtest_raw_json,\n    filter_file.source_file AS _source_file,\n    filter_source.source_row AS _source_row\n",
+        )
     sql = (
-        RAW_OBSERVATION_SELECT
+        select
         + " WHERE "
         + " AND ".join(clauses)
-        + " ORDER BY observed_at_epoch_us, host, observation_id"
+        + " ORDER BY ro.observed_at_epoch_us, ro.host, ro.observation_id"
+        + (", filter_file.source_file, filter_source.source_row" if include_provenance else "")
     )
     return sql, tuple(parameters)
 
@@ -901,16 +922,47 @@ def raw_observations_between(
     hosts: Sequence[str] = (),
     phases: Sequence[str] = (),
     source_files: Sequence[str] = (),
+    include_provenance: bool = False,
 ) -> list[dict[str, object]]:
     """Return typed raw CSV fields for one explicit inclusive interval.
 
-    SQLite remains non-authoritative. This helper performs no health, baseline,
+    SQLite is authoritative raw storage. This helper performs no health, baseline,
     incident, attribution, or other semantic classification.
     """
     sql, parameters = bounded_raw_observation_query(
-        start, end, hosts=hosts, phases=phases, source_files=source_files
+        start,
+        end,
+        hosts=hosts,
+        phases=phases,
+        source_files=source_files,
+        include_provenance=include_provenance,
     )
     return [dict(row) for row in connection.execute(sql, parameters).fetchall()]
+
+
+def raw_observation_source_files(
+    connection: sqlite3.Connection,
+    *,
+    pattern: str = DEFAULT_PATTERN,
+) -> list[str]:
+    """Return deterministic Prime telemetry provenance names stored in SQLite.
+
+    SQL provides storage provenance only. Callers retain ownership of any
+    newest-N-file or per-file semantic selection.
+    """
+    glob_pattern = pattern.replace("*", "%").replace("?", "_")
+    return [
+        str(row[0])
+        for row in connection.execute(
+            """
+            SELECT source_file
+            FROM source_files
+            WHERE source_file LIKE ? ESCAPE '\\'
+            ORDER BY source_file
+            """,
+            (f"%/{glob_pattern}" if "/" not in glob_pattern else glob_pattern,),
+        )
+    ]
 
 
 def integrity_check(connection: sqlite3.Connection) -> str:
@@ -1168,7 +1220,7 @@ def create_backup(
     source_path = Path(database)
     destination = backup_directory(directory)
     if not source_path.is_file():
-        raise DatabaseNotInitialized(f"shadow database does not exist: {source_path}")
+        raise DatabaseNotInitialized(f"authoritative database does not exist: {source_path}")
     icloud_root = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
     if destination == DEFAULT_BACKUP_DIRECTORY and not icloud_root.is_dir():
         raise StorageError(
@@ -1529,6 +1581,22 @@ def database_status(
             if _source_fingerprint(path)[2] != row["source_sha256"]:
                 current = False
                 break
+    latest_timestamp = latest_row[0] if latest_row else None
+    collector_health = "unknown"
+    if latest_timestamp:
+        try:
+            age = dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(str(latest_timestamp)).astimezone(dt.timezone.utc)
+            collector_health = "current" if age <= dt.timedelta(minutes=10) else "stale"
+        except ValueError:
+            collector_health = "unknown"
+    latest_item = dict(latest) if latest else None
+    if latest_item is not None:
+        latest_item.pop("source_kind", None)
+        latest_item["persistence_role"] = "committed_raw_observation"
+    collection_item = dict(latest_shadow) if latest_shadow else None
+    if collection_item is not None:
+        collection_item.pop("source_kind", None)
+        collection_item["persistence_role"] = "authoritative_collection"
     return {
         "database_exists": database_path.exists(),
         "database_path": str(database_path.resolve()),
@@ -1541,9 +1609,13 @@ def database_status(
         "busy_timeout_ms": int(connection.execute("PRAGMA busy_timeout").fetchone()[0]),
         "observation_count": observation_count(connection),
         "earliest_timestamp": earliest_row[0] if earliest_row else None,
-        "latest_timestamp": latest_row[0] if latest_row else None,
-        "last_successfully_ingested_observation": dict(latest) if latest else None,
-        "last_successful_shadow": dict(latest_shadow) if latest_shadow else None,
+        "latest_timestamp": latest_timestamp,
+        "latest_committed_observation": latest_item,
+        "last_successful_authoritative_collection": collection_item,
+        "collector_health": collector_health,
+        "csv_export_current": current,
+        # Compatibility field for existing diagnostic consumers. It describes
+        # only CSV export/rebuild parity after cutover, not SQLite authority.
         "reconciliation_current": current,
         "counts_by_target": by_target,
         "counts_by_source_file": by_source,
@@ -1563,7 +1635,7 @@ def _print_json(value: object) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Prime Observer shadow storage")
+    parser = argparse.ArgumentParser(description="Prime Observer authoritative raw-observation storage")
     parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("init", help="explicitly initialize a missing database")
@@ -1595,7 +1667,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     restore_latest_parser.add_argument("--backup-directory", type=Path)
     rebuild = subparsers.add_parser(
-        "rebuild-from-csv", help="atomically rebuild the shadow database from authoritative CSV"
+        "rebuild-from-csv", help="atomically rebuild the database from retained historical CSV"
     )
     rebuild.add_argument("--data-directory", type=Path, default=BASE / "data")
     rebuild.add_argument("--pattern", default=DEFAULT_PATTERN)
@@ -1645,8 +1717,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 exceptions = []
                 if database["integrity"] != "ok":
                     exceptions.append("database integrity failure")
-                if not database["reconciliation_current"]:
-                    exceptions.append("CSV reconciliation is stale")
                 if not args.verbose:
                     database = {
                         key: value
@@ -1675,8 +1745,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "exceptions": exceptions,
                     "database": database,
                     "backup": health,
-                    "authority": "CSV",
-                    "sqlite_role": "shadow_non_authoritative",
+                    "authority": "SQLite",
+                    "sqlite_role": "authoritative_raw_observations",
+                    "csv_role": "optional_export_and_explicit_recovery_source",
+                    "normal_failure_policy": "fail_safe_without_automatic_csv_fallback",
+                    "restore_readiness": bool(
+                        health["valid_compatible_backup_available"]
+                        and health["destination_available"]
+                    ),
                 }
             )
             return 1 if exceptions else 0

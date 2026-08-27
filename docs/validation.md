@@ -92,6 +92,21 @@ python3 bin/fetch_cloudflare_radar.py
 python3 bin/fetch_aps_power_context.py
 ```
 
+For authoritative raw-storage or reader changes, also run:
+
+```bash
+python3 bin/storage.py status
+python3 bin/storage.py integrity
+python3 bin/verify_semantic_storage.py \
+  --investigation-start <ISO-8601> --investigation-end <ISO-8601>
+```
+
+The semantic harness compares CSV and SQLite generation in isolated temporary
+artifact directories. JSON comparisons are structurally exact after removing
+documented runtime-only timestamps; `viz/latest.csv` is byte-exact. Normal
+production must remain `sqlite_only` and fail closed rather than silently using
+a stale CSV export.
+
 ### Dashboard changes
 
 Examples:

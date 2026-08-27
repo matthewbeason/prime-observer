@@ -10,13 +10,13 @@
 
 Prime Observer currently ships:
 
-- Storage Phase 1 shadow ingestion of Prime-owned raw probe observations into a
-  rebuildable SQLite database while CSV remains authoritative
+- Storage Phase 5 SQLite authority for Prime-owned raw observations, with every
+  semantic-critical reader behind the centralized source boundary
 - Storage Phase 2 diagnostic read-path evaluation with exact bounded raw-history
   parity, read-only comparison tooling, and no production reader cutover
 - Storage Phase 3 verified SQLite-native backup, deterministic retention,
   defensive restore/restore-latest, atomic CSV rebuild, operator health status,
-  and a tracked daily LaunchAgent; SQLite remains a non-authoritative shadow
+  and a tracked daily LaunchAgent
 - deterministic health modeling over local telemetry
 - observation-backed attribution and episode semantics
 - automatic current-event investigation generation with incident lifecycle,
@@ -50,9 +50,8 @@ Prime Observer currently ships:
 
 Current uncommitted milestone:
 
-- Storage Phase 4 centralized production read routing for the low-risk raw
-  `viz/latest.csv` history, with exact verification and visible CSV fallback;
-  semantic-critical readers remain directly CSV-backed
+- Storage Phase 5 semantic-reader migration and SQLite authority cutover; CSV
+  is secondary export/recovery evidence and normal failures fail closed
 
 ## Recent Completed Work
 
@@ -104,11 +103,11 @@ Next conceptual milestone:
 
 Current artifact flow:
 
-- telemetry history in `data/bakeoff_YYYYMMDD.csv`
-- post-CSV, fail-safe shadow ingestion through `bin/storage.py` into generated
-  `data/prime_observer.db`; Prime-owned maintenance locking coordinates shadow
-  writes with restore/rebuild; the centralized raw source boundary uses it only
-  for `viz/latest.csv` chart history, while no semantic branch or browser reads it
+- authoritative telemetry history in generated `data/prime_observer.db`, with
+  optional idempotent `data/bakeoff_YYYYMMDD.csv` export for diagnostics and
+  explicit recovery
+- centralized raw source routing for every semantic branch; the browser remains
+  database-unaware
 - `bin/transform_latest.py` generates dashboard, observation, baseline,
   interval, similarity, learning, time-context, mutable current investigation,
   write-once completed snapshot, and investigation catalog artifacts

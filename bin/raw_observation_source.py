@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Central source selection for approved raw historical observation readers.
+"""Central source selection for Prime-owned raw historical observations.
 
-CSV remains authoritative. SQLite may serve approved low-risk bounded reads
-only when schema, lightweight integrity, reconciliation, and optional exact
-equivalence checks pass. Every failure returns authoritative CSV instead.
+SQLite is authoritative. CSV remains available only through explicit recovery,
+export, and diagnostic policies; an unavailable authoritative database never
+silently turns a possibly stale CSV export into production semantic truth.
 """
 
 from __future__ import annotations
@@ -25,7 +25,15 @@ import storage
 CSV_ONLY = "csv_only"
 PREFER_SQLITE = "prefer_sqlite"
 VERIFY_SQLITE = "verify_sqlite"
-SOURCE_POLICIES = (CSV_ONLY, PREFER_SQLITE, VERIFY_SQLITE)
+VERIFY_SQLITE_USE_CSV = "verify_sqlite_use_csv"
+SQLITE_ONLY = "sqlite_only"
+SOURCE_POLICIES = (
+    CSV_ONLY,
+    PREFER_SQLITE,
+    VERIFY_SQLITE,
+    VERIFY_SQLITE_USE_CSV,
+    SQLITE_ONLY,
+)
 
 
 @dataclass(frozen=True)
@@ -109,6 +117,7 @@ def read_csv_observations(
     hosts: Sequence[str] = (),
     phases: Sequence[str] = (),
     source_files: Sequence[Path] = (),
+    include_provenance: bool = False,
 ) -> tuple[list[dict[str, object]], int, int, float]:
     start_dt = dt.datetime.fromisoformat(start)
     end_dt = dt.datetime.fromisoformat(end)
@@ -133,6 +142,9 @@ def read_csv_observations(
             scanned += 1
             try:
                 row = _raw_projection(raw)
+                if include_provenance:
+                    row["_source_file"] = storage.source_name(path)
+                    row["_source_row"] = line_number
                 observed_us = storage.epoch_microseconds(
                     dt.datetime.fromisoformat(str(row["ts"]))
                 )
@@ -206,9 +218,10 @@ def read_raw_observations(
     hosts: Sequence[str] = (),
     phases: Sequence[str] = (),
     source_files: Sequence[Path] = (),
-    source_policy: str = PREFER_SQLITE,
+    source_policy: str = SQLITE_ONLY,
+    include_provenance: bool = False,
 ) -> RawObservationRead:
-    """Read bounded canonical raw observations with visible CSV fallback."""
+    """Read bounded canonical raw observations under an explicit authority policy."""
     if source_policy not in SOURCE_POLICIES:
         raise ValueError(f"unsupported raw observation source policy: {source_policy}")
 
@@ -225,6 +238,7 @@ def read_raw_observations(
                 hosts=hosts,
                 phases=phases,
                 source_files=source_files,
+                include_provenance=include_provenance,
             )
         return csv_cache
 
@@ -244,19 +258,24 @@ def read_raw_observations(
     try:
         started = time.perf_counter()
         with closing(storage.connect_read_only(database)) as connection:
-            quick_check = str(connection.execute("PRAGMA quick_check(1)").fetchone()[0])
-            if quick_check != "ok":
-                raise storage.StorageError(f"SQLite quick check failed: {quick_check}")
+            # Integrity is an operator/backup gate after authority cutover. A
+            # full-file quick_check on every routine bounded read dominates the
+            # query cost; explicit verification and fallback policies retain it.
+            if source_policy != SQLITE_ONLY:
+                quick_check = str(connection.execute("PRAGMA quick_check(1)").fetchone()[0])
+                if quick_check != "ok":
+                    raise storage.StorageError(f"SQLite quick check failed: {quick_check}")
             selected_paths = (
                 list(source_files)
                 if source_files
                 else sorted(data_directory.glob(pattern), key=lambda path: path.name)
             )
-            reconciliation = storage.source_read_status(
-                connection, selected_paths, requested_end=end
-            )
-            if not reconciliation["safe"]:
-                raise storage.StorageError("SQLite reconciliation does not safely cover the requested interval")
+            if source_policy != SQLITE_ONLY:
+                reconciliation = storage.source_read_status(
+                    connection, selected_paths, requested_end=end
+                )
+                if not reconciliation["safe"]:
+                    raise storage.StorageError("SQLite reconciliation does not safely cover the requested interval")
             names = [storage.source_name(path) for path in selected_paths]
             sqlite_rows = storage.raw_observations_between(
                 connection,
@@ -265,14 +284,27 @@ def read_raw_observations(
                 hosts=hosts,
                 phases=phases,
                 source_files=names,
+                include_provenance=include_provenance,
             )
         sqlite_rows = _ordered(sqlite_rows)
         elapsed = time.perf_counter() - started
-        if source_policy == VERIFY_SQLITE:
+        if source_policy in (VERIFY_SQLITE, VERIFY_SQLITE_USE_CSV):
             csv_rows, _, _, _ = csv_read()
             verification = compare_raw_rows(csv_rows, sqlite_rows)
             if not verification["equivalent"]:
                 raise storage.StorageError("SQLite/CSV exact equivalence check failed")
+            if source_policy == VERIFY_SQLITE_USE_CSV:
+                rows, files, scanned, csv_elapsed = csv_read()
+                return _result(
+                    rows,
+                    source_used="csv_verified_against_sqlite",
+                    fallback_reason=None,
+                    files_scanned=files,
+                    scanned=scanned,
+                    elapsed=csv_elapsed,
+                    verification=verification,
+                    reconciliation=reconciliation,
+                )
         return _result(
             sqlite_rows,
             source_used="sqlite",
@@ -284,6 +316,10 @@ def read_raw_observations(
             reconciliation=reconciliation,
         )
     except (OSError, ValueError, sqlite3.Error, storage.StorageError) as exc:
+        if source_policy == SQLITE_ONLY:
+            raise storage.StorageError(
+                f"authoritative SQLite raw observation read failed: {type(exc).__name__}: {exc}"
+            ) from exc
         rows, files, scanned, elapsed = csv_read()
         reason = f"{type(exc).__name__}: {exc}"
         return _result(

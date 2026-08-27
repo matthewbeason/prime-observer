@@ -185,6 +185,25 @@ class RawObservationSourceTest(unittest.TestCase):
             self.assertNotIn("prime_observer.db", source)
             self.assertNotIn("sqlite", source.lower())
 
+    def test_sqlite_only_fails_closed_without_csv_fallback(self):
+        self.database.unlink()
+        with self.assertRaisesRegex(storage.StorageError, "authoritative SQLite"):
+            self.read(raw_observation_source.SQLITE_ONLY)
+
+    def test_file_provenance_is_exact_in_dual_read(self):
+        result = raw_observation_source.read_raw_observations(
+            "2026-08-26T11:55:00-07:00",
+            "2026-08-26T12:15:00-07:00",
+            data_directory=self.data,
+            database=self.database,
+            source_files=(self.csv_path,),
+            source_policy=raw_observation_source.VERIFY_SQLITE,
+            include_provenance=True,
+        )
+        self.assertTrue(result.diagnostics.verification["equivalent"])
+        self.assertEqual(result.rows[0]["_source_file"], str(self.csv_path.resolve()))
+        self.assertEqual(result.rows[0]["_source_row"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

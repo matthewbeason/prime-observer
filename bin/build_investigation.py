@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse
-import csv
 import datetime as dt
 import json
+import os
 import sys
+from contextlib import closing
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from health_model import (
@@ -17,6 +18,8 @@ from health_model import (
     is_wan_bad as health_model_is_wan_bad,
 )
 from target_metadata import is_gateway_probe, is_wan_probe, target_metadata
+from raw_observation_source import CSV_ONLY, SQLITE_ONLY, log_read_diagnostics, read_raw_observations
+import storage
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -29,6 +32,8 @@ APS_POWER_CONTEXT = VIZ_DIR / "aps_power_context.json"
 OBSERVATIONS = VIZ_DIR / "observations.json"
 
 TELEMETRY_PATTERN = "bakeoff_*.csv"
+RAW_OBSERVATION_DATABASE = storage.DEFAULT_DATABASE
+RAW_READ_POLICY_ENVIRONMENT = "PRIME_OBSERVER_RAW_READ_POLICY"
 
 
 def parse_ts(value):
@@ -97,7 +102,20 @@ def rounded(value, digits=1):
 
 
 def telemetry_files():
-    return sorted(DATA_DIR.glob(TELEMETRY_PATTERN))
+    if raw_source_policy() == CSV_ONLY:
+        return sorted(DATA_DIR.glob(TELEMETRY_PATTERN))
+    with closing(storage.connect_read_only(RAW_OBSERVATION_DATABASE)) as connection:
+        names = storage.raw_observation_source_files(connection, pattern=TELEMETRY_PATTERN)
+    return [BASE / name if not Path(name).is_absolute() else Path(name) for name in names]
+
+
+def raw_source_policy():
+    configured = os.environ.get(RAW_READ_POLICY_ENVIRONMENT)
+    if configured:
+        return configured
+    if RAW_OBSERVATION_DATABASE.parent.resolve() != DATA_DIR.resolve():
+        return CSV_ONLY
+    return SQLITE_ONLY
 
 
 def row_to_sample(row, source_file):
@@ -140,26 +158,34 @@ def row_to_sample(row, source_file):
 
 def read_samples(window_start_utc, window_end_utc):
     samples = []
-    sources = []
-
-    for path in telemetry_files():
-        matched = 0
+    counts = {}
+    paths = telemetry_files()
+    selection = read_raw_observations(
+        window_start_utc.isoformat(),
+        window_end_utc.isoformat(),
+        data_directory=DATA_DIR,
+        database=RAW_OBSERVATION_DATABASE,
+        source_files=paths,
+        source_policy=raw_source_policy(),
+        include_provenance=True,
+    )
+    log_read_diagnostics("manual_investigation_history", selection.diagnostics)
+    for row in selection.rows:
+        source_name = str(row.get("_source_file") or "")
         try:
-            with path.open("r", newline="") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    sample = row_to_sample(row, path.name)
-                    if sample is None:
-                        continue
-                    if window_start_utc <= sample["ts_utc"] <= window_end_utc:
-                        samples.append(sample)
-                        matched += 1
-        except OSError as exc:
-            print(f"Warning: skipped {path}: {exc}", file=sys.stderr)
+            display_name = Path(source_name).resolve().relative_to(BASE.resolve()).as_posix()
+        except ValueError:
+            display_name = source_name
+        source_file = Path(source_name).name
+        sample = row_to_sample(row, source_file)
+        if sample is None:
             continue
-
-        if matched:
-            sources.append({"path": str(path.relative_to(BASE)), "rows": matched})
+        samples.append(sample)
+        counts[display_name] = counts.get(display_name, 0) + 1
+    sources = [
+        {"path": name, "rows": counts[name]}
+        for name in sorted(counts)
+    ]
 
     return sorted(samples, key=lambda item: (item["ts_utc"], item["host"])), sources
 

@@ -53,7 +53,7 @@ Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
   health, latest interval summary, observation/attribution production, and
   current investigation production; browser semantic fallbacks removed
 - Storage Phases 1-2: rebuildable SQLite shadow ingestion plus exact read-only
-  bounded raw-history equivalence tooling, with CSV still authoritative
+  bounded raw-history equivalence tooling
 - Storage Phase 3: verified backup, retention, restore/restore-latest,
   corruption recovery, CSV rebuild, storage health, and daily backup automation
 - read-only Mesh Signal history schema 0.1 projection with identity-minimized
@@ -61,14 +61,13 @@ Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
 
 Current uncommitted working milestone:
 
-- Storage Phase 4 low-risk chart canary, centralized source selection, safe
-  interval-aware reconciliation, and CSV fallback; no semantic-critical reader
-  or authority cutover
+- Storage Phase 5 complete semantic-reader migration and SQLite authority
+  cutover, with explicit CSV diagnostic/recovery use and fail-closed production
 
 ## Current State
 
 The current repository state is `HEAD` ahead of the `v0.9.0` tag, with Storage
-Phase 4 present only as uncommitted working-tree changes. There is no newer
+Phase 5 present only as uncommitted working-tree changes. There is no newer
 release tag yet.
 
 The product is a visualization-first local network observability workspace.

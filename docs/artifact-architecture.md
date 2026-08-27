@@ -24,10 +24,9 @@ and explicit.
 - Artifacts are local-first because the repository operates through local files,
   local scripts, and static views rather than a cloud backend.
 - Generated JSON and CSV artifacts remain canonical production contracts.
-  `data/prime_observer.db` is a rebuildable, non-authoritative preferred source
-  only for the approved low-risk `viz/latest.csv` raw history projection; CSV
-  remains its fallback and every semantic reader's authority. See
-  `docs/storage.md`. Authority cutover requires a separate phase.
+  `data/prime_observer.db` is authoritative for Prime-owned raw observations.
+  CSV is an optional export and explicit diagnostic/recovery source. See
+  `docs/storage.md`.
 - Additive artifacts are preferred because Prime Observer preserves existing
   contracts such as `viz/latest.csv` and `viz/network_attribution.json` while
   introducing newer projections such as `viz/observations.json` and optional
@@ -46,14 +45,14 @@ Collection
 
 Stage ownership:
 
-- Collection: Python-owned. `bin/collector.py` appends authoritative local
-  telemetry to `data/bakeoff_YYYYMMDD.csv`, then attempts non-authoritative
-  shadow ingestion through `bin/storage.py`. Optional provider summaries come
+- Collection: Python-owned. `bin/collector.py` commits authoritative local
+  telemetry through `bin/storage.py`, then attempts the optional CSV export.
+  Optional provider summaries come
   from local Python fetchers.
-- Normalization: Python-owned. `bin/raw_observation_source.py` selects SQLite or
-  CSV for approved raw chart history, and `bin/transform_latest.py` adds target
-  metadata and baseline fields. The transform retains a separate direct CSV
-  input for grouped WAN/LAN evidence and every deterministic semantic output.
+- Normalization: Python-owned. `bin/raw_observation_source.py` reads authoritative
+  SQLite for production and exposes explicit CSV diagnostic modes;
+  `bin/transform_latest.py` adds target metadata and baseline fields and owns
+  every deterministic semantic output.
 - Artifact Generation: Python-owned. Scripts under `bin/` write the CSV/JSON
   artifacts in `viz/`.
 - Rendering: browser-owned, renderer-only. `viz/index.html` and
@@ -703,9 +702,8 @@ historical artifacts should pass a unique `--out` path.
 ## Relationships
 
 - `viz/latest.csv` is factual telemetry projection, not attribution.
-- `data/prime_observer.db` is a non-authoritative shadow of Prime-owned raw probe
-  observations and the preferred source only for the approved low-risk raw
-  `viz/latest.csv` history path. It is never consumed by the browser.
+- `data/prime_observer.db` is authoritative for Prime-owned raw probe
+  observations. It is never consumed by the browser.
 - `viz/network_attribution.json` is a preserved compatibility export, not the
   authoritative Observation projection.
 - `viz/observations.json` is Observation, not raw evidence.

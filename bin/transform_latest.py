@@ -5,6 +5,7 @@ import datetime as dt
 import json
 import os
 from collections import defaultdict
+from contextlib import closing
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -54,7 +55,8 @@ from operational_learnings import build_operational_learnings
 from time_context import build_time_context
 from mesh_context import refresh_mesh_context
 from raw_observation_source import (
-    PREFER_SQLITE,
+    CSV_ONLY,
+    SQLITE_ONLY,
     log_read_diagnostics,
     read_raw_observations,
 )
@@ -101,6 +103,7 @@ BASELINE_HISTORY_STALE_DAYS = 21
 BASELINE_CHANGE_DELTA_PCT = 10.0
 BASELINE_HISTORY_RECENT_SAMPLES = 3
 BASELINE_RECOVERY_IMPROVEMENT_DELTA_PCT = 35.0
+_BASELINE_RAW_CACHE = None
 
 TARGET_COLUMNS = ("target_label", "target_class")
 BASELINE_COLUMNS = ("baseline_p95", "baseline_delta_pct", "baseline_sample_count")
@@ -113,7 +116,33 @@ def sanitize_field(s: str) -> str:
 
 
 def telemetry_files():
-    return sorted(DATA_DIR.glob(TELEMETRY_PATTERN))
+    if _raw_source_policy() == CSV_ONLY:
+        return sorted(DATA_DIR.glob(TELEMETRY_PATTERN))
+    with closing(storage.connect_read_only(RAW_OBSERVATION_DATABASE)) as connection:
+        names = storage.raw_observation_source_files(connection, pattern=TELEMETRY_PATTERN)
+    return [BASE / name if not Path(name).is_absolute() else Path(name) for name in names]
+
+
+def _raw_source_policy():
+    configured = os.environ.get(RAW_READ_POLICY_ENVIRONMENT)
+    if configured:
+        return configured
+    # Isolated unit fixtures that replace DATA_DIR without replacing the DB are
+    # explicit CSV fixtures, not a production fallback path.
+    if RAW_OBSERVATION_DATABASE.parent.resolve() != DATA_DIR.resolve():
+        return CSV_ONLY
+    return SQLITE_ONLY
+
+
+def _read_source_rows(path, *, start="1970-01-01T00:00:00+00:00", end="2100-01-01T00:00:00+00:00"):
+    return read_raw_observations(
+        start,
+        end,
+        data_directory=DATA_DIR,
+        database=RAW_OBSERVATION_DATABASE,
+        source_files=(path,),
+        source_policy=_raw_source_policy(),
+    )
 
 
 def newest_by_mtime():
@@ -187,31 +216,21 @@ def compute_hourly_wan_baseline():
     by_hour = defaultdict(list)
     used_files = []
 
-    for src in recent_baseline_files():
+    for src, source_rows in _baseline_rows_by_file():
         try:
-            with src.open("r", newline="") as f:
-                reader = csv.DictReader(f)
-                row_count = 0
-
-                for r in reader:
-                    host = (r.get("host") or "").strip()
-                    if target_metadata(host)["target_class"] != "internet_probe":
-                        continue
-
-                    t = parse_ts(r.get("ts", ""))
-                    if t is None:
-                        continue
-
-                    try:
-                        p95 = float((r.get("p95_ms") or "").strip())
-                    except Exception:
-                        continue
-
-                    by_hour[t.hour].append(p95)
-                    row_count += 1
-
-                if row_count:
-                    used_files.append(src.name)
+            row_count = 0
+            for r in source_rows:
+                host = str(r.get("host") or "").strip()
+                if target_metadata(host)["target_class"] != "internet_probe":
+                    continue
+                t = parse_ts(str(r.get("ts") or ""))
+                p95 = parse_float(r.get("p95_ms"), None)
+                if t is None or p95 is None:
+                    continue
+                by_hour[t.hour].append(p95)
+                row_count += 1
+            if row_count:
+                used_files.append(src.name)
 
         except Exception as exc:
             print(f"Warning: skipped baseline source {src.name}: {exc}")
@@ -285,22 +304,45 @@ def telemetry_sample_from_row(row, source_name):
 def baseline_samples_from_files():
     samples = []
     used_files = []
-    for src in recent_baseline_files():
+    for src, source_rows in _baseline_rows_by_file():
         file_count = 0
         try:
-            with src.open("r", newline="") as f:
-                for row in csv.DictReader(f):
-                    sample = telemetry_sample_from_row(row, src.name)
-                    if sample is None:
-                        continue
-                    samples.append(sample)
-                    file_count += 1
+            for row in source_rows:
+                sample = telemetry_sample_from_row(row, src.name)
+                if sample is None:
+                    continue
+                samples.append(sample)
+                file_count += 1
         except Exception as exc:
             print(f"Warning: skipped durable baseline source {src.name}: {exc}")
             continue
         if file_count:
             used_files.append(src.name)
     return samples, used_files
+
+
+def _baseline_rows_by_file():
+    global _BASELINE_RAW_CACHE
+    if _BASELINE_RAW_CACHE is not None:
+        return _BASELINE_RAW_CACHE
+    files = recent_baseline_files()
+    if not files:
+        _BASELINE_RAW_CACHE = []
+        return _BASELINE_RAW_CACHE
+    selection = read_raw_observations(
+        "1970-01-01T00:00:00+00:00",
+        "2100-01-01T00:00:00+00:00",
+        data_directory=DATA_DIR,
+        database=RAW_OBSERVATION_DATABASE,
+        source_files=files,
+        source_policy=_raw_source_policy(),
+        include_provenance=True,
+    )
+    grouped = {src.name: [] for src in files}
+    for row in selection.rows:
+        grouped.setdefault(Path(str(row.get("_source_file") or "")).name, []).append(row)
+    _BASELINE_RAW_CACHE = [(src, grouped.get(src.name, [])) for src in files]
+    return _BASELINE_RAW_CACHE
 
 
 def load_baseline_history(path):
@@ -1364,28 +1406,20 @@ def load_optional_json(path):
     return payload if isinstance(payload, dict) else None
 
 
-def read_authoritative_projection_rows(
-    src, cutoff, baseline_by_hour, baseline_sample_counts
+def read_semantic_projection_rows(
+    src, cutoff, now, baseline_by_hour, baseline_sample_counts
 ):
-    """Read the CSV-authoritative rows retained by every semantic producer."""
+    """Read semantic-critical rows through the centralized source boundary."""
     rows = []
-    with src.open("r", newline="") as f:
-        reader = csv.DictReader(f)
-        fieldnames = ensure_fieldnames(reader.fieldnames)
-        for row in reader:
-            t = parse_ts(row.get("ts", ""))
-            if t is None:
-                continue
-            if t.tzinfo is None:
-                t = t.replace(tzinfo=dt.timezone.utc)
-            if t.astimezone(dt.timezone.utc) < cutoff:
-                continue
-            rows.append(
-                prepare_projection_row(
-                    row, t, baseline_by_hour, baseline_sample_counts
-                )
-            )
-    return rows, fieldnames
+    selection = _read_source_rows(src, start=cutoff.isoformat(), end=now.isoformat())
+    for row in selection.rows:
+        t = parse_ts(str(row.get("ts") or ""))
+        if t is None:
+            continue
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=dt.timezone.utc)
+        rows.append(prepare_projection_row(row, t, baseline_by_hour, baseline_sample_counts))
+    return rows, ensure_fieldnames(storage.CSV_FIELDS), selection.diagnostics
 
 
 def prepare_projection_row(row, timestamp, baseline_by_hour, baseline_sample_counts):
@@ -1399,33 +1433,20 @@ def prepare_projection_row(row, timestamp, baseline_by_hour, baseline_sample_cou
     return apply_baseline_fields(row, timestamp, baseline_by_hour, baseline_sample_counts)
 
 
-def read_chart_projection_rows(src, cutoff, now, baseline_by_hour, baseline_sample_counts):
-    """Read the approved low-risk chart input through the Phase 4 boundary."""
-    selection = read_raw_observations(
-        cutoff.isoformat(),
-        now.isoformat(),
-        data_directory=DATA_DIR,
-        database=RAW_OBSERVATION_DATABASE,
-        source_files=(src,),
-        source_policy=os.environ.get(RAW_READ_POLICY_ENVIRONMENT, PREFER_SQLITE),
-    )
-    rows = []
-    for raw in selection.rows:
-        timestamp = parse_ts(str(raw.get("ts") or ""))
-        if timestamp is None:
-            continue
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=dt.timezone.utc)
-        rows.append(
-            prepare_projection_row(raw, timestamp, baseline_by_hour, baseline_sample_counts)
-        )
-    return rows, selection.diagnostics
-
-
 def main():
+    global _BASELINE_RAW_CACHE
+    _BASELINE_RAW_CACHE = None
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
-    now = dt.datetime.now(dt.timezone.utc)
+    configured_now = os.environ.get("PRIME_OBSERVER_GENERATED_AT")
+    now = (
+        dt.datetime.fromisoformat(configured_now)
+        if configured_now
+        else dt.datetime.now(dt.timezone.utc)
+    )
+    if now.tzinfo is None:
+        raise ValueError("PRIME_OBSERVER_GENERATED_AT must include a UTC offset")
+    now = now.astimezone(dt.timezone.utc)
     src = newest_by_mtime()
     if not src:
         refresh_mesh_context(
@@ -1439,15 +1460,13 @@ def main():
 
     cutoff = now - WINDOW
 
-    # Semantic-critical consumers remain on this authoritative CSV read. The
-    # separately selected chart rows feed only viz/latest.csv.
-    rows_out, fieldnames = read_authoritative_projection_rows(
-        src, cutoff, baseline_by_hour, baseline_sample_counts
-    )
-    chart_rows, chart_read_diagnostics = read_chart_projection_rows(
+    rows_out, fieldnames, semantic_read_diagnostics = read_semantic_projection_rows(
         src, cutoff, now, baseline_by_hour, baseline_sample_counts
     )
+    chart_rows = list(rows_out)
+    chart_read_diagnostics = semantic_read_diagnostics
     log_read_diagnostics("main_24_hour_latency_history", chart_read_diagnostics)
+    log_read_diagnostics("semantic_24_hour_inputs", semantic_read_diagnostics)
 
     tmp = OUT.with_suffix(".csv.tmp")
     with tmp.open("w", newline="") as f:
