@@ -11,10 +11,9 @@ LLM interpretation layer, and a static dashboard to answer whether network
 behavior is healthy, unusual, attributable, sustained, and likely noticeable to
 users.
 
-Current release: `v0.9.0` (latest tag). `HEAD` is ahead of the tag with
-committed lifecycle, adaptive-baseline, interval, similarity, operational
-learning, temporal workspace, and dashboard presentation work described in
-`HANDOFF.md` and `ROADMAP.md`.
+Current release: `v0.10.0` (latest tag). It includes the committed lifecycle,
+adaptive-baseline, semantic-parity, historical-context, SQLite-authority, and
+dashboard presentation work described in `HANDOFF.md` and `ROADMAP.md`.
 
 See:
 
@@ -136,8 +135,9 @@ Do not:
 - commit local secrets or generated runtime artifacts
 - expand Prime Observer into DNS analytics, alerting, or interpretive AI
   behavior unless the repository direction changes explicitly
-- add a database unless a concrete scaling, query, collaboration, or multi-user
-  requirement justifies an optional projection over canonical artifacts
+- add another database or replace the generated artifact contracts unless a
+  concrete scaling, query, collaboration, or multi-user requirement justifies
+  an optional projection over them
 
 ## Generated And Local Files
 
@@ -184,7 +184,7 @@ See `docs/validation.md` for the canonical validation guide.
 For code changes, also run validation appropriate to the affected area. Use the
 existing tests and scripts in the repository as the guide.
 
-The project currently has approximately 526 tests. Test count is not a goal;
+The project currently has 593 tests. Test count is not a goal;
 focus test maintenance on unique/high-value coverage, removal of duplicate or
 obsolete tests, integration coverage, and a small set of critical browser smoke
 checks. Do not add tests merely to grow the count, and do not delete tests

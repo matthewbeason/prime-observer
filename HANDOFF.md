@@ -3,17 +3,16 @@
 ## Current State
 
 - Branch: `main`
-- Latest tag: `v0.9.0`
-- `HEAD` is ahead of the `v0.9.0` release tag with committed lifecycle,
-  adaptive-baseline, interval, similarity, operational learning, temporal
-  workspace, and dashboard presentation work
+- Latest release: `v0.10.0`
+- Release commit includes the SQLite authority cutover and the completed
+  post-`v0.9.0` architecture and product work
 
 Prime Observer currently ships:
 
 - Storage Phase 5 SQLite authority for Prime-owned raw observations, with every
   semantic-critical reader behind the centralized source boundary
 - Storage Phase 2 diagnostic read-path evaluation with exact bounded raw-history
-  parity, read-only comparison tooling, and no production reader cutover
+  parity and read-only comparison tooling supporting the later authority cutover
 - Storage Phase 3 verified SQLite-native backup, deterministic retention,
   defensive restore/restore-latest, atomic CSV rebuild, operator health status,
   and a tracked daily LaunchAgent
@@ -48,11 +47,6 @@ Prime Observer currently ships:
   with no health, attribution, investigation, or assistant consumer
 - local operator impact feedback that feeds observed impact only
 
-Current uncommitted milestone:
-
-- Storage Phase 5 semantic-reader migration and SQLite authority cutover; CSV
-  is secondary export/recovery evidence and normal failures fail closed
-
 ## Recent Completed Work
 
 Repository-backed recent milestones (all committed):
@@ -61,37 +55,39 @@ Repository-backed recent milestones (all committed):
 - `v0.8.1`: Bucket selection alignment
 - `v0.8.2`: Dashboard operator polish
 - `v0.9.0`: Internet Conditions external context
-- post-`v0.9.0` event-aligned automatic investigation lifecycle and hardened
+- `v0.10.0`: completed post-`v0.9.0` architecture and product milestone,
+  including SQLite authority for Prime-owned raw observations
+- v0.10.0 event-aligned automatic investigation lifecycle and hardened
   completed-event history
-- post-`v0.9.0` operator-first Investigation redesign with asynchronous
+- v0.10.0 operator-first Investigation redesign with asynchronous
   Operator Assistant generation and last-known-good publication behavior
-- post-`v0.9.0` health-dimensions work: Phase 1 calibration document, Phase 2
+- v0.10.0 health-dimensions work: Phase 1 calibration document, Phase 2
   deterministic evaluator with additive artifact output, and Phase 3 browser
   rendering for emitted multidimensional fields
-- post-`v0.9.0` Investigation IA redesign of `viz/investigate.html` as an
+- v0.10.0 Investigation IA redesign of `viz/investigate.html` as an
   Incident Record over existing artifacts
-- post-`v0.9.0` Operator Assistant model selection pinned to
+- v0.10.0 Operator Assistant model selection pinned to
   `google/gemini-3.5-flash` by default, provider auto-routing rejected, and
   additive impact-v2 fields distinguish estimated and observed user impact
-- post-`v0.9.0` separate local application-experience collector feeding
+- v0.10.0 separate local application-experience collector feeding
   estimated impact only
-- post-`v0.9.0` `bin/record_operator_impact.py` and local operator impact
+- v0.10.0 `bin/record_operator_impact.py` and local operator impact
   feedback feeding observed impact only
-- post-`v0.9.0` Incident Intelligence Phases 1-3: explicit entry points,
+- v0.10.0 Incident Intelligence Phases 1-3: explicit entry points,
   Python-owned `incident_record`, `incident_phases`, and deterministic replay
-- post-`v0.9.0` Adaptive Baseline Phases A-C and recency-aware durable
+- v0.10.0 Adaptive Baseline Phases A-C and recency-aware durable
   baselines: resolver adaptive classification metadata, adaptive incident
   eligibility, and `viz/baseline_history.json` durable memory with a newest-two
   active source window and post-recovery stabilization guardrail
-- post-`v0.9.0` Temporal Memory Phase 1: one deterministic selected-interval
+- v0.10.0 Temporal Memory Phase 1: one deterministic selected-interval
   summary in `viz/interval_summary.json`
-- post-`v0.9.0` Incident Intelligence Phase E: deterministic current-incident
+- v0.10.0 Incident Intelligence Phase E: deterministic current-incident
   similarity in `viz/incident_similarity.json`
-- post-`v0.9.0` Operational Learning Phase 1: deterministic lessons in
+- v0.10.0 Operational Learning Phase 1: deterministic lessons in
   `viz/operational_learnings.json`
-- post-`v0.9.0` Temporal Workspace Phase 1: default selected-time context in
+- v0.10.0 Temporal Workspace Phase 1: default selected-time context in
   `viz/time_context.json`
-- post-`v0.9.0` dashboard presentation work: consolidated hierarchy, unified
+- v0.10.0 dashboard presentation work: consolidated hierarchy, unified
   time context, simplified operator dashboard, and restored visualization
   rendering
 
@@ -182,10 +178,10 @@ Current projection state:
 
 ## Active Watch Period
 
-The repository previously said to live with `v0.9.0` for several days before
-expanding functionality. The committed post-`v0.9.0` work implements the
-investigation lifecycle redesign, adaptive baselines, interval intelligence,
-incident similarity, operational learning, and the temporal dashboard workspace.
+The v0.10.0 release includes the investigation lifecycle redesign, adaptive
+baselines, semantic parity, interval intelligence, incident similarity,
+operational learning, historical context, the temporal dashboard workspace, and
+the SQLite authority cutover.
 
 Direct links/bookmarks for current, selected-interval, and historical
 investigation entry points are explicit: `?view=current`,
@@ -200,9 +196,11 @@ does not use LLM summarization or browser inference. Legacy
 `?event=<event-id>` links remain supported. Multiple stored interval summaries
 remain future work.
 
-Generated JSON and CSV artifacts remain canonical. No database is needed at the
-current local scale; any future PostgreSQL or Supabase work should be an optional
-artifact consumer/index rather than a replacement for canonical artifacts.
+SQLite is authoritative for Prime-owned raw observations. CSV is an explicit
+export, diagnostic, rebuild, and recovery source. Generated CSV/JSON artifacts
+remain canonical browser and downstream contracts, and the browser remains
+database-unaware. Mesh Signal SQLite remains externally owned and read-only;
+immutable completed-incident snapshots remain write-once files.
 
 Watch items currently named in the repository:
 
@@ -231,6 +229,6 @@ When resuming work:
 
 ## Needs Matthew Review
 
-- What milestone should follow the current committed post-`v0.9.0` state.
+- What milestone should follow the v0.10.0 release.
 - Whether the repository wants a standing handoff file updated each release or
   only when work pauses midstream.

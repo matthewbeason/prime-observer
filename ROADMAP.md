@@ -25,8 +25,9 @@ Repository tags and release labels show this progression:
 - `v0.8.1`: Bucket selection alignment
 - `v0.8.2`: Dashboard operator polish
 - `v0.9.0`: Internet Conditions external context
+- `v0.10.0`: Adaptive semantics, historical context, and SQLite authority
 
-Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
+The v0.10.0 release includes:
 
 - event-aligned automatic investigation lifecycle and immutable completed-event
   history
@@ -58,17 +59,16 @@ Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
   corruption recovery, CSV rebuild, storage health, and daily backup automation
 - read-only Mesh Signal history schema 0.1 projection with identity-minimized
   derived change markers and deterministic before/during/after context
-
-Current uncommitted working milestone:
-
 - Storage Phase 5 complete semantic-reader migration and SQLite authority
   cutover, with explicit CSV diagnostic/recovery use and fail-closed production
 
 ## Current State
 
-The current repository state is `HEAD` ahead of the `v0.9.0` tag, with Storage
-Phase 5 present only as uncommitted working-tree changes. There is no newer
-release tag yet.
+The current repository state is the v0.10.0 release. SQLite is authoritative for
+Prime-owned raw observations; CSV is explicit export, diagnostic, rebuild, and
+recovery evidence. Generated CSV/JSON artifacts remain the browser contracts,
+and the browser remains database-unaware. Mesh Signal SQLite remains external
+and read-only, and immutable incident snapshots remain files.
 
 The product is a visualization-first local network observability workspace.
 Python owns deterministic health, attribution, baseline, incident, lifecycle,
@@ -88,8 +88,8 @@ Current watch period:
   improve operator understanding
 - observe whether the recency-aware active baseline and post-recovery
   stabilization behave as expected over time
-- observe whether the committed post-`v0.9.0` investigation and baseline work
-  holds up before new functionality is added
+- observe whether the v0.10.0 investigation, baseline, historical-context, and
+  storage-authority work holds up before new functionality is added
 
 ## Product Design Principles
 
@@ -234,10 +234,11 @@ The repository explicitly says not to expand into these areas yet:
 - weather correlation
 - ISP status correlation
 - major `viz/index.html` refactor (beyond approved micro-visualization work)
-- database-backed storage replacing canonical artifacts
+- another database replacing SQLite raw authority or generated artifact
+  contracts
 - event comparison or similarity detection in the browser (Python-owned
   `viz/incident_similarity.json` is the committed deterministic mechanism)
 
 If a future database becomes useful, it should be an optional search/index
-projection that consumes canonical JSON/CSV artifacts. It should not replace the
-artifact evidence model.
+projection that consumes canonical JSON/CSV artifacts. It should not replace
+Prime-owned SQLite raw authority or the generated artifact evidence model.

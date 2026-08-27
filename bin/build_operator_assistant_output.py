@@ -20,7 +20,7 @@ ENV_FILE = BASE / ".env.openrouter"
 OPERATOR_CHARTER = BASE / "docs" / "operator-charter.md"
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-USER_AGENT = "PrimeObserver/0.9.0"
+USER_AGENT = "PrimeObserver/0.10.0"
 DEFAULT_MODEL = "google/gemini-3.5-flash"
 DISALLOWED_ROUTING_MODEL = "".join(["openrouter/", "auto"])
 DEFAULT_TIMEOUT_SECONDS = 45

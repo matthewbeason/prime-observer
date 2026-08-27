@@ -14,9 +14,18 @@ not be added here without marking it:
 
 ### Prime Observer Is Local-First
 
-Prime Observer operates through local scripts, local telemetry files, generated
-CSV/JSON artifacts, and static HTML views. The repository does not require a
-database, cloud backend, or heavy observability stack.
+Prime Observer operates through local scripts, a local SQLite database for
+Prime-owned raw observations, generated CSV/JSON artifacts, and static HTML
+views. It does not require a cloud backend or heavy observability stack.
+
+### SQLite Owns Prime Raw Observations; Artifacts Own Consumer Contracts
+
+`data/prime_observer.db` is authoritative for Prime-owned raw observations.
+CSV raw history is an explicit export, diagnostic, rebuild, and recovery source.
+Generated CSV/JSON artifacts remain the canonical browser and downstream
+consumer contracts. The browser remains database-unaware, Mesh Signal SQLite
+remains externally owned and read-only, and immutable completed-incident
+snapshots remain write-once files.
 
 ### Prime Observer Optimizes For User Experience Observability
 
@@ -73,16 +82,16 @@ conclusions or stronger causal claims than the evidence supports.
 
 ### Browser Code Must Consume Generated Artifacts, Not Secrets
 
-The dashboard reads generated local JSON/CSV artifacts. The repository
-explicitly forbids direct browser calls to NextDNS or Cloudflare and forbids
-putting secrets in browser code.
+The dashboard reads generated local JSON/CSV artifacts and never opens SQLite.
+The repository explicitly forbids direct browser calls to NextDNS or Cloudflare
+and forbids putting secrets in browser code.
 
 ### Observation-Backed Semantics Preserve Compatibility
 
 The repository now treats `viz/observations.json` as the authoritative
 Observation projection for deterministic semantics Prime Observer owns, while
-preserving backward-compatible exports such as `viz/network_attribution.json`
-and retaining deterministic browser fallbacks.
+preserving backward-compatible exports such as `viz/network_attribution.json`.
+The browser renders emitted semantics without deterministic semantic fallbacks.
 
 ### Dashboard Scope Is Intentionally Narrow
 
@@ -159,9 +168,6 @@ fatal console errors.
 These are documented in the repository, but not fully resolved into additional
 implementation work:
 
-- sustained-persistence grouping differs slightly between current export and
-  investigation generation
-- threshold constants are duplicated across Python and browser code
 - Pattern Awareness remains internet-probe based
 
 Whether any of these should become the next implementation milestone is:

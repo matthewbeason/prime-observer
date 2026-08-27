@@ -21,7 +21,7 @@ ENV_FILE = BASE / ".env.application_experience"
 
 SCHEMA_VERSION = 1
 MODEL_VERSION = "prime_observer.application_experience.v1"
-USER_AGENT = "PrimeObserver/0.9.0"
+USER_AGENT = "PrimeObserver/0.10.0"
 DEFAULT_DNS_HOSTNAME = "example.com"
 DEFAULT_HTTPS_URL = "https://www.gstatic.com/generate_204"
 DEFAULT_TIMEOUT_SECONDS = 3.0

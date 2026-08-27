@@ -15,7 +15,7 @@ OUT = VIZ_DIR / "aps_power_context.json"
 OUTAGE_VIEWER_URL = "https://outagemap.aps.com/outageviewer/"
 CONFIG_URL = f"{OUTAGE_VIEWER_URL}mockData/config.json"
 WEBMAP_URL = f"{OUTAGE_VIEWER_URL}mockData/webmap.json"
-USER_AGENT = "PrimeObserver/0.9.0"
+USER_AGENT = "PrimeObserver/0.10.0"
 DEFAULT_TIMEOUT_SECONDS = 8
 MAX_ITEMS = 5
 

@@ -8,11 +8,9 @@ It combines measured telemetry, deterministic health modeling, Observation proje
 
 It is not a generic network monitor, and it is no longer primarily an ISP comparison or bakeoff tool. The historical data files still use the `bakeoff_YYYYMMDD.csv` naming convention, but the current product focus is WAN health, attribution, learned baselines, pattern awareness, incident investigation, DNS security context, and operational simplicity.
 
-Current release: **v0.9.0** (latest tag). `HEAD` is ahead of the tag with
-committed lifecycle, adaptive-baseline, interval, similarity, operational
-learning, temporal workspace, and dashboard presentation work.
+Current release: **v0.10.0** (latest tag).
 
-Previous production release: **v0.7.2**
+Previous release: **v0.9.0**
 
 Portfolio context: Prime Observer demonstrates local-first observability,
 user-noticeability scoring, privacy-aware DNS/security summaries, and historical
@@ -20,7 +18,7 @@ trend context using flat CSV/JSON artifacts.
 
 ## Dashboard
 
-Current dashboard (renders committed post-v0.9.0 work)
+Current v0.10.0 dashboard
 
 Prime Observer Dashboard
 
@@ -744,10 +742,12 @@ When present, the investigation page loads `viz/operator_assistant_input.json` a
 
 See `docs/investigation-workflow.md` for details.
 
-At the current local scale, generated JSON and CSV artifacts remain canonical and
-no database is required. If search, collaboration, or multi-user requirements
-eventually justify PostgreSQL or Supabase, it should consume canonical artifacts
-as an optional index/projection rather than replace them.
+SQLite is authoritative for Prime-owned raw observations. Generated CSV/JSON
+artifacts remain the canonical browser and downstream consumer contracts, and
+the browser remains database-unaware. If search, collaboration, or multi-user
+requirements eventually justify another database, it should consume those
+artifacts as an optional index/projection rather than replace the storage or
+artifact authority boundaries.
 
 The next planned history capability after hardening is Needs Matthew Review.
 Direct links/bookmarks for current, selected-interval, and historical
@@ -966,7 +966,7 @@ New features should first ask: "Can this be communicated visually?"
 
 ## Testing
 
-The project currently has approximately 526 tests. Test count is not a goal;
+The project currently has 593 tests. Test count is not a goal;
 the focus is unique, high-value coverage. Test-suite maintenance prioritizes:
 
 - unique/high-value tests
@@ -993,6 +993,30 @@ Prime Observer is not:
 
 It is a focused local dashboard for understanding whether network behavior is healthy, unusual, attributable, sustained, and likely noticeable.
 
+## Release Notes: v0.10.0
+
+v0.10.0 completes Prime Observer's post-v0.9.0 architecture and product work
+without changing its local-first, evidence-bounded posture.
+
+v0.10.0 includes:
+
+- Added adaptive learned baselines with recency-aware durable memory,
+  post-recovery stabilization protection, and learned-baseline-aware visual and
+  incident classification.
+- Unified Python-owned semantic health evaluation across dashboard, interval,
+  Observation, attribution, and Investigation projections while keeping the
+  browser renderer-only.
+- Added historical Mesh Signal context and historical external-context event
+  identity and temporal semantics, including Cloudflare and APS preparation.
+- Added SQLite shadow storage, verified backup/restore/rebuild tooling, iCloud
+  Drive backup support, production read-path migration, and the authority
+  cutover for Prime-owned raw observations.
+- Demoted CSV raw history to explicit export, diagnostics, rebuild, and recovery
+  roles while preserving generated CSV/JSON browser contracts.
+- Improved historical query and Investigation performance while preserving
+  write-once immutable completed-incident snapshots and externally owned,
+  read-only Mesh Signal SQLite history.
+
 ## Release Notes: v0.9.0
 
 v0.9.0 adds optional external context without expanding Prime Observer into a
@@ -1005,13 +1029,6 @@ v0.9.0 includes:
 - Added optional provider ASN scoping for ISP-specific traffic context.
 - Enriched Internet Conditions artifact and dashboard presentation.
 - Preserved the deterministic health model and evidence-first boundaries.
-
-Since v0.9.0, HEAD has committed additional work ahead of the tag, including the
-event-aligned investigation lifecycle, operator-first Investigation redesign,
-multidimensional health rendering, adaptive and durable baselines, interval
-summaries, incident similarity, operational learning, temporal workspace
-context, and dashboard presentation work. See `HANDOFF.md`, `ROADMAP.md`, and
-`DECISIONS.md` for the current committed state.
 
 ## Release Notes: v0.8.0
 
@@ -1075,12 +1092,12 @@ The `v0.8.0` release intentionally did not migrate or expand:
 - LLM explanations
 - major dashboard refactors
 
-Some of those boundaries have since moved, all committed at `HEAD` ahead of the
-`v0.9.0` tag: optional APS Power Infrastructure context now exists as an
-Environmental Context provider, OpenRouter-backed Operator Assistant
-interpretation is the primary operator-facing narrative when valid, and the
-dashboard and Investigation pages have been refactored. The boundaries that
-remain are captured in `ROADMAP.md` under Deferred Or Explicitly Avoided Areas.
+Some of those boundaries later moved in v0.9.0 and v0.10.0: optional APS Power
+Infrastructure context now exists as an Environmental Context provider,
+OpenRouter-backed Operator Assistant interpretation is the primary
+operator-facing narrative when valid, and the dashboard and Investigation pages
+have been refactored. The boundaries that remain are captured in `ROADMAP.md`
+under Deferred Or Explicitly Avoided Areas.
 
 ## License
 
