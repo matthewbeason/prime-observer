@@ -4,7 +4,10 @@ This document defines Prime Observer's durable-storage boundary. Phase 1 adds a
 SQLite shadow copy of Prime-owned raw probe observations while preserving the
 existing CSV pipeline as production authority. Storage Phase 2 adds only a
 read-only, bounded diagnostic helper and evaluation harness; it does not cut
-over a production reader. See `docs/storage-phase2-read-evaluation.md`.
+over a production reader. Storage Phase 3 adds verified backup, retention,
+defensive restore, CSV rebuild orchestration, and operator health tooling. It
+does not make SQLite authoritative or migrate a reader. See
+`docs/storage-phase2-read-evaluation.md`.
 
 ## Phase 1 authority boundary
 
@@ -197,11 +200,159 @@ If collection ran while rebuilding, stop it again and rerun `ingest` before
 accepting reconciliation as current. Resume the existing collector only after
 status and integrity are satisfactory.
 
-## Backup boundary
+## Phase 3 operator workflow
 
-Phase 1 needs no elaborate backup system because retained CSV can recreate the
-database. For a point-in-time copy, stop the collector, confirm no transaction
-or `prime_observer.db-journal` file is active, then copy the single database
-file while it is quiescent. SQLite's backup API is also safe for a live source
-when implemented by future dedicated tooling. Do not copy an active database
-and journal independently and assume they form a consistent backup.
+Normal recovery does not require the SQLite shell, manual PRAGMAs, journal-file
+handling, or copying a live database. The primary commands are:
+
+```bash
+python3 bin/storage.py status
+python3 bin/storage.py backup
+python3 bin/storage.py backups
+python3 bin/storage.py verify-backup <backup-name-or-path>
+python3 bin/storage.py restore <backup-name-or-path>
+python3 bin/storage.py restore-latest
+python3 bin/storage.py rebuild-from-csv
+```
+
+`status` reports the database as missing or unusable without a traceback and
+detects integrity failure, unsupported schema, stale CSV reconciliation, an
+overdue backup (more than 36 hours), and absence of a verified compatible
+backup. These are operator/storage exceptions only; no dashboard card or health
+semantic consumes them. Add `--verbose` for the Phase 1 per-target and
+per-source diagnostic counts.
+
+### Verified backup mechanism and destination
+
+`backup` uses Python's SQLite backup API to create a transactionally consistent
+standalone database in a private local temporary directory beside the shadow
+store. It verifies schema, runs `PRAGMA integrity_check`, and records row count
+and observation timestamp bounds before copying that already-consistent file to
+the destination through a private partial file and atomic rename. The manifest
+is written last, so a database or manifest left by interruption is never a
+verified backup. The live database is never copied directly and never moved
+into iCloud Drive.
+
+The destination precedence is:
+
+1. command `--backup-directory`
+2. `PRIME_OBSERVER_BACKUP_DIR`
+3. `~/Library/Mobile Documents/com~apple~CloudDocs/Prime Observer Backups`
+
+The default is derived from the current macOS home directory; production logic
+does not contain a user-specific home path. For an alternate iCloud folder:
+
+```bash
+export PRIME_OBSERVER_BACKUP_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Prime Observer/Backups"
+python3 bin/storage.py backup
+```
+
+If the destination is absent or unwritable, backup fails visibly and leaves the
+live database and collection path unchanged. A custom destination is created
+when its parent is available. Each completed database and manifest is mode
+`0600`.
+
+The inspectable `.manifest.json` sidecar records format and schema versions,
+UTC creation time, row count, earliest/latest observation, integrity result,
+source location and size, backup size and SHA-256, repository commit when
+available, and `validation_status: verified`. It contains no credentials or
+telemetry payloads.
+
+### Retention and capacity
+
+After a successful backup, deterministic generational retention keeps the
+newest backup in each of the newest 7 UTC daily buckets, 4 ISO-week buckets,
+and 3 UTC month buckets. A single backup satisfying multiple buckets is stored
+only once. Unverified or malformed files are not selected as recovery points
+and are preserved for diagnosis rather than silently deleted.
+
+At the current approximately 600 MiB database size, the absolute upper bound of
+14 distinct retained generations is about 8.2 GiB (600 MiB x 14). Bucket
+overlap normally makes the actual footprint smaller; with a daily run spanning
+several months it is commonly about 6.4 GiB for 11 distinct copies. SQLite
+backups are not compressed.
+
+### Defensive restore
+
+`restore` requires a backup file and verified manifest. Before changing the
+live path it checks the manifest hash, supported schema, integrity, row count,
+timestamp bounds, the Prime maintenance lock, and SQLite write contention. It
+then copies the verified backup to a temporary local file, verifies that file,
+preserves the current database and any journal sidecars under a timestamped
+`pre-restore` quarantine name, atomically places the candidate, and verifies the
+result again. The prior database is never silently deleted.
+
+Any failure before placement leaves the live database untouched. If
+post-placement validation fails, Prime quarantines the failed candidate,
+automatically restores the preserved prior database when one existed, and
+reports the recovery. Successful output explicitly says collection can resume.
+The collector participates in the same short-lived Prime maintenance lock; CSV
+collection remains authoritative and a lock only makes optional shadow
+ingestion fail safely for that cycle.
+
+`restore-latest` examines backups newest first and performs full verification.
+It skips corrupt, incomplete, hash-mismatched, or schema-incompatible candidates
+with reasons, then restores the newest verified compatible backup. It never
+selects by filename alone and never restores an unverified candidate.
+
+### CSV rebuild escape hatch
+
+While CSV remains authoritative, `rebuild-from-csv` is the final recovery path.
+It acquires the maintenance lock, builds a clean temporary schema, ingests all
+matching retained CSVs, rejects any rebuild with malformed rows, requires exact
+source reconciliation and clean integrity, and only then performs the same
+preserve-and-atomic-place operation as restore. Failure leaves the current
+database untouched. Run `status` after success before resuming any manually
+stopped jobs.
+
+## Automated daily backup on macOS
+
+The tracked `launchd/com.mbeason.prime-observer.storage-backup.plist` runs a
+separate backup process daily at 03:15 local time. It does not run collection,
+and backup failure cannot fail or delay the collector. Standard output and
+errors go to `logs/storage-backup.log`. The default iCloud destination needs no
+secret or plist environment entry; customize the plist's `EnvironmentVariables`
+with `PRIME_OBSERVER_BACKUP_DIR` if required.
+
+Install and enable it using the same per-user LaunchAgent convention as the
+other Prime jobs:
+
+```bash
+mkdir -p "$HOME/Library/LaunchAgents" logs
+cp launchd/com.mbeason.prime-observer.storage-backup.plist \
+  "$HOME/Library/LaunchAgents/com.mbeason.prime-observer.storage-backup.plist"
+launchctl bootstrap "gui/$(id -u)" \
+  "$HOME/Library/LaunchAgents/com.mbeason.prime-observer.storage-backup.plist"
+```
+
+Disable and re-enable it with:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.mbeason.prime-observer.storage-backup"
+launchctl bootstrap "gui/$(id -u)" \
+  "$HOME/Library/LaunchAgents/com.mbeason.prime-observer.storage-backup.plist"
+```
+
+The recovery objective is one straightforward verified backup per day, a
+one-command latest-good restore, and a tested CSV rebuild path while CSV remains
+authoritative. Prime does not add replication, high availability, or manual DBA
+procedures for this personal local-first system.
+
+## Storage Phase 4 cutover gates
+
+There is no arbitrary bake-period gate. A separately authorized reader cutover
+may proceed immediately only when all of these are current and passing:
+
+- verified backup creation and explicit verification
+- `restore-latest`, including corrupt-newest fallback
+- corruption recovery and automatic rollback tests
+- CSV rebuild with clean integrity and exact reconciliation
+- clean live SQLite integrity
+- exact live CSV/SQLite reconciliation
+- exact Phase 2 full-row read equivalence
+
+Phase 3 does not itself migrate any production reader. Until a later explicit
+cutover, SQLite remains shadow, rebuildable, and non-authoritative; CSV remains
+the authoritative raw source; the browser remains a generated-artifact consumer
+with no database access; Mesh Signal remains a separate read-only source; and
+immutable incident snapshots remain files.

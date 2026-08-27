@@ -462,7 +462,9 @@ Projection roles:
   shadow ingestion, transactions, provenance, integrity checks, and
   validation-only queries for `data/prime_observer.db`. Storage Phase 2 adds a
   read-only bounded raw query helper and `bin/evaluate_storage_read_path.py`
-  parity/benchmark harness. CSV remains
+  parity/benchmark harness. Storage Phase 3 adds verified SQLite-native backup,
+  deterministic retention, defensive restore/restore-latest, operator health,
+  and atomic CSV rebuild tooling. CSV remains
   authoritative; no production semantic producer reads SQLite. See
   `docs/storage.md`.
 

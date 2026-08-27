@@ -8,17 +8,22 @@ semantic producer and provides only ingestion and diagnostic bounded reads.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Iterator, Mapping, Sequence
 
 
 BASE = Path(__file__).resolve().parents[1]
@@ -26,6 +31,21 @@ DEFAULT_DATABASE = BASE / "data" / "prime_observer.db"
 DEFAULT_PATTERN = "bakeoff_*.csv"
 SCHEMA_VERSION = 1
 BUSY_TIMEOUT_MS = 2_000
+BACKUP_ENVIRONMENT = "PRIME_OBSERVER_BACKUP_DIR"
+DEFAULT_BACKUP_DIRECTORY = (
+    Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "com~apple~CloudDocs"
+    / "Prime Observer Backups"
+)
+DEFAULT_DAILY_BACKUPS = 7
+DEFAULT_WEEKLY_BACKUPS = 4
+DEFAULT_MONTHLY_BACKUPS = 3
+BACKUP_OVERDUE_HOURS = 36
+BACKUP_PREFIX = "prime-observer-"
+BACKUP_SUFFIX = ".sqlite3"
+MANIFEST_SUFFIX = ".manifest.json"
 
 CSV_FIELDS = (
     "ts",
@@ -87,6 +107,14 @@ class UnsupportedSchemaVersion(StorageError):
 
 class MalformedObservation(ValueError):
     """One CSV record cannot be represented as a raw observation."""
+
+
+class BackupValidationError(StorageError):
+    """A backup is incomplete, incompatible, corrupt, or inconsistent."""
+
+
+class StorageBusy(StorageError):
+    """A storage writer is active, so destructive maintenance must wait."""
 
 
 @dataclass(frozen=True)
@@ -761,6 +789,549 @@ def integrity_check(connection: sqlite3.Connection) -> str:
     return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
 
 
+def backup_directory(configured: Path | str | None = None) -> Path:
+    if configured is not None:
+        return Path(configured).expanduser()
+    environment = os.environ.get(BACKUP_ENVIRONMENT)
+    if environment:
+        return Path(environment).expanduser()
+    return DEFAULT_BACKUP_DIRECTORY
+
+
+def manifest_path(backup: Path | str) -> Path:
+    path = Path(backup)
+    return path.with_name(path.name + MANIFEST_SUFFIX)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _database_summary(connection: sqlite3.Connection) -> dict[str, object]:
+    bounds = connection.execute(
+        "SELECT COUNT(*), MIN(observed_at), MAX(observed_at) FROM raw_probe_observations"
+    ).fetchone()
+    return {
+        "schema_version": verify_schema(connection),
+        "observation_count": int(bounds[0]),
+        "earliest_observation": bounds[1],
+        "latest_observation": bounds[2],
+        "integrity": integrity_check(connection),
+    }
+
+
+def _git_revision() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=BASE,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def _write_json_atomic(path: Path, value: Mapping[str, object]) -> None:
+    temporary = path.with_name(f".{path.name}.partial-{os.getpid()}")
+    try:
+        with temporary.open("x", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+@contextlib.contextmanager
+def exclusive_storage_lock(
+    database: Path | str = DEFAULT_DATABASE, *, blocking: bool = False
+) -> Iterator[None]:
+    """Coordinate Prime-owned writers and destructive storage maintenance."""
+    lock_path = Path(database).with_name(Path(database).name + ".maintenance.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+") as handle:
+        os.chmod(lock_path, 0o600)
+        operation = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+        try:
+            fcntl.flock(handle.fileno(), operation)
+        except BlockingIOError as exc:
+            raise StorageBusy("collection or storage writing is active; try again shortly") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _assert_sqlite_writer_idle(database: Path) -> None:
+    if not database.exists():
+        return
+    connection = sqlite3.connect(database, timeout=0.1)
+    try:
+        connection.execute("PRAGMA busy_timeout = 100")
+        try:
+            connection.execute("BEGIN EXCLUSIVE")
+            connection.rollback()
+        except sqlite3.OperationalError as exc:
+            if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                raise StorageBusy("SQLite writing is active; try again shortly") from exc
+            raise
+        except sqlite3.DatabaseError:
+            # A damaged live database is a valid restore target. The Prime lock
+            # still excludes cooperating collector/storage writers.
+            pass
+    finally:
+        connection.close()
+
+
+def _resolve_backup_reference(reference: Path | str, directory: Path) -> Path:
+    path = Path(reference).expanduser()
+    if path.is_absolute() or path.parent != Path("."):
+        return path
+    direct = directory / path
+    if direct.exists():
+        return direct
+    with_suffix = directory / f"{path}{BACKUP_SUFFIX}"
+    return with_suffix if with_suffix.exists() else direct
+
+
+def verify_backup(backup: Path | str) -> dict[str, object]:
+    path = Path(backup).expanduser()
+    sidecar = manifest_path(path)
+    if not path.is_file():
+        raise BackupValidationError(f"backup does not exist: {path}")
+    if not sidecar.is_file():
+        raise BackupValidationError(f"backup manifest does not exist: {sidecar}")
+    try:
+        manifest = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BackupValidationError(f"backup manifest is unreadable: {sidecar}") from exc
+    if not isinstance(manifest, dict) or manifest.get("validation_status") != "verified":
+        raise BackupValidationError("backup manifest is not marked verified")
+    if manifest.get("format_version") != 1:
+        raise BackupValidationError("backup manifest format is unsupported")
+    try:
+        _backup_timestamp(manifest.get("created_at"))
+    except ValueError as exc:
+        raise BackupValidationError("backup manifest creation time is invalid") from exc
+    if manifest.get("backup_size_bytes") != path.stat().st_size:
+        raise BackupValidationError("backup file size does not match its manifest")
+    expected_hash = manifest.get("sha256")
+    if not isinstance(expected_hash, str) or _sha256_file(path) != expected_hash:
+        raise BackupValidationError("backup file hash does not match its manifest")
+    try:
+        with contextlib.closing(connect_read_only(path)) as connection:
+            summary = _database_summary(connection)
+    except (sqlite3.Error, StorageError) as exc:
+        raise BackupValidationError(f"backup database validation failed: {exc}") from exc
+    if summary["integrity"] != "ok":
+        raise BackupValidationError(f"backup integrity check failed: {summary['integrity']}")
+    for field in (
+        "schema_version",
+        "observation_count",
+        "earliest_observation",
+        "latest_observation",
+        "integrity",
+    ):
+        if manifest.get(field) != summary[field]:
+            raise BackupValidationError(f"backup manifest {field} does not match database")
+    return {**manifest, "backup": str(path.resolve()), "manifest": str(sidecar.resolve())}
+
+
+def _backup_timestamp(value: object) -> dt.datetime:
+    if not isinstance(value, str):
+        raise ValueError("missing creation time")
+    parsed = dt.datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        raise ValueError("creation time has no UTC offset")
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def list_backups(directory: Path | str | None = None) -> list[dict[str, object]]:
+    destination = backup_directory(directory)
+    if not destination.is_dir():
+        return []
+    records: list[dict[str, object]] = []
+    for path in destination.glob(f"{BACKUP_PREFIX}*{BACKUP_SUFFIX}"):
+        sidecar = manifest_path(path)
+        record: dict[str, object] = {
+            "backup": str(path.resolve()),
+            "manifest": str(sidecar.resolve()),
+            "verified": False,
+        }
+        try:
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                record.update(payload)
+                record["verified"] = payload.get("validation_status") == "verified"
+        except (OSError, json.JSONDecodeError):
+            record["error"] = "missing or unreadable manifest"
+        records.append(record)
+    return sorted(
+        records,
+        key=lambda item: str(item.get("created_at") or Path(str(item["backup"])).name),
+        reverse=True,
+    )
+
+
+def apply_backup_retention(
+    directory: Path | str,
+    *,
+    daily: int = DEFAULT_DAILY_BACKUPS,
+    weekly: int = DEFAULT_WEEKLY_BACKUPS,
+    monthly: int = DEFAULT_MONTHLY_BACKUPS,
+) -> list[str]:
+    records: list[tuple[dt.datetime, Path]] = []
+    for item in list_backups(directory):
+        if not item.get("verified"):
+            continue
+        try:
+            records.append((_backup_timestamp(item.get("created_at")), Path(str(item["backup"]))))
+        except ValueError:
+            continue
+    records.sort(reverse=True)
+
+    def newest_by_bucket(key, limit: int) -> set[Path]:
+        selected: dict[object, Path] = {}
+        for created, path in records:
+            selected.setdefault(key(created), path)
+        return set(list(selected.values())[: max(0, limit)])
+
+    keep = newest_by_bucket(lambda value: value.date(), daily)
+    keep |= newest_by_bucket(lambda value: value.isocalendar()[:2], weekly)
+    keep |= newest_by_bucket(lambda value: (value.year, value.month), monthly)
+    removed: list[str] = []
+    for _, path in records:
+        if path in keep:
+            continue
+        manifest_path(path).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
+        removed.append(str(path.resolve()))
+    if Path(directory).is_dir():
+        _fsync_directory(Path(directory))
+    return removed
+
+
+def create_backup(
+    database: Path | str = DEFAULT_DATABASE,
+    directory: Path | str | None = None,
+    *,
+    now: dt.datetime | None = None,
+    retain: bool = True,
+) -> dict[str, object]:
+    source_path = Path(database)
+    destination = backup_directory(directory)
+    if not source_path.is_file():
+        raise DatabaseNotInitialized(f"shadow database does not exist: {source_path}")
+    icloud_root = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+    if destination == DEFAULT_BACKUP_DIRECTORY and not icloud_root.is_dir():
+        raise StorageError(
+            f"default iCloud Drive destination is unavailable; set {BACKUP_ENVIRONMENT}"
+        )
+    destination.mkdir(parents=True, exist_ok=True)
+    if not os.access(destination, os.W_OK):
+        raise StorageError(f"backup destination is not writable: {destination}")
+    created = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
+    stamp = created.strftime("%Y%m%dT%H%M%S.%fZ")
+    final_path = destination / f"{BACKUP_PREFIX}{stamp}{BACKUP_SUFFIX}"
+    if final_path.exists() or manifest_path(final_path).exists():
+        raise StorageError(f"backup already exists: {final_path}")
+
+    with tempfile.TemporaryDirectory(prefix="prime-observer-backup-", dir=source_path.parent) as temp:
+        consistent = Path(temp) / "consistent.sqlite3"
+        with contextlib.closing(connect_read_only(source_path)) as source:
+            verify_schema(source)
+            with contextlib.closing(sqlite3.connect(consistent)) as target:
+                source.backup(target)
+        os.chmod(consistent, 0o600)
+        with contextlib.closing(connect_read_only(consistent)) as verified:
+            backup_summary = _database_summary(verified)
+        if backup_summary["integrity"] != "ok":
+            raise BackupValidationError("consistent backup failed integrity validation")
+
+        partial = destination / f".{final_path.name}.partial-{os.getpid()}"
+        try:
+            with consistent.open("rb") as source, partial.open("xb") as target:
+                shutil.copyfileobj(source, target, 1024 * 1024)
+                target.flush()
+                os.fsync(target.fileno())
+            os.chmod(partial, 0o600)
+            with contextlib.closing(connect_read_only(partial)) as copied:
+                copied_summary = _database_summary(copied)
+            if copied_summary != backup_summary:
+                raise BackupValidationError("destination copy failed database validation")
+            sha256 = _sha256_file(partial)
+            os.replace(partial, final_path)
+            _fsync_directory(destination)
+        finally:
+            partial.unlink(missing_ok=True)
+
+    manifest: dict[str, object] = {
+        "format_version": 1,
+        "validation_status": "verified",
+        "created_at": created.isoformat(timespec="microseconds"),
+        "schema_version": backup_summary["schema_version"],
+        "observation_count": backup_summary["observation_count"],
+        "earliest_observation": backup_summary["earliest_observation"],
+        "latest_observation": backup_summary["latest_observation"],
+        "integrity": backup_summary["integrity"],
+        "source_database": str(source_path.resolve()),
+        "source_size_bytes": source_path.stat().st_size,
+        "backup_size_bytes": final_path.stat().st_size,
+        "sha256": sha256,
+        "prime_observer_commit": _git_revision(),
+    }
+    _write_json_atomic(manifest_path(final_path), manifest)
+    _fsync_directory(destination)
+    verified_manifest = verify_backup(final_path)
+    verified_manifest["retention_removed"] = (
+        apply_backup_retention(destination) if retain else []
+    )
+    return verified_manifest
+
+
+def _validate_database_file(path: Path) -> dict[str, object]:
+    try:
+        with contextlib.closing(connect_read_only(path)) as connection:
+            summary = _database_summary(connection)
+    except (sqlite3.Error, StorageError) as exc:
+        raise BackupValidationError(f"database validation failed for {path}: {exc}") from exc
+    if summary["integrity"] != "ok":
+        raise BackupValidationError(f"database integrity check failed: {summary['integrity']}")
+    return summary
+
+
+def _quarantine_name(database: Path, label: str, now: dt.datetime | None = None) -> Path:
+    created = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
+    stamp = created.strftime("%Y%m%dT%H%M%S.%fZ")
+    return database.with_name(f"{database.name}.{label}-{stamp}")
+
+
+def _place_database_atomically(
+    candidate: Path,
+    database: Path,
+    *,
+    expected: Mapping[str, object],
+    label: str,
+) -> dict[str, object]:
+    database.parent.mkdir(parents=True, exist_ok=True)
+    quarantine = _quarantine_name(database, label)
+    previous_sidecars: list[tuple[Path, Path]] = []
+    previous_preserved = False
+    try:
+        if database.exists():
+            os.replace(database, quarantine)
+            previous_preserved = True
+        for suffix in ("-journal", "-wal", "-shm"):
+            sidecar = database.with_name(database.name + suffix)
+            if sidecar.exists():
+                preserved = quarantine.with_name(quarantine.name + suffix)
+                os.replace(sidecar, preserved)
+                previous_sidecars.append((sidecar, preserved))
+        os.replace(candidate, database)
+        os.chmod(database, 0o600)
+        _fsync_directory(database.parent)
+        placed = _validate_database_file(database)
+        for field in (
+            "schema_version",
+            "observation_count",
+            "earliest_observation",
+            "latest_observation",
+        ):
+            if placed[field] != expected[field]:
+                raise BackupValidationError(f"restored database {field} changed after placement")
+        return {
+            "database": str(database.resolve()),
+            "previous_database": str(quarantine.resolve()) if previous_preserved else None,
+            "validation": placed,
+            "collection_can_resume": True,
+        }
+    except Exception as exc:
+        failed = None
+        if database.exists():
+            failed = _quarantine_name(database, "failed-restored")
+            os.replace(database, failed)
+        if previous_preserved and quarantine.exists():
+            os.replace(quarantine, database)
+            for original, preserved in previous_sidecars:
+                if preserved.exists():
+                    os.replace(preserved, original)
+            _fsync_directory(database.parent)
+        recovery = "previous database automatically recovered" if previous_preserved else "no previous database existed"
+        raise StorageError(
+            f"post-placement validation failed; {recovery}; failed candidate preserved at {failed}: {exc}"
+        ) from exc
+
+
+def restore_backup(
+    backup: Path | str,
+    database: Path | str = DEFAULT_DATABASE,
+    directory: Path | str | None = None,
+) -> dict[str, object]:
+    database_path = Path(database)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    selected = _resolve_backup_reference(backup, backup_directory(directory))
+    metadata = verify_backup(selected)
+    expected = {
+        field: metadata[field]
+        for field in (
+            "schema_version",
+            "observation_count",
+            "earliest_observation",
+            "latest_observation",
+        )
+    }
+    with exclusive_storage_lock(database_path):
+        _assert_sqlite_writer_idle(database_path)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{database_path.name}.restore-", dir=database_path.parent
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            with selected.open("rb") as source, temporary.open("wb") as target:
+                shutil.copyfileobj(source, target, 1024 * 1024)
+                target.flush()
+                os.fsync(target.fileno())
+            os.chmod(temporary, 0o600)
+            temporary_summary = _validate_database_file(temporary)
+            if any(temporary_summary[field] != expected[field] for field in expected):
+                raise BackupValidationError("temporary restore does not match verified backup")
+            result = _place_database_atomically(
+                temporary,
+                database_path,
+                expected=expected,
+                label="pre-restore",
+            )
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {"restored_from": str(selected.resolve()), **result}
+
+
+def restore_latest(
+    database: Path | str = DEFAULT_DATABASE,
+    directory: Path | str | None = None,
+) -> dict[str, object]:
+    destination = backup_directory(directory)
+    skipped: list[dict[str, str]] = []
+    for item in list_backups(destination):
+        selected = Path(str(item["backup"]))
+        try:
+            verify_backup(selected)
+        except (OSError, sqlite3.Error, StorageError, ValueError) as exc:
+            skipped.append({"backup": str(selected), "reason": str(exc)})
+            continue
+        result = restore_backup(selected, database, destination)
+        result["skipped_newer_backups"] = skipped
+        return result
+    reasons = "; ".join(f"{item['backup']}: {item['reason']}" for item in skipped)
+    raise BackupValidationError(
+        "no verified compatible backup is available" + (f" ({reasons})" if reasons else "")
+    )
+
+
+def rebuild_from_csv(
+    database: Path | str = DEFAULT_DATABASE,
+    data_directory: Path | str = BASE / "data",
+    pattern: str = DEFAULT_PATTERN,
+) -> dict[str, object]:
+    database_path = Path(database)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_storage_lock(database_path):
+        _assert_sqlite_writer_idle(database_path)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{database_path.name}.rebuild-", dir=database_path.parent
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        temporary.unlink()
+        try:
+            initialize_database(temporary)
+            with contextlib.closing(connect(temporary)) as connection:
+                corpus = ingest_corpus(connection, data_directory, pattern)
+                status = database_status(connection, temporary, data_directory, pattern)
+            if corpus.rejected_rows:
+                raise StorageError(
+                    f"CSV rebuild rejected {corpus.rejected_rows} row(s); live database untouched"
+                )
+            if status["integrity"] != "ok" or not status["reconciliation_current"]:
+                raise StorageError("CSV rebuild did not pass integrity and exact reconciliation")
+            expected = {
+                "schema_version": status["schema_version"],
+                "observation_count": status["observation_count"],
+                "earliest_observation": status["earliest_timestamp"],
+                "latest_observation": status["latest_timestamp"],
+            }
+            result = _place_database_atomically(
+                temporary,
+                database_path,
+                expected=expected,
+                label="pre-rebuild",
+            )
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {"csv_rebuild": asdict(corpus), **result}
+
+
+def backup_health(directory: Path | str | None = None) -> dict[str, object]:
+    destination = backup_directory(directory)
+    availability_probe = destination
+    while not availability_probe.exists() and availability_probe != availability_probe.parent:
+        availability_probe = availability_probe.parent
+    destination_available = (
+        availability_probe.is_dir() and os.access(availability_probe, os.W_OK)
+    )
+    records = list_backups(destination)
+    compatible = [
+        item
+        for item in records
+        if item.get("verified") and item.get("schema_version") == SCHEMA_VERSION
+    ]
+    latest = None
+    invalid_candidates: list[dict[str, str]] = []
+    for item in compatible:
+        try:
+            latest = verify_backup(Path(str(item["backup"])))
+            break
+        except (OSError, sqlite3.Error, StorageError, ValueError) as exc:
+            invalid_candidates.append({"backup": str(item["backup"]), "reason": str(exc)})
+    overdue = True
+    if latest is not None:
+        try:
+            age = dt.datetime.now(dt.timezone.utc) - _backup_timestamp(latest.get("created_at"))
+            overdue = age > dt.timedelta(hours=BACKUP_OVERDUE_HOURS)
+        except ValueError:
+            overdue = True
+    return {
+        "backup_directory": str(destination.resolve()),
+        "destination_available": destination_available,
+        "valid_compatible_backup_available": latest is not None,
+        "latest_verified_backup": latest.get("backup") if latest else None,
+        "latest_verified_backup_created_at": latest.get("created_at") if latest else None,
+        "backup_overdue": overdue,
+        "recorded_verified_backup_count": len(compatible),
+        "invalid_newer_candidates": invalid_candidates,
+    }
+
+
 def database_status(
     connection: sqlite3.Connection,
     database: Path | str = DEFAULT_DATABASE,
@@ -875,10 +1446,31 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status", help="show validation-oriented database status")
     status.add_argument("--data-directory", type=Path, default=BASE / "data")
     status.add_argument("--pattern", default=DEFAULT_PATTERN)
+    status.add_argument("--backup-directory", type=Path)
+    status.add_argument("--verbose", action="store_true", help="include per-target/source detail")
     query = subparsers.add_parser("query", help="query a bounded observation range")
     query.add_argument("--start", required=True)
     query.add_argument("--end", required=True)
     subparsers.add_parser("integrity", help="run SQLite integrity_check")
+    backup = subparsers.add_parser("backup", help="create and retain a verified backup")
+    backup.add_argument("--backup-directory", type=Path)
+    backups = subparsers.add_parser("backups", help="list backup manifests")
+    backups.add_argument("--backup-directory", type=Path)
+    verify = subparsers.add_parser("verify-backup", help="fully verify one backup")
+    verify.add_argument("backup", type=Path)
+    verify.add_argument("--backup-directory", type=Path)
+    restore = subparsers.add_parser("restore", help="defensively restore one verified backup")
+    restore.add_argument("backup", type=Path)
+    restore.add_argument("--backup-directory", type=Path)
+    restore_latest_parser = subparsers.add_parser(
+        "restore-latest", help="restore the newest verified compatible backup"
+    )
+    restore_latest_parser.add_argument("--backup-directory", type=Path)
+    rebuild = subparsers.add_parser(
+        "rebuild-from-csv", help="atomically rebuild the shadow database from authoritative CSV"
+    )
+    rebuild.add_argument("--data-directory", type=Path, default=BASE / "data")
+    rebuild.add_argument("--pattern", default=DEFAULT_PATTERN)
     return parser
 
 
@@ -889,24 +1481,94 @@ def main(argv: Sequence[str] | None = None) -> int:
             version = initialize_database(args.database)
             _print_json({"database": str(args.database.resolve()), "schema_version": version})
             return 0
+        if args.command == "backup":
+            _print_json(create_backup(args.database, args.backup_directory))
+            return 0
+        if args.command == "backups":
+            _print_json(
+                {
+                    "backup_directory": str(backup_directory(args.backup_directory).resolve()),
+                    "backups": list_backups(args.backup_directory),
+                }
+            )
+            return 0
+        if args.command == "verify-backup":
+            selected = _resolve_backup_reference(
+                args.backup, backup_directory(args.backup_directory)
+            )
+            _print_json(verify_backup(selected))
+            return 0
+        if args.command == "restore":
+            _print_json(restore_backup(args.backup, args.database, args.backup_directory))
+            return 0
+        if args.command == "restore-latest":
+            _print_json(restore_latest(args.database, args.backup_directory))
+            return 0
+        if args.command == "rebuild-from-csv":
+            _print_json(rebuild_from_csv(args.database, args.data_directory, args.pattern))
+            return 0
+        if args.command == "status":
+            health = backup_health(args.backup_directory)
+            try:
+                with contextlib.closing(connect(args.database)) as status_connection:
+                    database = database_status(
+                        status_connection, args.database, args.data_directory, args.pattern
+                    )
+                exceptions = []
+                if database["integrity"] != "ok":
+                    exceptions.append("database integrity failure")
+                if not database["reconciliation_current"]:
+                    exceptions.append("CSV reconciliation is stale")
+                if not args.verbose:
+                    database = {
+                        key: value
+                        for key, value in database.items()
+                        if key not in ("counts_by_target", "counts_by_source_file")
+                    } | {
+                        "target_count": len(database["counts_by_target"]),
+                        "tracked_source_file_count": len(database["counts_by_source_file"]),
+                    }
+            except (OSError, sqlite3.Error, StorageError) as exc:
+                database = {
+                    "database_exists": Path(args.database).exists(),
+                    "database_path": str(Path(args.database).resolve()),
+                    "error": str(exc),
+                }
+                exceptions = ["database missing or unusable"]
+            if health["backup_overdue"]:
+                exceptions.append("verified backup is overdue")
+            if not health["valid_compatible_backup_available"]:
+                exceptions.append("no verified compatible backup is available")
+            if not health["destination_available"]:
+                exceptions.append("backup destination is unavailable")
+            _print_json(
+                {
+                    "overall": "action_required" if exceptions else "ok",
+                    "exceptions": exceptions,
+                    "database": database,
+                    "backup": health,
+                    "authority": "CSV",
+                    "sqlite_role": "shadow_non_authoritative",
+                }
+            )
+            return 1 if exceptions else 0
         connection = connect(args.database)
         try:
             if args.command == "ingest":
-                result = (
-                    summarize_results(
-                        tuple(
-                            ingest_csv(connection, path)
-                            for path in sorted(args.paths, key=lambda path: str(path))
+                with exclusive_storage_lock(args.database):
+                    result = (
+                        summarize_results(
+                            tuple(
+                                ingest_csv(connection, path)
+                                for path in sorted(args.paths, key=lambda path: str(path))
+                            )
                         )
+                        if args.paths
+                        else ingest_corpus(connection, args.data_directory, args.pattern)
                     )
-                    if args.paths
-                    else ingest_corpus(connection, args.data_directory, args.pattern)
-                )
                 output = asdict(result)
                 output["sqlite_final_row_count"] = observation_count(connection)
                 _print_json(output)
-            elif args.command == "status":
-                _print_json(database_status(connection, args.database, args.data_directory, args.pattern))
             elif args.command == "query":
                 _print_json(observations_between(connection, args.start, args.end))
             elif args.command == "integrity":

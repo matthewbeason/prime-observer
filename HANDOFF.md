@@ -14,6 +14,9 @@ Prime Observer currently ships:
   rebuildable SQLite database while CSV remains authoritative
 - Storage Phase 2 diagnostic read-path evaluation with exact bounded raw-history
   parity, read-only comparison tooling, and no production reader cutover
+- Storage Phase 3 verified SQLite-native backup, deterministic retention,
+  defensive restore/restore-latest, atomic CSV rebuild, operator health status,
+  and a tracked daily LaunchAgent; SQLite remains a non-authoritative shadow
 - deterministic health modeling over local telemetry
 - observation-backed attribution and episode semantics
 - automatic current-event investigation generation with incident lifecycle,
@@ -97,7 +100,8 @@ Current artifact flow:
 
 - telemetry history in `data/bakeoff_YYYYMMDD.csv`
 - post-CSV, fail-safe shadow ingestion through `bin/storage.py` into generated
-  `data/prime_observer.db`; no semantic producer or browser reads it
+  `data/prime_observer.db`; Prime-owned maintenance locking coordinates shadow
+  writes with restore/rebuild, and no semantic producer or browser reads it
 - `bin/transform_latest.py` generates dashboard, observation, baseline,
   interval, similarity, learning, time-context, mutable current investigation,
   write-once completed snapshot, and investigation catalog artifacts

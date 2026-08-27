@@ -200,10 +200,11 @@ def main():
     # incompatible, or unwritable database must never invalidate collection.
     connection = None
     try:
-        connection = storage.connect()
-        # Re-reading the bounded daily file also catches a prior collection
-        # cycle whose shadow write failed or was interrupted.
-        storage.ingest_csv(connection, dayfile, source_kind="collector_shadow")
+        with storage.exclusive_storage_lock(storage.DEFAULT_DATABASE):
+            connection = storage.connect()
+            # Re-reading the bounded daily file also catches a prior collection
+            # cycle whose shadow write failed or was interrupted.
+            storage.ingest_csv(connection, dayfile, source_kind="collector_shadow")
     except Exception as exc:
         print(
             f"Warning: SQLite shadow ingestion failed; CSV collection remains authoritative: {exc}",

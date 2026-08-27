@@ -52,19 +52,22 @@ Post-`v0.9.0` committed work (ahead of the `v0.9.0` tag, no new release yet):
 - semantic consistency phase: one Python-owned evaluator across dashboard
   health, latest interval summary, observation/attribution production, and
   current investigation production; browser semantic fallbacks removed
+- Storage Phases 1-2: rebuildable SQLite shadow ingestion plus exact read-only
+  bounded raw-history equivalence tooling, with CSV still authoritative
+- read-only Mesh Signal history schema 0.1 projection with identity-minimized
+  derived change markers and deterministic before/during/after context
 
 Current uncommitted working milestone:
 
-- read-only Mesh Signal history schema 0.1 projection with identity-minimized
-  derived change markers and deterministic before/during/after context for the
-  existing 15-minute dashboard intervals; no health, attribution, topology,
-  causation, Observation, Investigation, or Operator Assistant expansion
+- Storage Phase 3 verified backup, retention, defensive restore and
+  restore-latest, atomic CSV rebuild, operator storage health, and a daily
+  LaunchAgent; no reader cutover or SQLite authority change
 
 ## Current State
 
-The current repository state is `HEAD` ahead of the `v0.9.0` tag, with the Mesh
-history milestone present only as uncommitted working-tree changes. There is no
-newer release tag yet.
+The current repository state is `HEAD` ahead of the `v0.9.0` tag, with Storage
+Phase 3 present only as uncommitted working-tree changes. There is no newer
+release tag yet.
 
 The product is a visualization-first local network observability workspace.
 Python owns deterministic health, attribution, baseline, incident, lifecycle,

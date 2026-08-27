@@ -1,5 +1,7 @@
 import csv
+import datetime as dt
 import io
+import json
 import os
 import sqlite3
 import sys
@@ -314,6 +316,183 @@ class StorageTest(unittest.TestCase):
     def test_integrity_check(self):
         with self.initialize() as connection:
             self.assertEqual(storage.integrity_check(connection), "ok")
+
+    def test_verified_backup_and_restore_preserve_previous_database(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, backups, retain=False)
+        self.assertEqual(created["validation_status"], "verified")
+        self.assertEqual(storage.verify_backup(created["backup"])["observation_count"], 1)
+        with closing(storage.connect(self.database)) as connection:
+            storage.ingest_rows(
+                connection,
+                [sample_row(ts="2026-08-26T12:01:00-07:00")],
+                source_file="data/new.csv",
+            )
+        result = storage.restore_backup(created["backup"], self.database, backups)
+        self.assertTrue(Path(result["previous_database"]).exists())
+        with closing(storage.connect(self.database)) as connection:
+            self.assertEqual(storage.observation_count(connection), 1)
+
+    def test_restore_replaces_corrupt_live_database_and_preserves_it(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, backups, retain=False)
+        self.database.write_bytes(b"damaged live database")
+        result = storage.restore_backup(created["backup"], self.database, backups)
+        self.assertTrue(Path(result["previous_database"]).exists())
+        self.assertEqual(Path(result["previous_database"]).read_bytes(), b"damaged live database")
+        with closing(storage.connect(self.database)) as connection:
+            self.assertEqual(storage.integrity_check(connection), "ok")
+
+    def test_restore_latest_skips_corrupt_newest_and_uses_valid_older(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        older = storage.create_backup(
+            self.database,
+            backups,
+            now=dt.datetime(2026, 8, 25, tzinfo=dt.timezone.utc),
+            retain=False,
+        )
+        with closing(storage.connect(self.database)) as connection:
+            storage.ingest_rows(
+                connection,
+                [sample_row(ts="2026-08-26T12:01:00-07:00")],
+                source_file="data/new.csv",
+            )
+        newest = storage.create_backup(
+            self.database,
+            backups,
+            now=dt.datetime(2026, 8, 26, tzinfo=dt.timezone.utc),
+            retain=False,
+        )
+        Path(newest["backup"]).write_bytes(b"corrupt newest backup")
+        result = storage.restore_latest(self.database, backups)
+        self.assertEqual(result["restored_from"], older["backup"])
+        self.assertEqual(len(result["skipped_newer_backups"]), 1)
+
+    def test_unsupported_backup_schema_and_partial_backup_are_rejected(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, backups, retain=False)
+        backup = Path(created["backup"])
+        with closing(sqlite3.connect(backup)) as connection:
+            connection.execute(f"PRAGMA user_version = {storage.SCHEMA_VERSION + 1}")
+            connection.commit()
+        manifest = json.loads(storage.manifest_path(backup).read_text())
+        manifest["sha256"] = storage._sha256_file(backup)
+        storage.manifest_path(backup).write_text(json.dumps(manifest))
+        with self.assertRaises(storage.BackupValidationError):
+            storage.verify_backup(backup)
+        partial = backups / "prime-observer-partial.sqlite3"
+        partial.write_bytes(b"partial")
+        with self.assertRaisesRegex(storage.BackupValidationError, "manifest"):
+            storage.verify_backup(partial)
+
+    def test_backup_integrity_failure_is_rejected_even_with_updated_hash(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, backups, retain=False)
+        backup = Path(created["backup"])
+        backup.write_bytes(b"not a sqlite database")
+        manifest = json.loads(storage.manifest_path(backup).read_text())
+        manifest["backup_size_bytes"] = backup.stat().st_size
+        manifest["sha256"] = storage._sha256_file(backup)
+        storage.manifest_path(backup).write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(storage.BackupValidationError, "database validation"):
+            storage.verify_backup(backup)
+
+    def test_backup_destination_failure_does_not_change_live_database(self):
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        before = storage._sha256_file(self.database)
+        unavailable = self.base / "not-a-directory"
+        unavailable.write_text("file")
+        with self.assertRaises(OSError):
+            storage.create_backup(self.database, unavailable / "backups")
+        self.assertEqual(storage._sha256_file(self.database), before)
+
+    def test_duplicate_backup_name_fails_without_overwrite(self):
+        backups = self.base / "backups"
+        when = dt.datetime(2026, 8, 26, tzinfo=dt.timezone.utc)
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        first = storage.create_backup(self.database, backups, now=when, retain=False)
+        before = Path(first["backup"]).read_bytes()
+        with self.assertRaisesRegex(storage.StorageError, "already exists"):
+            storage.create_backup(self.database, backups, now=when, retain=False)
+        self.assertEqual(Path(first["backup"]).read_bytes(), before)
+
+    def test_restore_post_placement_failure_recovers_previous_database(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, backups, retain=False)
+        original = storage._sha256_file(self.database)
+        real_validate = storage._validate_database_file
+        calls = 0
+
+        def fail_after_placement(path):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise storage.BackupValidationError("injected post-placement failure")
+            return real_validate(path)
+
+        with mock.patch.object(storage, "_validate_database_file", side_effect=fail_after_placement):
+            with self.assertRaisesRegex(storage.StorageError, "automatically recovered"):
+                storage.restore_backup(created["backup"], self.database, backups)
+        self.assertEqual(storage._sha256_file(self.database), original)
+
+    def test_rebuild_from_csv_is_atomic_and_reconciled(self):
+        self.write_csv("bakeoff_20260826.csv", [sample_row()])
+        storage.initialize_database(self.database)
+        result = storage.rebuild_from_csv(self.database, self.data)
+        self.assertTrue(result["collection_can_resume"])
+        self.assertTrue(Path(result["previous_database"]).exists())
+        with closing(storage.connect(self.database)) as connection:
+            status = storage.database_status(connection, self.database, self.data)
+        self.assertEqual(status["observation_count"], 1)
+        self.assertTrue(status["reconciliation_current"])
+
+    def test_retention_uses_daily_weekly_monthly_buckets(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        for day in range(1, 16):
+            storage.create_backup(
+                self.database,
+                backups,
+                now=dt.datetime(2026, 8, day, tzinfo=dt.timezone.utc),
+                retain=False,
+            )
+        removed = storage.apply_backup_retention(backups, daily=2, weekly=2, monthly=1)
+        remaining = storage.list_backups(backups)
+        self.assertTrue(removed)
+        self.assertLessEqual(len(remaining), 5)
+        self.assertEqual(len(list(backups.glob("*.manifest.json"))), len(remaining))
+
+    def test_storage_lock_detects_write_contention(self):
+        with storage.exclusive_storage_lock(self.database):
+            with self.assertRaises(storage.StorageBusy):
+                with storage.exclusive_storage_lock(self.database):
+                    self.fail("nested nonblocking lock unexpectedly succeeded")
+
+    def test_restore_detects_active_sqlite_writer(self):
+        backups = self.base / "backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, backups, retain=False)
+        with closing(sqlite3.connect(self.database)) as writer:
+            writer.execute("BEGIN EXCLUSIVE")
+            with self.assertRaises(storage.StorageBusy):
+                storage.restore_backup(created["backup"], self.database, backups)
+            writer.rollback()
 
     def test_phase_two_harness_full_row_equivalence_and_duplicate_visibility(self):
         path = self.write_csv(
