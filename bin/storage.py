@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prime Observer shadow storage for raw probe observations.
+"""Prime Observer storage boundary for raw probe observations.
 
-CSV remains authoritative.  This module is intentionally isolated from every
-semantic producer and provides only ingestion and diagnostic bounded reads.
+CSV remains authoritative. SQLite is a preferred, non-authoritative source for
+approved low-risk production readers and a shadow target for ingestion. This
+module owns raw persistence and bounded raw queries only; it owns no semantics.
 """
 
 from __future__ import annotations
@@ -419,6 +420,122 @@ def _source_fingerprint(path: Path) -> tuple[int, int, str]:
     return stat.st_size, stat.st_mtime_ns, digest.hexdigest()
 
 
+def source_name(path: Path | str) -> str:
+    """Return the canonical storage provenance name for one CSV path."""
+    return _source_name(Path(path))
+
+
+def source_read_status(
+    connection: sqlite3.Connection,
+    paths: Sequence[Path | str],
+    *,
+    requested_end: str,
+) -> dict[str, object]:
+    """Report whether reconciled SQLite rows are safe for a bounded read.
+
+    Exact source fingerprints are accepted. An append-only lag is accepted only
+    when the already-reconciled byte prefix is unchanged and the requested end
+    is no later than that source's recorded latest timestamp.
+    """
+    end_dt = dt.datetime.fromisoformat(requested_end)
+    if end_dt.tzinfo is None:
+        raise ValueError("bounded query timestamps must include UTC offsets")
+    requested_end_us = epoch_microseconds(end_dt)
+    results = []
+    safe = bool(paths)
+    for configured in paths:
+        path = Path(configured)
+        name = _source_name(path)
+        row = connection.execute(
+            """
+            SELECT i.source_size, i.source_mtime_ns, i.source_sha256,
+                   i.valid_rows, i.rejected_rows, i.earliest_timestamp,
+                   i.latest_timestamp,
+                   (SELECT COUNT(*) FROM observation_sources os
+                    JOIN raw_probe_observations ro USING (observation_id)
+                    WHERE os.source_id = i.source_id) AS stored_observation_rows
+            FROM ingestion_sources i
+            JOIN source_files f USING (source_id)
+            WHERE f.source_file = ?
+            """,
+            (name,),
+        ).fetchone()
+        item: dict[str, object] = {"path": name, "status": "untracked", "safe": False}
+        if row is None:
+            safe = False
+            results.append(item)
+            continue
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            safe = False
+            item.update(status="unavailable", reason=str(exc))
+            results.append(item)
+            continue
+        recorded_size = int(row["source_size"])
+        recorded_hash = str(row["source_sha256"])
+        latest_timestamp = row["latest_timestamp"]
+        item.update(
+            recorded_latest_timestamp=latest_timestamp,
+            valid_rows=int(row["valid_rows"]),
+            rejected_rows=int(row["rejected_rows"]),
+            stored_observation_rows=int(row["stored_observation_rows"]),
+        )
+        if int(row["rejected_rows"]):
+            safe = False
+            item.update(status="rejected_rows", reason="last reconciliation rejected CSV rows")
+            results.append(item)
+            continue
+        if int(row["stored_observation_rows"]) != int(row["valid_rows"]):
+            safe = False
+            item.update(
+                status="row_count_mismatch",
+                reason="stored source multiplicity does not match the reconciled CSV",
+            )
+            results.append(item)
+            continue
+        digest = hashlib.sha256()
+        try:
+            with path.open("rb") as handle:
+                remaining = recorded_size
+                while remaining:
+                    chunk = handle.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    remaining -= len(chunk)
+        except OSError as exc:
+            safe = False
+            item.update(status="unavailable", reason=str(exc))
+            results.append(item)
+            continue
+        prefix_matches = (
+            stat.st_size >= recorded_size
+            and remaining == 0
+            and digest.hexdigest() == recorded_hash
+        )
+        if prefix_matches and stat.st_size == recorded_size:
+            item.update(status="exact", safe=True)
+            results.append(item)
+            continue
+        latest_us = None
+        if latest_timestamp:
+            try:
+                latest_us = epoch_microseconds(dt.datetime.fromisoformat(str(latest_timestamp)))
+            except ValueError:
+                latest_us = None
+        if prefix_matches and latest_us is not None and requested_end_us <= latest_us:
+            item.update(status="append_only_lag_safe", safe=True)
+        else:
+            safe = False
+            item.update(
+                status="stale_for_interval",
+                reason="CSV reconciliation does not cover the requested interval",
+            )
+        results.append(item)
+    return {"safe": safe, "sources": results}
+
+
 def _insert_batch(
     connection: sqlite3.Connection,
     observations: Sequence[tuple[dict[str, object], int | None]],
@@ -736,8 +853,9 @@ def bounded_raw_observation_query(
     *,
     hosts: Sequence[str] = (),
     phases: Sequence[str] = (),
+    source_files: Sequence[str] = (),
 ) -> tuple[str, tuple[object, ...]]:
-    """Build the bounded raw query used only by diagnostic storage readers."""
+    """Build a bounded raw-observation query without semantic classification."""
     start_dt = dt.datetime.fromisoformat(start)
     end_dt = dt.datetime.fromisoformat(end)
     if start_dt.tzinfo is None or end_dt.tzinfo is None:
@@ -757,6 +875,15 @@ def bounded_raw_observation_query(
     if phase_values:
         clauses.append(f"phase_label IN ({','.join('?' for _ in phase_values)})")
         parameters.extend(phase_values)
+    source_values = tuple(dict.fromkeys(str(value) for value in source_files))
+    if source_values:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM observation_sources os "
+            "JOIN source_files sf USING (source_id) "
+            "WHERE os.observation_id = raw_probe_observations.observation_id "
+            f"AND sf.source_file IN ({','.join('?' for _ in source_values)}))"
+        )
+        parameters.extend(source_values)
     sql = (
         RAW_OBSERVATION_SELECT
         + " WHERE "
@@ -773,14 +900,15 @@ def raw_observations_between(
     *,
     hosts: Sequence[str] = (),
     phases: Sequence[str] = (),
+    source_files: Sequence[str] = (),
 ) -> list[dict[str, object]]:
     """Return typed raw CSV fields for one explicit inclusive interval.
 
-    This is a non-authoritative Storage Phase 2 helper.  It performs no health,
-    baseline, incident, attribution, or other semantic classification.
+    SQLite remains non-authoritative. This helper performs no health, baseline,
+    incident, attribution, or other semantic classification.
     """
     sql, parameters = bounded_raw_observation_query(
-        start, end, hosts=hosts, phases=phases
+        start, end, hosts=hosts, phases=phases, source_files=source_files
     )
     return [dict(row) for row in connection.execute(sql, parameters).fetchall()]
 

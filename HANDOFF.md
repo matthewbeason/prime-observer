@@ -48,6 +48,12 @@ Prime Observer currently ships:
   with no health, attribution, investigation, or assistant consumer
 - local operator impact feedback that feeds observed impact only
 
+Current uncommitted milestone:
+
+- Storage Phase 4 centralized production read routing for the low-risk raw
+  `viz/latest.csv` history, with exact verification and visible CSV fallback;
+  semantic-critical readers remain directly CSV-backed
+
 ## Recent Completed Work
 
 Repository-backed recent milestones (all committed):
@@ -101,7 +107,8 @@ Current artifact flow:
 - telemetry history in `data/bakeoff_YYYYMMDD.csv`
 - post-CSV, fail-safe shadow ingestion through `bin/storage.py` into generated
   `data/prime_observer.db`; Prime-owned maintenance locking coordinates shadow
-  writes with restore/rebuild, and no semantic producer or browser reads it
+  writes with restore/rebuild; the centralized raw source boundary uses it only
+  for `viz/latest.csv` chart history, while no semantic branch or browser reads it
 - `bin/transform_latest.py` generates dashboard, observation, baseline,
   interval, similarity, learning, time-context, mutable current investigation,
   write-once completed snapshot, and investigation catalog artifacts

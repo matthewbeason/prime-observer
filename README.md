@@ -460,12 +460,15 @@ Projection roles:
 - `bin/storage.py`
   Owns explicit schema initialization, idempotent historical and collection
   shadow ingestion, transactions, provenance, integrity checks, and
-  validation-only queries for `data/prime_observer.db`. Storage Phase 2 adds a
+  bounded raw queries for `data/prime_observer.db`. Storage Phase 2 adds a
   read-only bounded raw query helper and `bin/evaluate_storage_read_path.py`
   parity/benchmark harness. Storage Phase 3 adds verified SQLite-native backup,
   deterministic retention, defensive restore/restore-latest, operator health,
-  and atomic CSV rebuild tooling. CSV remains
-  authoritative; no production semantic producer reads SQLite. See
+  and atomic CSV rebuild tooling. Storage Phase 4 adds
+  `bin/raw_observation_source.py`, which prefers SQLite only for the low-risk
+  raw history written to `viz/latest.csv`, reports source/fallback diagnostics,
+  and uses authoritative CSV on any unsafe read. Every semantic input remains
+  a direct CSV read. See
   `docs/storage.md`.
 
 - `data/prime_observer.db`
@@ -474,7 +477,10 @@ Projection roles:
   served to the browser.
 
 - `bin/transform_latest.py`
-  Reads the newest historical telemetry file, keeps the last 24 hours, adds target label/class metadata, computes hourly WAN baselines from general internet probes, adds Pattern Confidence fields, writes `viz/latest.csv`, and exports Network Attribution results.
+  Uses the centralized raw source boundary for the low-risk current chart
+  projection, keeps a separate authoritative CSV read for semantics, adds
+  target label/class metadata, computes hourly WAN baselines from general
+  internet probes, writes `viz/latest.csv`, and exports Network Attribution.
 
 - `bin/mesh_context.py`
   Validates the optional normalized Mesh Signal artifact selected by

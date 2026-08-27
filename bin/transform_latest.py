@@ -3,6 +3,7 @@ from pathlib import Path
 import csv
 import datetime as dt
 import json
+import os
 from collections import defaultdict
 import sys
 
@@ -52,6 +53,12 @@ from incident_similarity import build_incident_similarity, load_completed_snapsh
 from operational_learnings import build_operational_learnings
 from time_context import build_time_context
 from mesh_context import refresh_mesh_context
+from raw_observation_source import (
+    PREFER_SQLITE,
+    log_read_diagnostics,
+    read_raw_observations,
+)
+import storage
 
 BASE = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE / "data"
@@ -76,6 +83,8 @@ APS_POWER_CONTEXT_IN = VIZ_DIR / "aps_power_context.json"
 
 WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
+RAW_OBSERVATION_DATABASE = storage.DEFAULT_DATABASE
+RAW_READ_POLICY_ENVIRONMENT = "PRIME_OBSERVER_RAW_READ_POLICY"
 
 # Keep the historical bakeoff_*.csv naming for compatibility, but treat these
 # files as Prime Observer telemetry history now that the provider bakeoff phase
@@ -1355,6 +1364,64 @@ def load_optional_json(path):
     return payload if isinstance(payload, dict) else None
 
 
+def read_authoritative_projection_rows(
+    src, cutoff, baseline_by_hour, baseline_sample_counts
+):
+    """Read the CSV-authoritative rows retained by every semantic producer."""
+    rows = []
+    with src.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = ensure_fieldnames(reader.fieldnames)
+        for row in reader:
+            t = parse_ts(row.get("ts", ""))
+            if t is None:
+                continue
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=dt.timezone.utc)
+            if t.astimezone(dt.timezone.utc) < cutoff:
+                continue
+            rows.append(
+                prepare_projection_row(
+                    row, t, baseline_by_hour, baseline_sample_counts
+                )
+            )
+    return rows, fieldnames
+
+
+def prepare_projection_row(row, timestamp, baseline_by_hour, baseline_sample_counts):
+    """Apply the unchanged chart projection logic to one raw observation."""
+    row = {key: "" if value is None else str(value) for key, value in dict(row).items()}
+    if "traceroute_snip" in row:
+        row["traceroute_snip"] = sanitize_field(row.get("traceroute_snip", ""))
+    if "speedtest_raw_json" in row:
+        row["speedtest_raw_json"] = sanitize_field(row.get("speedtest_raw_json", ""))
+    row = apply_target_fields(row)
+    return apply_baseline_fields(row, timestamp, baseline_by_hour, baseline_sample_counts)
+
+
+def read_chart_projection_rows(src, cutoff, now, baseline_by_hour, baseline_sample_counts):
+    """Read the approved low-risk chart input through the Phase 4 boundary."""
+    selection = read_raw_observations(
+        cutoff.isoformat(),
+        now.isoformat(),
+        data_directory=DATA_DIR,
+        database=RAW_OBSERVATION_DATABASE,
+        source_files=(src,),
+        source_policy=os.environ.get(RAW_READ_POLICY_ENVIRONMENT, PREFER_SQLITE),
+    )
+    rows = []
+    for raw in selection.rows:
+        timestamp = parse_ts(str(raw.get("ts") or ""))
+        if timestamp is None:
+            continue
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=dt.timezone.utc)
+        rows.append(
+            prepare_projection_row(raw, timestamp, baseline_by_hour, baseline_sample_counts)
+        )
+    return rows, selection.diagnostics
+
+
 def main():
     VIZ_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1372,32 +1439,15 @@ def main():
 
     cutoff = now - WINDOW
 
-    rows_out = []
-
-    with src.open("r", newline="") as f:
-        reader = csv.DictReader(f)
-        fieldnames = ensure_fieldnames(reader.fieldnames)
-
-        for row in reader:
-            t = parse_ts(row.get("ts", ""))
-            if t is None:
-                continue
-
-            if t.tzinfo is None:
-                t = t.replace(tzinfo=dt.timezone.utc)
-
-            if t.astimezone(dt.timezone.utc) < cutoff:
-                continue
-
-            if "traceroute_snip" in row:
-                row["traceroute_snip"] = sanitize_field(row.get("traceroute_snip", ""))
-
-            if "speedtest_raw_json" in row:
-                row["speedtest_raw_json"] = sanitize_field(row.get("speedtest_raw_json", ""))
-
-            row = apply_target_fields(row)
-            row = apply_baseline_fields(row, t, baseline_by_hour, baseline_sample_counts)
-            rows_out.append(row)
+    # Semantic-critical consumers remain on this authoritative CSV read. The
+    # separately selected chart rows feed only viz/latest.csv.
+    rows_out, fieldnames = read_authoritative_projection_rows(
+        src, cutoff, baseline_by_hour, baseline_sample_counts
+    )
+    chart_rows, chart_read_diagnostics = read_chart_projection_rows(
+        src, cutoff, now, baseline_by_hour, baseline_sample_counts
+    )
+    log_read_diagnostics("main_24_hour_latency_history", chart_read_diagnostics)
 
     tmp = OUT.with_suffix(".csv.tmp")
     with tmp.open("w", newline="") as f:
@@ -1408,7 +1458,7 @@ def main():
             quoting=csv.QUOTE_MINIMAL,
         )
         writer.writeheader()
-        for row in rows_out:
+        for row in chart_rows:
             writer.writerow(row)
 
     tmp.replace(OUT)
@@ -1560,7 +1610,10 @@ def main():
             ),
         )
 
-    print(f"Wrote {len(rows_out)} rows to {OUT} from telemetry source {src.name}")
+    print(
+        f"Wrote {len(chart_rows)} rows to {OUT} from telemetry source {src.name} "
+        f"using {chart_read_diagnostics.source_used}"
+    )
     print(f"Wrote network attribution export to {ATTRIBUTION_OUT}")
     print(f"Wrote dashboard health projection to {DASHBOARD_HEALTH_OUT}")
     print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")

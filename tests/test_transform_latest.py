@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -297,6 +298,30 @@ class TransformLatestTest(unittest.TestCase):
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
         self.assertEqual(by_view["current_attribution"]["state"]["label"], attribution["attribution_label"])
         self.assertEqual(by_view["window_attribution"]["state"]["label"], attribution["window_attribution"]["label"])
+
+    def test_chart_source_is_isolated_from_csv_authoritative_semantics(self):
+        now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+        self.write_rows([
+            self.telemetry_row((now - dt.timedelta(minutes=4)).isoformat(), "1.1.1.1", 25),
+            self.telemetry_row((now - dt.timedelta(minutes=3)).isoformat(), "9.9.9.9", 30),
+            self.telemetry_row((now - dt.timedelta(minutes=2)).isoformat(), "45.90.28.134", 28),
+            self.telemetry_row((now - dt.timedelta(minutes=1)).isoformat(), "192.168.1.1", 8),
+        ])
+        diagnostics = types.SimpleNamespace(source_used="sqlite")
+        with (
+            mock.patch.object(
+                self.module,
+                "read_chart_projection_rows",
+                return_value=([], diagnostics),
+            ),
+            mock.patch.object(self.module, "log_read_diagnostics"),
+        ):
+            self.module.main()
+
+        with self.module.OUT.open(newline="") as handle:
+            self.assertEqual(list(csv.DictReader(handle)), [])
+        attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
+        self.assertGreater(attribution["internet_probe_summary"]["sample_count"], 0)
 
     def test_main_keeps_legacy_attribution_export_and_adds_projection(self):
         now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)

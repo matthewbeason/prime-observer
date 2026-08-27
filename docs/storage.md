@@ -1,23 +1,23 @@
 # Storage
 
-This document defines Prime Observer's durable-storage boundary. Phase 1 adds a
-SQLite shadow copy of Prime-owned raw probe observations while preserving the
-existing CSV pipeline as production authority. Storage Phase 2 adds only a
-read-only, bounded diagnostic helper and evaluation harness; it does not cut
-over a production reader. Storage Phase 3 adds verified backup, retention,
-defensive restore, CSV rebuild orchestration, and operator health tooling. It
-does not make SQLite authoritative or migrate a reader. See
+This document defines Prime Observer's durable-storage boundary. Phases 1-3 add
+the SQLite shadow copy, bounded equivalence tooling, backup/restore, CSV rebuild,
+and operator health tooling. Storage Phase 4 makes SQLite the preferred source
+only for the low-risk raw history written to `viz/latest.csv`; CSV remains its
+immediate fallback and every semantic branch's authority. See
 `docs/storage-phase2-read-evaluation.md`.
 
 ## Phase 1 authority boundary
 
 - `data/bakeoff_YYYYMMDD.csv` remains authoritative for collection history and
   every production semantic reader.
-- `data/prime_observer.db` is a disposable, rebuildable shadow store used only
-  by Python-owned ingestion and validation tooling.
-- `bin/storage.py` is the only Prime-owned SQLite boundary. The browser never
-  opens SQLite and no transform, baseline, attribution, health, interval,
-  investigation, similarity, learning, or external-context producer reads it.
+- `data/prime_observer.db` is a disposable, rebuildable shadow store used by
+  Python-owned ingestion, approved low-risk reads, and validation tooling.
+- `bin/storage.py` owns SQLite persistence and raw queries;
+  `bin/raw_observation_source.py` centrally owns production source selection,
+  verification, diagnostics, and CSV fallback. The browser never opens SQLite.
+- `bin/transform_latest.py` uses the boundary only for raw chart rows written to
+  `viz/latest.csv`. Its separate semantic input remains direct CSV.
 - Deterministic CSV/JSON files remain the browser and consumer contracts.
 - Completed incident snapshots under `viz/investigations/` remain immutable,
   write-once files.
@@ -25,9 +25,9 @@ does not make SQLite authoritative or migrate a reader. See
 - Making SQLite authoritative requires a separate explicit phase and new
   equivalence evidence. Phase 1 does not authorize that cutover.
 
-Deleting, locking, or making the shadow database unwritable does not change
-current production behavior. The collector finishes its CSV append first and
-reports a warning if the subsequent shadow write fails.
+Deleting, locking, corrupting, or making the shadow database unavailable causes
+the approved chart reader to report the reason and use CSV. The collector still
+finishes its CSV append first and reports a warning if shadow writing fails.
 
 ## Audited collection path
 
@@ -67,16 +67,47 @@ cycles are possible if collection is manually invoked near a scheduled cycle,
 and any retained file can be reprocessed during recovery, so storage identity
 cannot depend on insertion order or an assumed cadence.
 
-Current production consumers remain:
+Production raw-reader inventory after Phase 4:
 
-- `bin/transform_latest.py`, which reads matching CSV files for the current
-  projection and learned-baseline inputs
-- `bin/build_investigation.py`, which reads matching CSV files for historical
-  requested windows
-- downstream Python semantic producers that consume the deterministic
-  transform/investigation projections
-- `viz/index.html` and `viz/investigate.html`, which consume generated CSV/JSON
-  only
+| Reader | Classification | Phase 4 source |
+| --- | --- | --- |
+| `bin/transform_latest.py` raw input written to `viz/latest.csv` | Low-risk presentation canary | SQLite preferred; CSV fallback |
+| `bin/transform_latest.py` health, attribution, observation, interval, incident, similarity, and learning input | Semantic-critical | Direct authoritative CSV |
+| `bin/transform_latest.py` hourly and durable baseline history | Semantic-critical | Direct authoritative CSV |
+| `bin/build_investigation.py` requested-window history | Semantic-critical investigation evidence | Direct authoritative CSV |
+| `bin/build_hourly_baseline.py` standalone baseline history | Semantic-critical baseline | Direct authoritative CSV |
+
+Repository inspection found no additional Category A raw readers, so the
+post-canary bounded bulk was empty. JSON consumers and browser renderers are not
+raw `bakeoff_*.csv` readers and remain database-unaware.
+
+## Phase 4 production read policy
+
+`read_raw_observations(start, end, filters..., source_policy=...)` returns raw
+canonical observations plus source used, fallback reason, row count, time
+bounds, file/row work, elapsed time, reconciliation state, and optional exact
+comparison results. It performs no semantic classification.
+
+SQLite is eligible only when it opens read-only, schema version 1 is supported,
+`PRAGMA quick_check(1)` is `ok`, every selected CSV has zero rejected rows and
+matching stored multiplicity, and reconciliation covers the interval. Exact
+file fingerprints are accepted. For an append-only collector file, a request
+ending at or before its recorded latest reconciled timestamp is also safe when
+the full recorded byte prefix still hashes exactly; a request reaching into the
+unreconciled append tail uses CSV. Full `PRAGMA integrity_check` remains an
+operator/status action rather than a per-read cost.
+
+`prefer_sqlite` is the production default. `verify_sqlite` reads both sources
+and compares row count, every raw field and null, ordering, identities,
+timestamps, and multiplicity; any mismatch returns CSV.
+`PRIME_OBSERVER_RAW_READ_POLICY=verify_sqlite` enables verification, while
+`csv_only` provides an explicit authoritative comparison. Missing, locked,
+corrupt, incompatible, stale, or invalid SQLite reads are reported as
+`raw_observation_read` diagnostics and fall back to CSV.
+
+Phase 5 remains required before semantic-critical reader migration or raw
+authority cutover. CSV remains authoritative raw evidence and fallback;
+collection still writes CSV first and SQLite second.
 
 ## Database and schema
 
@@ -136,10 +167,9 @@ and the collector still exits according to its existing CSV behavior.
 
 ## SQLite configuration
 
-- Rollback journal (`DELETE`) is used because this is a single local writer,
-  Phase 1 has no continuous SQLite production readers, and predictable
-  durability plus a simple quiesced-file backup boundary matter more than read
-  concurrency. WAL is not justified yet.
+- Rollback journal (`DELETE`) is retained for one local writer plus short-lived,
+  bounded Phase 4 reads; predictable durability and a simple quiesced-file
+  backup boundary still matter more than read concurrency. WAL is not justified.
 - `synchronous=FULL` favors durable committed batches over marginal ingestion
   speed.
 - `busy_timeout=2000` gives a short local writer time to finish without allowing
@@ -338,7 +368,7 @@ one-command latest-good restore, and a tested CSV rebuild path while CSV remains
 authoritative. Prime does not add replication, high availability, or manual DBA
 procedures for this personal local-first system.
 
-## Storage Phase 4 cutover gates
+## Storage Phase 4 entry gates
 
 There is no arbitrary bake-period gate. A separately authorized reader cutover
 may proceed immediately only when all of these are current and passing:
@@ -351,8 +381,8 @@ may proceed immediately only when all of these are current and passing:
 - exact live CSV/SQLite reconciliation
 - exact Phase 2 full-row read equivalence
 
-Phase 3 does not itself migrate any production reader. Until a later explicit
-cutover, SQLite remains shadow, rebuildable, and non-authoritative; CSV remains
-the authoritative raw source; the browser remains a generated-artifact consumer
-with no database access; Mesh Signal remains a separate read-only source; and
-immutable incident snapshots remain files.
+Phase 4 passed these gates for the single approved low-risk chart path. SQLite
+remains shadow, rebuildable, and non-authoritative; CSV remains the authoritative
+raw source and immediate fallback; the browser remains a generated-artifact
+consumer with no database access; Mesh Signal remains a separate read-only
+source; and immutable incident snapshots remain files.
