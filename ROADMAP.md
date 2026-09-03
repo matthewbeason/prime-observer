@@ -55,8 +55,9 @@ The v0.10.0 release includes:
   current investigation production; browser semantic fallbacks removed
 - Storage Phases 1-2: rebuildable SQLite shadow ingestion plus exact read-only
   bounded raw-history equivalence tooling
-- Storage Phase 3: verified backup, retention, restore/restore-latest,
-  corruption recovery, CSV rebuild, storage health, and daily backup automation
+- Storage Phase 3: authoritative verified local backup, 7 daily / 4 weekly / 3
+  monthly retention, restore/restore-latest, corruption recovery, CSV rebuild,
+  separate optional iCloud replication health, and daily backup automation
 - read-only Mesh Signal history schema 0.1 projection with identity-minimized
   derived change markers and deterministic before/during/after context
 - Storage Phase 5 complete semantic-reader migration and SQLite authority

@@ -185,6 +185,38 @@ class RawObservationSourceTest(unittest.TestCase):
             self.assertNotIn("prime_observer.db", source)
             self.assertNotIn("sqlite", source.lower())
 
+    def test_sqlite_only_general_history_spans_midnight_without_provenance_filter(self):
+        previous = self.data / "bakeoff_20260825.csv"
+        following = self.data / "bakeoff_20260827.csv"
+        for path, rows in (
+            (previous, [observation("2026-08-25T23:58:00-07:00", p95="20")]),
+            (following, [observation("2026-08-27T00:02:00-07:00", p95="40")]),
+        ):
+            with path.open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=FIELDS)
+                writer.writeheader()
+                writer.writerows(rows)
+            with closing(storage.connect(self.database)) as connection:
+                storage.ingest_csv(connection, path)
+
+        result = raw_observation_source.read_raw_observations(
+            "2026-08-26T11:55:00-07:00",
+            "2026-08-27T00:05:00-07:00",
+            data_directory=self.data,
+            database=self.database,
+            source_policy=raw_observation_source.SQLITE_ONLY,
+        )
+
+        self.assertEqual(
+            [row["ts"] for row in result.rows],
+            ["2026-08-26T12:00:00-07:00", "2026-08-26T12:10:00-07:00", "2026-08-27T00:02:00-07:00"],
+        )
+
+    def test_explicit_sqlite_provenance_selection_remains_partitioned(self):
+        result = self.read(raw_observation_source.SQLITE_ONLY)
+        self.assertEqual(len(result.rows), 2)
+        self.assertTrue(all(row["ts"].startswith("2026-08-26") for row in result.rows))
+
     def test_sqlite_only_fails_closed_without_csv_fallback(self):
         self.database.unlink()
         with self.assertRaisesRegex(storage.StorageError, "authoritative SQLite"):

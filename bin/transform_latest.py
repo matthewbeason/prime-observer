@@ -1407,11 +1407,17 @@ def load_optional_json(path):
 
 
 def read_semantic_projection_rows(
-    src, cutoff, now, baseline_by_hour, baseline_sample_counts
+    cutoff, now, baseline_by_hour, baseline_sample_counts
 ):
     """Read semantic-critical rows through the centralized source boundary."""
     rows = []
-    selection = _read_source_rows(src, start=cutoff.isoformat(), end=now.isoformat())
+    selection = read_raw_observations(
+        cutoff.isoformat(),
+        now.isoformat(),
+        data_directory=DATA_DIR,
+        database=RAW_OBSERVATION_DATABASE,
+        source_policy=_raw_source_policy(),
+    )
     for row in selection.rows:
         t = parse_ts(str(row.get("ts") or ""))
         if t is None:
@@ -1461,7 +1467,7 @@ def main():
     cutoff = now - WINDOW
 
     rows_out, fieldnames, semantic_read_diagnostics = read_semantic_projection_rows(
-        src, cutoff, now, baseline_by_hour, baseline_sample_counts
+        cutoff, now, baseline_by_hour, baseline_sample_counts
     )
     chart_rows = list(rows_out)
     chart_read_diagnostics = semantic_read_diagnostics

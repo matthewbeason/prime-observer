@@ -254,17 +254,20 @@ is written last, so a database or manifest left by interruption is never a
 verified backup. The live database is never copied directly and never moved
 into iCloud Drive.
 
-The destination precedence is:
+The authoritative local backup destination precedence is:
 
 1. command `--backup-directory`
 2. `PRIME_OBSERVER_BACKUP_DIR`
-3. `~/Library/Mobile Documents/com~apple~CloudDocs/Prime Observer Backups`
+3. `~/Library/Application Support/Prime Observer/Backups`
 
 The default is derived from the current macOS home directory; production logic
-does not contain a user-specific home path. For an alternate iCloud folder:
+does not contain a user-specific home path. The directory is mode `0700`, and
+backup databases and manifests are mode `0600`. It is outside the repository
+and avoids macOS TCC protections on Documents, Desktop, and iCloud Drive.
+For an alternate authoritative local folder:
 
 ```bash
-export PRIME_OBSERVER_BACKUP_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Prime Observer/Backups"
+export PRIME_OBSERVER_BACKUP_DIR="$HOME/Library/Application Support/Prime Observer/Alternate Backups"
 python3 bin/storage.py backup
 ```
 
@@ -278,6 +281,22 @@ UTC creation time, row count, earliest/latest observation, integrity result,
 source location and size, backup size and SHA-256, repository commit when
 available, and `validation_status: verified`. It contains no credentials or
 telemetry payloads.
+
+### Optional iCloud replication
+
+After the local database and manifest are fully verified, `backup` makes a
+best-effort copy to
+`~/Library/Mobile Documents/com~apple~CloudDocs/Prime Observer Backups` and
+verifies the replicated database, manifest, and hash. iCloud is off-host
+redundancy only: permission, availability, or sync failure is recorded in the
+local `.icloud-replication-status.json`, but it does not fail or remove the
+authoritative local backup. Direct iCloud backup was retired because macOS TCC
+makes unattended command-line access unreliable.
+
+Use `replication-status` to inspect the last result or `replicate` to retry the
+newest local backup. `PRIME_OBSERVER_ICLOUD_REPLICATION_DIR` or
+`--replication-directory` can select another replication target. Use
+`backup --no-replicate` when only the local recovery transaction is wanted.
 
 ### Retention and capacity
 
@@ -310,10 +329,13 @@ reports the recovery. Successful output explicitly says collection can resume.
 The collector participates in the same short-lived Prime maintenance lock; a
 lock or failed SQLite transaction makes the collection cycle fail visibly.
 
-`restore-latest` examines backups newest first and performs full verification.
+`restore-latest` examines authoritative local backups newest first and performs full verification.
 It skips corrupt, incomplete, hash-mismatched, or schema-incompatible candidates
 with reasons, then restores the newest verified compatible backup. It never
 selects by filename alone and never restores an unverified candidate.
+`restore-latest --dry-run` performs the same selection and verification without
+changing the live database. An iCloud recovery copy must be selected explicitly
+with `--backup-directory`; it is never silently mixed into the local set.
 
 ### CSV rebuild escape hatch
 
@@ -331,9 +353,10 @@ stopped jobs.
 The tracked `launchd/com.mbeason.prime-observer.storage-backup.plist` runs a
 separate backup process daily at 03:15 local time. It does not run collection,
 and backup failure cannot fail or delay the collector. Standard output and
-errors go to `logs/storage-backup.log`. The default iCloud destination needs no
-secret or plist environment entry; customize the plist's `EnvironmentVariables`
-with `PRIME_OBSERVER_BACKUP_DIR` if required.
+errors go to `logs/storage-backup.log`. The authoritative transaction uses the
+non-TCC local default and therefore needs no plist environment entry or Full
+Disk Access. Optional iCloud replication is attempted afterward and reported
+separately; its failure leaves the job successful when the local backup passed.
 
 Install and enable it using the same per-user LaunchAgent convention as the
 other Prime jobs:
@@ -354,10 +377,9 @@ launchctl bootstrap "gui/$(id -u)" \
   "$HOME/Library/LaunchAgents/com.mbeason.prime-observer.storage-backup.plist"
 ```
 
-The recovery objective is one straightforward verified backup per day, a
-one-command latest-good restore, and a tested CSV rebuild path. Prime does not
-add replication, high availability, or manual DBA
-procedures for this personal local-first system.
+The recovery objective is one straightforward verified local backup per day, a
+one-command latest-good restore, a tested CSV rebuild path, and optional
+best-effort iCloud redundancy without cloud coupling in the backup transaction.
 
 ## Storage Phase 5 cutover evidence
 
@@ -378,4 +400,5 @@ similarity, operational learning, and time-context outputs. The diagnostic
 harness is `bin/verify_semantic_storage.py`. The browser remains a generated-
 artifact consumer with no database access; Mesh Signal remains a separate
 read-only source; immutable incident snapshots remain files. Prime-managed
-verified backups live in iCloud, while the live database remains local.
+verified recovery backups live in local Application Support, while optional
+verified replicas may live in iCloud and the live database remains local.

@@ -323,6 +323,53 @@ class TransformLatestTest(unittest.TestCase):
         attribution = json.loads(self.module.ATTRIBUTION_OUT.read_text())
         self.assertEqual(attribution["internet_probe_summary"]["sample_count"], 0)
 
+    def test_general_history_read_is_time_bounded_without_source_partition(self):
+        now = dt.datetime(2026, 9, 1, 19, 0, tzinfo=dt.timezone.utc)
+        diagnostics = types.SimpleNamespace(source_used="sqlite")
+        with mock.patch.object(
+            self.module,
+            "read_raw_observations",
+            return_value=types.SimpleNamespace(rows=[], diagnostics=diagnostics),
+        ) as read:
+            rows, _fields, result_diagnostics = self.module.read_semantic_projection_rows(
+                now - dt.timedelta(hours=24), now, {}, {}
+            )
+
+        self.assertEqual(rows, [])
+        self.assertIs(result_diagnostics, diagnostics)
+        self.assertEqual(read.call_args.args[:2], (
+            "2026-08-31T19:00:00+00:00",
+            "2026-09-01T19:00:00+00:00",
+        ))
+        self.assertNotIn("source_files", read.call_args.kwargs)
+
+    def test_durable_baseline_still_uses_newest_two_source_files(self):
+        base = dt.datetime(2026, 8, 28, 12, 0, tzinfo=dt.timezone.utc)
+        partitions = []
+        for offset, name in enumerate(("bakeoff_20260828.csv", "bakeoff_20260829.csv", "bakeoff_20260830.csv")):
+            rows = self.baseline_history_rows(base + dt.timedelta(days=offset), secondary=176 + offset)
+            partitions.append((self.data_dir / name, rows))
+        with mock.patch.object(self.module, "_baseline_rows_by_file", return_value=partitions):
+            result = self.module.build_baseline_history(generated_at=base + dt.timedelta(days=3))
+
+        cloudflare = result["targets"]["FIBER|internet_probe|1.1.1.1"]
+        self.assertEqual(cloudflare["sample_count"], 24)
+        self.assertEqual(
+            cloudflare["source_files"],
+            ["bakeoff_20260829.csv", "bakeoff_20260830.csv"],
+        )
+
+    def test_browser_preserves_generated_history_and_breaks_real_gaps(self):
+        dashboard_html = INDEX_HTML_PATH.read_text()
+        load_data = dashboard_html.split("async function loadData()", 1)[1].split("async function loadObservationsPayload", 1)[0]
+        self.assertNotIn("new Date()", load_data)
+        self.assertNotIn("t < cutoff", load_data)
+        self.assertIn("if (!t) continue", load_data)
+        self.assertIn("EVIDENCE_GAP_MS", dashboard_html)
+        self.assertIn("evidenceSegments(pts)", dashboard_html)
+        self.assertIn('attr("class", "evidence-line-segment")', dashboard_html)
+        self.assertIn("Telemetry stale", dashboard_html)
+
     def test_main_keeps_legacy_attribution_export_and_adds_projection(self):
         now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         self.write_rows([

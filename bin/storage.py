@@ -36,10 +36,19 @@ BACKUP_ENVIRONMENT = "PRIME_OBSERVER_BACKUP_DIR"
 DEFAULT_BACKUP_DIRECTORY = (
     Path.home()
     / "Library"
+    / "Application Support"
+    / "Prime Observer"
+    / "Backups"
+)
+REPLICATION_ENVIRONMENT = "PRIME_OBSERVER_ICLOUD_REPLICATION_DIR"
+DEFAULT_REPLICATION_DIRECTORY = (
+    Path.home()
+    / "Library"
     / "Mobile Documents"
     / "com~apple~CloudDocs"
     / "Prime Observer Backups"
 )
+REPLICATION_STATUS_NAME = ".icloud-replication-status.json"
 DEFAULT_DAILY_BACKUPS = 7
 DEFAULT_WEEKLY_BACKUPS = 4
 DEFAULT_MONTHLY_BACKUPS = 3
@@ -978,6 +987,22 @@ def backup_directory(configured: Path | str | None = None) -> Path:
     return DEFAULT_BACKUP_DIRECTORY
 
 
+def replication_directory(configured: Path | str | None = None) -> Path:
+    if configured is not None:
+        return Path(configured).expanduser()
+    environment = os.environ.get(REPLICATION_ENVIRONMENT)
+    if environment:
+        return Path(environment).expanduser()
+    return DEFAULT_REPLICATION_DIRECTORY
+
+
+def _prepare_private_directory(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(path, 0o700)
+    if not os.access(path, os.W_OK):
+        raise StorageError(f"destination is not writable: {path}")
+
+
 def manifest_path(backup: Path | str) -> Path:
     path = Path(backup)
     return path.with_name(path.name + MANIFEST_SUFFIX)
@@ -1012,7 +1037,7 @@ def _git_revision() -> str | None:
             check=True,
             capture_output=True,
             text=True,
-            timeout=2,
+            timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1221,19 +1246,17 @@ def create_backup(
     destination = backup_directory(directory)
     if not source_path.is_file():
         raise DatabaseNotInitialized(f"authoritative database does not exist: {source_path}")
-    icloud_root = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
-    if destination == DEFAULT_BACKUP_DIRECTORY and not icloud_root.is_dir():
-        raise StorageError(
-            f"default iCloud Drive destination is unavailable; set {BACKUP_ENVIRONMENT}"
-        )
-    destination.mkdir(parents=True, exist_ok=True)
-    if not os.access(destination, os.W_OK):
-        raise StorageError(f"backup destination is not writable: {destination}")
+    _prepare_private_directory(destination)
     created = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
     stamp = created.strftime("%Y%m%dT%H%M%S.%fZ")
     final_path = destination / f"{BACKUP_PREFIX}{stamp}{BACKUP_SUFFIX}"
     if final_path.exists() or manifest_path(final_path).exists():
-        raise StorageError(f"backup already exists: {final_path}")
+        existing = verify_backup(final_path)
+        existing["already_existed"] = True
+        existing["retention_removed"] = (
+            apply_backup_retention(destination) if retain else []
+        )
+        return existing
 
     with tempfile.TemporaryDirectory(prefix="prime-observer-backup-", dir=source_path.parent) as temp:
         consistent = Path(temp) / "consistent.sqlite3"
@@ -1286,6 +1309,171 @@ def create_backup(
         apply_backup_retention(destination) if retain else []
     )
     return verified_manifest
+
+
+def replication_status(
+    local_directory: Path | str | None = None,
+    destination: Path | str | None = None,
+) -> dict[str, object]:
+    local = backup_directory(local_directory)
+    target = replication_directory(destination)
+    state_path = local / REPLICATION_STATUS_NAME
+    state: dict[str, object] = {}
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            state = payload
+    except (OSError, json.JSONDecodeError):
+        pass
+    result = {
+        "status": "not_attempted",
+        "replication_directory": str(target.resolve()),
+        "last_attempt_at": None,
+        "last_result": None,
+        "latest_replicated_backup": None,
+        **state,
+    }
+    if result["status"] == "not_attempted" and not target.exists():
+        result["status"] = "unavailable"
+        result["last_result"] = "iCloud replication destination is unavailable"
+    if result["status"] == "healthy":
+        local_backups = list_backups(local)
+        latest_local_hash = local_backups[0].get("sha256") if local_backups else None
+        if latest_local_hash and result.get("sha256") != latest_local_hash:
+            result["status"] = "stale"
+            result["last_result"] = "newest local backup has not been replicated"
+    return result
+
+
+def _replication_failure_status(exc: BaseException) -> str:
+    if isinstance(exc, PermissionError) or getattr(exc, "errno", None) in (1, 13):
+        return "permission_denied"
+    return "unavailable"
+
+
+def replicate_backup(
+    backup: Path | str,
+    *,
+    local_directory: Path | str | None = None,
+    destination: Path | str | None = None,
+    raise_on_failure: bool = True,
+) -> dict[str, object]:
+    local = backup_directory(local_directory)
+    target = replication_directory(destination)
+    selected = _resolve_backup_reference(backup, local)
+    attempted_at = utc_now()
+    previous = replication_status(local, target)
+    status: dict[str, object]
+    try:
+        _prepare_private_directory(target)
+        source_manifest = verify_backup(selected)
+        replicated = target / selected.name
+        replicated_manifest = manifest_path(replicated)
+        if replicated.exists() or replicated_manifest.exists():
+            verified = verify_backup(replicated)
+            if verified["sha256"] != source_manifest["sha256"]:
+                raise BackupValidationError(
+                    f"replication destination already contains a different backup: {replicated}"
+                )
+        else:
+            database_partial = target / f".{replicated.name}.partial-{os.getpid()}"
+            manifest_partial = target / f".{replicated_manifest.name}.partial-{os.getpid()}"
+            try:
+                with selected.open("rb") as source, database_partial.open("xb") as output:
+                    shutil.copyfileobj(source, output, 1024 * 1024)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.chmod(database_partial, 0o600)
+                with manifest_path(selected).open("rb") as source, manifest_partial.open("xb") as output:
+                    shutil.copyfileobj(source, output)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.chmod(manifest_partial, 0o600)
+                os.replace(database_partial, replicated)
+                os.replace(manifest_partial, replicated_manifest)
+                _fsync_directory(target)
+            finally:
+                database_partial.unlink(missing_ok=True)
+                manifest_partial.unlink(missing_ok=True)
+            verified = verify_backup(replicated)
+            if verified["sha256"] != source_manifest["sha256"]:
+                raise BackupValidationError("replicated backup hash differs from local backup")
+        status = {
+            "status": "healthy",
+            "replication_directory": str(target.resolve()),
+            "last_attempt_at": attempted_at,
+            "last_result": "verified",
+            "latest_replicated_backup": str(replicated.resolve()),
+            "sha256": source_manifest["sha256"],
+        }
+    except (OSError, sqlite3.Error, StorageError, ValueError) as exc:
+        status = {
+            "status": _replication_failure_status(exc),
+            "replication_directory": str(target.resolve()),
+            "last_attempt_at": attempted_at,
+            "last_result": str(exc),
+            "latest_replicated_backup": previous.get("latest_replicated_backup"),
+            "sha256": previous.get("sha256"),
+        }
+        try:
+            _prepare_private_directory(local)
+            _write_json_atomic(local / REPLICATION_STATUS_NAME, status)
+            _fsync_directory(local)
+        except OSError:
+            pass
+        if raise_on_failure:
+            raise StorageError(f"iCloud replication failed: {exc}") from exc
+        return status
+    _prepare_private_directory(local)
+    _write_json_atomic(local / REPLICATION_STATUS_NAME, status)
+    _fsync_directory(local)
+    return status
+
+
+def create_backup_with_replication(
+    database: Path | str = DEFAULT_DATABASE,
+    directory: Path | str | None = None,
+    *,
+    replication_destination: Path | str | None = None,
+    replicate: bool = True,
+) -> dict[str, object]:
+    created = create_backup(database, directory)
+    if replicate:
+        created["off_host_replication"] = replicate_backup(
+            created["backup"],
+            local_directory=directory,
+            destination=replication_destination,
+            raise_on_failure=False,
+        )
+    else:
+        created["off_host_replication"] = replication_status(
+            directory, replication_destination
+        )
+    return created
+
+
+def cleanup_failed_backup_artifacts(
+    directory: Path | str, *, remove: bool = False
+) -> list[str]:
+    """Identify/remove only interrupted private partial files.
+
+    Complete backup names and manifests are never candidates, even when they
+    are invalid or lack their partner, because they may still aid recovery.
+    """
+    destination = Path(directory).expanduser()
+    if not destination.is_dir():
+        return []
+    candidates = sorted(
+        path
+        for path in destination.iterdir()
+        if path.is_file() and path.name.startswith(".") and ".partial-" in path.name
+    )
+    if remove:
+        for path in candidates:
+            path.unlink()
+        if candidates:
+            _fsync_directory(destination)
+    return [str(path.resolve()) for path in candidates]
 
 
 def _validate_database_file(path: Path) -> dict[str, object]:
@@ -1409,6 +1597,8 @@ def restore_backup(
 def restore_latest(
     database: Path | str = DEFAULT_DATABASE,
     directory: Path | str | None = None,
+    *,
+    dry_run: bool = False,
 ) -> dict[str, object]:
     destination = backup_directory(directory)
     skipped: list[dict[str, str]] = []
@@ -1419,6 +1609,13 @@ def restore_latest(
         except (OSError, sqlite3.Error, StorageError, ValueError) as exc:
             skipped.append({"backup": str(selected), "reason": str(exc)})
             continue
+        if dry_run:
+            return {
+                "restore_ready": True,
+                "would_restore_from": str(selected.resolve()),
+                "skipped_newer_backups": skipped,
+                "live_database_unchanged": True,
+            }
         result = restore_backup(selected, database, destination)
         result["skipped_newer_backups"] = skipped
         return result
@@ -1501,6 +1698,11 @@ def backup_health(directory: Path | str | None = None) -> dict[str, object]:
         except ValueError:
             overdue = True
     return {
+        "status": (
+            "failed"
+            if not destination_available or latest is None
+            else "stale" if overdue else "healthy"
+        ),
         "backup_directory": str(destination.resolve()),
         "destination_available": destination_available,
         "valid_compatible_backup_available": latest is not None,
@@ -1647,6 +1849,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--data-directory", type=Path, default=BASE / "data")
     status.add_argument("--pattern", default=DEFAULT_PATTERN)
     status.add_argument("--backup-directory", type=Path)
+    status.add_argument("--replication-directory", type=Path)
     status.add_argument("--verbose", action="store_true", help="include per-target/source detail")
     query = subparsers.add_parser("query", help="query a bounded observation range")
     query.add_argument("--start", required=True)
@@ -1654,6 +1857,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("integrity", help="run SQLite integrity_check")
     backup = subparsers.add_parser("backup", help="create and retain a verified backup")
     backup.add_argument("--backup-directory", type=Path)
+    backup.add_argument("--replication-directory", type=Path)
+    backup.add_argument(
+        "--no-replicate", action="store_true", help="skip optional iCloud replication"
+    )
     backups = subparsers.add_parser("backups", help="list backup manifests")
     backups.add_argument("--backup-directory", type=Path)
     verify = subparsers.add_parser("verify-backup", help="fully verify one backup")
@@ -1666,6 +1873,20 @@ def build_parser() -> argparse.ArgumentParser:
         "restore-latest", help="restore the newest verified compatible backup"
     )
     restore_latest_parser.add_argument("--backup-directory", type=Path)
+    restore_latest_parser.add_argument(
+        "--dry-run", action="store_true", help="verify selection without replacing the live database"
+    )
+    replicate = subparsers.add_parser(
+        "replicate", help="replicate a verified local backup to iCloud"
+    )
+    replicate.add_argument("backup", nargs="?", type=Path)
+    replicate.add_argument("--backup-directory", type=Path)
+    replicate.add_argument("--replication-directory", type=Path)
+    replication_status_parser = subparsers.add_parser(
+        "replication-status", help="show optional iCloud replication status"
+    )
+    replication_status_parser.add_argument("--backup-directory", type=Path)
+    replication_status_parser.add_argument("--replication-directory", type=Path)
     rebuild = subparsers.add_parser(
         "rebuild-from-csv", help="atomically rebuild the database from retained historical CSV"
     )
@@ -1682,7 +1903,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print_json({"database": str(args.database.resolve()), "schema_version": version})
             return 0
         if args.command == "backup":
-            _print_json(create_backup(args.database, args.backup_directory))
+            _print_json(
+                create_backup_with_replication(
+                    args.database,
+                    args.backup_directory,
+                    replication_destination=args.replication_directory,
+                    replicate=not args.no_replicate,
+                )
+            )
             return 0
         if args.command == "backups":
             _print_json(
@@ -1702,13 +1930,42 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print_json(restore_backup(args.backup, args.database, args.backup_directory))
             return 0
         if args.command == "restore-latest":
-            _print_json(restore_latest(args.database, args.backup_directory))
+            _print_json(
+                restore_latest(
+                    args.database, args.backup_directory, dry_run=args.dry_run
+                )
+            )
+            return 0
+        if args.command == "replicate":
+            selected = args.backup
+            if selected is None:
+                backups = list_backups(args.backup_directory)
+                if not backups:
+                    raise BackupValidationError("no local backup is available to replicate")
+                selected = Path(str(backups[0]["backup"]))
+            _print_json(
+                replicate_backup(
+                    selected,
+                    local_directory=args.backup_directory,
+                    destination=args.replication_directory,
+                )
+            )
+            return 0
+        if args.command == "replication-status":
+            status = replication_status(
+                args.backup_directory, args.replication_directory
+            )
+            _print_json(status)
+            return 0 if status["status"] == "healthy" else 1
             return 0
         if args.command == "rebuild-from-csv":
             _print_json(rebuild_from_csv(args.database, args.data_directory, args.pattern))
             return 0
         if args.command == "status":
             health = backup_health(args.backup_directory)
+            replication = replication_status(
+                args.backup_directory, args.replication_directory
+            )
             try:
                 with contextlib.closing(connect(args.database)) as status_connection:
                     database = database_status(
@@ -1744,6 +2001,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "overall": "action_required" if exceptions else "ok",
                     "exceptions": exceptions,
                     "database": database,
+                    "local_backup": health,
+                    "off_host_replication": replication,
+                    # Compatibility alias for existing storage-status consumers.
                     "backup": health,
                     "authority": "SQLite",
                     "sqlite_role": "authoritative_raw_observations",

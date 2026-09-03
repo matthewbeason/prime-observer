@@ -317,6 +317,152 @@ class StorageTest(unittest.TestCase):
         with self.initialize() as connection:
             self.assertEqual(storage.integrity_check(connection), "ok")
 
+    def test_default_backup_destination_is_private_local_application_support(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            destination = storage.backup_directory()
+        self.assertEqual(
+            destination,
+            Path.home() / "Library" / "Application Support" / "Prime Observer" / "Backups",
+        )
+        self.assertNotIn("Mobile Documents", str(destination))
+
+    def test_local_backup_succeeds_without_icloud_access_and_uses_private_modes(self):
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        local = self.base / "local"
+        with mock.patch.object(
+            storage, "replicate_backup", side_effect=AssertionError("iCloud accessed")
+        ):
+            created = storage.create_backup_with_replication(
+                self.database, local, replicate=False
+            )
+        self.assertEqual(local.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(Path(created["backup"]).stat().st_mode & 0o777, 0o600)
+        self.assertEqual(Path(created["manifest"]).stat().st_mode & 0o777, 0o600)
+
+    def test_backup_success_is_independent_of_replication_permission_failure(self):
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        local = self.base / "local"
+        real_prepare = storage._prepare_private_directory
+        with mock.patch.object(
+            storage, "_prepare_private_directory"
+        ) as prepare:
+            def deny_icloud(path):
+                if Path(path) == self.base / "icloud":
+                    raise PermissionError(1, "Operation not permitted", str(path))
+                return real_prepare(path)
+
+            prepare.side_effect = deny_icloud
+            result = storage.create_backup_with_replication(
+                self.database,
+                local,
+                replication_destination=self.base / "icloud",
+            )
+        self.assertEqual(result["validation_status"], "verified")
+        self.assertTrue(Path(result["backup"]).exists())
+        self.assertEqual(result["off_host_replication"]["status"], "permission_denied")
+        self.assertIn("Operation not permitted", result["off_host_replication"]["last_result"])
+
+    def test_failed_replication_does_not_delete_local_backup(self):
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        local = self.base / "local"
+        created = storage.create_backup(self.database, local, retain=False)
+        with mock.patch.object(
+            storage, "_prepare_private_directory", side_effect=PermissionError(1, "denied")
+        ):
+            with self.assertRaisesRegex(storage.StorageError, "iCloud replication failed"):
+                storage.replicate_backup(
+                    created["backup"],
+                    local_directory=local,
+                    destination=self.base / "icloud",
+                )
+        self.assertEqual(storage.verify_backup(created["backup"])["sha256"], created["sha256"])
+
+    def test_restore_latest_dry_run_prefers_local_and_does_not_replace_live_database(self):
+        local = self.base / "local"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, local, retain=False)
+        before = storage._sha256_file(self.database)
+        result = storage.restore_latest(self.database, local, dry_run=True)
+        self.assertEqual(result["would_restore_from"], created["backup"])
+        self.assertTrue(result["live_database_unchanged"])
+        self.assertEqual(storage._sha256_file(self.database), before)
+
+    def test_replication_copy_preserves_manifest_and_hash(self):
+        local = self.base / "local"
+        remote = self.base / "icloud"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, local, retain=False)
+        result = storage.replicate_backup(
+            created["backup"], local_directory=local, destination=remote
+        )
+        replicated = storage.verify_backup(result["latest_replicated_backup"])
+        self.assertEqual(replicated["sha256"], created["sha256"])
+        self.assertEqual(result["status"], "healthy")
+
+    def test_repeated_backup_with_same_generation_is_idempotent(self):
+        local = self.base / "local"
+        when = dt.datetime(2026, 8, 26, tzinfo=dt.timezone.utc)
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        first = storage.create_backup(self.database, local, now=when, retain=False)
+        second = storage.create_backup(self.database, local, now=when, retain=False)
+        self.assertEqual(second["backup"], first["backup"])
+        self.assertTrue(second["already_existed"])
+        self.assertEqual(len(storage.list_backups(local)), 1)
+
+    def test_status_separates_local_health_from_replication_failure(self):
+        local = self.base / "local"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        storage.create_backup(self.database, local, retain=False)
+        storage._write_json_atomic(
+            local / storage.REPLICATION_STATUS_NAME,
+            {
+                "status": "permission_denied",
+                "last_attempt_at": storage.utc_now(),
+                "last_result": "Operation not permitted",
+                "latest_replicated_backup": None,
+            },
+        )
+        output = io.StringIO()
+        with mock.patch("sys.stdout", new=output):
+            code = storage.main([
+                "--database", str(self.database), "status",
+                "--data-directory", str(self.data),
+                "--backup-directory", str(local),
+                "--replication-directory", str(self.base / "icloud"),
+            ])
+        payload = json.loads(output.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["local_backup"]["status"], "healthy")
+        self.assertEqual(payload["off_host_replication"]["status"], "permission_denied")
+        self.assertEqual(payload["overall"], "ok")
+
+    def test_legacy_icloud_path_remains_explicitly_addressable(self):
+        explicit = self.base / "Mobile Documents" / "Prime Observer Backups"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, explicit, retain=False)
+        self.assertEqual(Path(created["backup"]).parent, explicit.resolve())
+
+    def test_failed_artifact_cleanup_never_removes_complete_backup_or_manifest(self):
+        local = self.base / "local"
+        with self.initialize() as connection:
+            storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
+        created = storage.create_backup(self.database, local, retain=False)
+        partial = local / ".prime-observer-test.sqlite3.partial-123"
+        partial.write_bytes(b"incomplete")
+        removed = storage.cleanup_failed_backup_artifacts(local, remove=True)
+        self.assertEqual(removed, [str(partial.resolve())])
+        self.assertTrue(Path(created["backup"]).exists())
+        self.assertTrue(Path(created["manifest"]).exists())
+        self.assertEqual(storage.verify_backup(created["backup"])["validation_status"], "verified")
+
     def test_verified_backup_and_restore_preserve_previous_database(self):
         backups = self.base / "backups"
         with self.initialize() as connection:
@@ -417,14 +563,15 @@ class StorageTest(unittest.TestCase):
             storage.create_backup(self.database, unavailable / "backups")
         self.assertEqual(storage._sha256_file(self.database), before)
 
-    def test_duplicate_backup_name_fails_without_overwrite(self):
+    def test_invalid_duplicate_backup_name_fails_without_overwrite(self):
         backups = self.base / "backups"
         when = dt.datetime(2026, 8, 26, tzinfo=dt.timezone.utc)
         with self.initialize() as connection:
             storage.ingest_rows(connection, [sample_row()], source_file="data/source.csv")
         first = storage.create_backup(self.database, backups, now=when, retain=False)
+        Path(first["manifest"]).write_text("not-json")
         before = Path(first["backup"]).read_bytes()
-        with self.assertRaisesRegex(storage.StorageError, "already exists"):
+        with self.assertRaises(storage.BackupValidationError):
             storage.create_backup(self.database, backups, now=when, retain=False)
         self.assertEqual(Path(first["backup"]).read_bytes(), before)
 

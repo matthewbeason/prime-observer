@@ -13,9 +13,10 @@ Prime Observer currently ships:
   semantic-critical reader behind the centralized source boundary
 - Storage Phase 2 diagnostic read-path evaluation with exact bounded raw-history
   parity and read-only comparison tooling supporting the later authority cutover
-- Storage Phase 3 verified SQLite-native backup, deterministic retention,
-  defensive restore/restore-latest, atomic CSV rebuild, operator health status,
-  and a tracked daily LaunchAgent
+- Storage Phase 3 verified SQLite-native local backup, deterministic retention,
+  defensive restore/restore-latest, atomic CSV rebuild, separately reported
+  optional iCloud replication, operator health status, and a tracked daily
+  LaunchAgent
 - deterministic health modeling over local telemetry
 - observation-backed attribution and episode semantics
 - automatic current-event investigation generation with incident lifecycle,
@@ -201,6 +202,11 @@ export, diagnostic, rebuild, and recovery source. Generated CSV/JSON artifacts
 remain canonical browser and downstream contracts, and the browser remains
 database-unaware. Mesh Signal SQLite remains externally owned and read-only;
 immutable completed-incident snapshots remain write-once files.
+
+Verified local backups under `~/Library/Application Support/Prime Observer/Backups`
+are authoritative for disaster recovery. The 03:15 LaunchAgent completes that
+non-TCC transaction first; iCloud Drive is only optional best-effort off-host
+replication, with failures reported separately from local backup health.
 
 Watch items currently named in the repository:
 

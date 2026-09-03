@@ -276,7 +276,15 @@ def read_raw_observations(
                 )
                 if not reconciliation["safe"]:
                     raise storage.StorageError("SQLite reconciliation does not safely cover the requested interval")
-            names = [storage.source_name(path) for path in selected_paths]
+            # SQLite-only production history is bounded by observation time,
+            # not by retained CSV provenance. Explicit source selections remain
+            # available for partition-sensitive callers such as durable baseline
+            # learning and for diagnostic CSV/SQLite verification modes.
+            names = (
+                [storage.source_name(path) for path in selected_paths]
+                if source_files or source_policy != SQLITE_ONLY
+                else []
+            )
             sqlite_rows = storage.raw_observations_between(
                 connection,
                 start,

@@ -27,6 +27,16 @@ consumer contracts. The browser remains database-unaware, Mesh Signal SQLite
 remains externally owned and read-only, and immutable completed-incident
 snapshots remain write-once files.
 
+### Local Verified Backups Own Disaster Recovery
+
+Prime's scheduled backup completes and verifies a private local recovery copy
+under user Application Support before any cloud operation. The local set is
+authoritative for `restore-latest` and retains 7 daily, 4 weekly, and 3 monthly
+generations. iCloud Drive is optional best-effort off-host replication whose
+permission or availability failure is reported separately and cannot turn a
+successful local backup into a failure. Direct scheduled backup to iCloud was
+retired because macOS TCC makes unattended command-line access unreliable.
+
 ### Prime Observer Optimizes For User Experience Observability
 
 The product is not framed as a generic network monitor. The repository

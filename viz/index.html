@@ -986,6 +986,7 @@
   <script>
     const REFRESH_MS = 5000;
     const WINDOW_HOURS = 24;
+    const EVIDENCE_GAP_MS = 5 * 60 * 1000;
     const HEAT_BIN_MINUTES = 15;
     const CSV_URL = "./latest.csv";
     const DASHBOARD_HEALTH_URL = "./dashboard_health.json";
@@ -1990,13 +1991,11 @@
       const res = await fetch(CSV_URL, { cache: "no-store" });
       const text = await res.text();
       const rows = d3.csvParse(text);
-      const now = new Date();
-      const cutoff = new Date(now.getTime() - WINDOW_HOURS * 3600 * 1000);
 
       const clean = [];
       for (const r of rows) {
         const t = parseTs((r.ts || "").trim());
-        if (!t || t < cutoff) continue;
+        if (!t) continue;
 
         const host = (r.host || "").trim();
         const phase = ((r.phase_label || "FIBER").trim().toUpperCase());
@@ -3059,7 +3058,8 @@
       let tone = "ok";
 
       if (ageMs > 120000){
-        label = "Offline";
+        label = "Telemetry stale";
+        summary = `${toCompactRelativeAge(last.t)} · check collector and transform`;
         tone = "risk";
       } else if (ageMs > 30000){
         label = "Delayed";
@@ -3464,11 +3464,28 @@
       const phases = ["FIBER","TMOBILE"];
       const line = d3.line().x(d=>x(d.t)).y(d=>y(d.p95)).curve(d3.curveMonotoneX);
 
+      function evidenceSegments(points){
+        const segments = [];
+        let segment = [];
+        for (const point of points || []){
+          const previous = segment[segment.length - 1];
+          if (previous && point.t - previous.t > EVIDENCE_GAP_MS){
+            if (segment.length) segments.push(segment);
+            segment = [];
+          }
+          segment.push(point);
+        }
+        if (segment.length) segments.push(segment);
+        return segments;
+      }
+
       for (const phase of phases){
         const pts = byPhase.get(phase);
         if (!pts || !pts.length) continue;
         const stroke = (phase === "TMOBILE") ? "var(--tmobile)" : "var(--fiber)";
-        g.append("path").datum(pts).attr("fill","none").attr("stroke", stroke).attr("stroke-width", 2).attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null).attr("d", line).attr("aria-hidden", "true");
+        for (const segment of evidenceSegments(pts)){
+          g.append("path").datum(segment).attr("class", "evidence-line-segment").attr("fill","none").attr("stroke", stroke).attr("stroke-width", 2).attr("stroke-dasharray", phase === "TMOBILE" ? "6 5" : null).attr("d", line).attr("aria-hidden", "true");
+        }
       }
 
       if (opts.rawSpikeMarkers && opts.rawSpikeMarkers.length){

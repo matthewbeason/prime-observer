@@ -62,7 +62,8 @@ Prime Observer is more opinionated:
 - A deterministic Operator Assessment remains available when a safe current LLM result is unavailable.
 
 No cloud backend or heavy observability stack is required. The live database
-stays local; iCloud contains verified Prime-managed backups only.
+and authoritative recovery backups stay local; iCloud is optional best-effort
+off-host replication.
 
 ## Evidence Model
 
@@ -460,9 +461,10 @@ Projection roles:
   collection ingestion, transactions, provenance, integrity checks, and
   bounded raw queries for `data/prime_observer.db`. Storage Phase 2 adds a
   read-only bounded raw query helper and `bin/evaluate_storage_read_path.py`
-  parity/benchmark harness. Storage Phase 3 adds verified SQLite-native backup,
-  deterministic retention, defensive restore/restore-latest, operator health,
-  and atomic CSV rebuild tooling. Storage Phase 5 routes every semantic-critical
+  parity/benchmark harness. Storage Phase 3 adds verified SQLite-native local
+  backup, deterministic retention, defensive restore/restore-latest, separate
+  optional iCloud replication status, operator health, and atomic CSV rebuild
+  tooling. Storage Phase 5 routes every semantic-critical
   raw reader through `bin/raw_observation_source.py`, fails closed on normal
   database failure, and preserves explicit CSV equivalence/recovery modes. See
   `docs/storage.md`.
@@ -1008,8 +1010,8 @@ v0.10.0 includes:
   browser renderer-only.
 - Added historical Mesh Signal context and historical external-context event
   identity and temporal semantics, including Cloudflare and APS preparation.
-- Added SQLite shadow storage, verified backup/restore/rebuild tooling, iCloud
-  Drive backup support, production read-path migration, and the authority
+- Added SQLite shadow storage, verified backup/restore/rebuild tooling, optional
+  iCloud replication, production read-path migration, and the authority
   cutover for Prime-owned raw observations.
 - Demoted CSV raw history to explicit export, diagnostics, rebuild, and recovery
   roles while preserving generated CSV/JSON browser contracts.
