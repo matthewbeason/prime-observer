@@ -10,7 +10,7 @@ class DashboardNextDnsTest(unittest.TestCase):
         html = (ROOT / "viz" / "index.html").read_text()
 
         self.assertIn('const NEXTDNS_URL = "./nextdns_summary.json";', html)
-        self.assertIn('fetch(NEXTDNS_URL, { cache: "no-store" })', html)
+        self.assertIn('fetchLocalResource(NEXTDNS_URL, { cache: "no-store" })', html)
         self.assertIn('id="dnsQueries"', html)
         self.assertIn('id="dnsEncrypted"', html)
         self.assertIn('id="dnsTopQueried"', html)

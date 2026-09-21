@@ -10,7 +10,7 @@ class DashboardInternetConditionsTest(unittest.TestCase):
         html = (ROOT / "viz" / "index.html").read_text()
 
         self.assertIn('const INTERNET_CONDITIONS_URL = "./internet_conditions.json";', html)
-        self.assertIn('fetch(INTERNET_CONDITIONS_URL, { cache: "no-store" })', html)
+        self.assertIn('fetchLocalResource(INTERNET_CONDITIONS_URL, { cache: "no-store" })', html)
         self.assertIn("Cloudflare Radar", html)
         self.assertIn('id="internetConditionsCard"', html)
         self.assertIn('id="internetConditionsUnavailable"', html)

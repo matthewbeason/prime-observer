@@ -1987,8 +1987,35 @@
     function isGatewayClass(targetClass){ return targetClass === "gateway_probe"; }
     function isWanClass(targetClass){ return WAN_CLASSES.has(targetClass); }
 
+    // Keep request bursts below the local HTTP server's accept backlog. Hold
+    // each slot through body transfer, including optional provider refreshes.
+    let activeArtifactRequests = 0;
+    const artifactRequestWaiters = [];
+    async function fetchLocalResource(url, options) {
+      if (activeArtifactRequests >= 4) {
+        await new Promise(resolve => artifactRequestWaiters.push(resolve));
+      } else {
+        activeArtifactRequests++;
+      }
+      try {
+        const response = await fetch(url, options);
+        await response.clone().arrayBuffer();
+        return response;
+      } finally {
+        const next = artifactRequestWaiters.shift();
+        if (next) next();
+        else activeArtifactRequests--;
+      }
+    }
+
+    function showTelemetryLoadFailure() {
+      document.getElementById("statusState").textContent = "Telemetry unavailable";
+      document.getElementById("statusLastSample").textContent = "Unable to load local telemetry files; retrying.";
+      document.getElementById("statusDot").className = "status-dot risk";
+    }
+
     async function loadData() {
-      const res = await fetch(CSV_URL, { cache: "no-store" });
+      const res = await fetchLocalResource(CSV_URL, { cache: "no-store" });
       const text = await res.text();
       const rows = d3.csvParse(text);
 
@@ -2023,7 +2050,7 @@
 
     async function loadObservationsPayload(){
       try {
-        const res = await fetch(OBSERVATIONS_URL, { cache: "no-store" });
+        const res = await fetchLocalResource(OBSERVATIONS_URL, { cache: "no-store" });
         if (!res.ok) throw new Error("Observations unavailable");
         return await res.json();
       } catch (e) {
@@ -2033,7 +2060,7 @@
 
     async function loadNetworkAttributionPayload(){
       try {
-        const res = await fetch(NETWORK_ATTRIBUTION_URL, { cache: "no-store" });
+        const res = await fetchLocalResource(NETWORK_ATTRIBUTION_URL, { cache: "no-store" });
         if (!res.ok) throw new Error("Network attribution unavailable");
         return await res.json();
       } catch (e) {
@@ -2043,7 +2070,7 @@
 
     async function loadDashboardHealthPayload(){
       try {
-        const res = await fetch(DASHBOARD_HEALTH_URL, { cache: "no-store" });
+        const res = await fetchLocalResource(DASHBOARD_HEALTH_URL, { cache: "no-store" });
         if (!res.ok) throw new Error("Dashboard health unavailable");
         return await res.json();
       } catch (e) {
@@ -2053,7 +2080,7 @@
 
     async function loadOptionalJson(url){
       try {
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetchLocalResource(url, { cache: "no-store" });
         if (!res.ok) return null;
         return await res.json();
       } catch (_err) {
@@ -2696,19 +2723,19 @@
     }
 
     async function loadNextDnsSummary(){
-      const res = await fetch(NEXTDNS_URL, { cache: "no-store" });
+      const res = await fetchLocalResource(NEXTDNS_URL, { cache: "no-store" });
       if (!res.ok) throw new Error("NextDNS summary unavailable");
       return await res.json();
     }
 
     async function loadInternetConditions(){
-      const res = await fetch(INTERNET_CONDITIONS_URL, { cache: "no-store" });
+      const res = await fetchLocalResource(INTERNET_CONDITIONS_URL, { cache: "no-store" });
       if (!res.ok) throw new Error("Internet Conditions unavailable");
       return await res.json();
     }
 
     async function loadApsPowerContext(){
-      const res = await fetch(APS_POWER_CONTEXT_URL, { cache: "no-store" });
+      const res = await fetchLocalResource(APS_POWER_CONTEXT_URL, { cache: "no-store" });
       if (!res.ok) throw new Error("APS power context unavailable");
       return await res.json();
     }
@@ -3583,7 +3610,10 @@
       }
     }
 
+    let tickInProgress = false;
     async function tick() {
+      if (tickInProgress) return;
+      tickInProgress = true;
       try {
         const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload, operationalLearningsPayload, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, meshContextPayload] = await Promise.all([
           loadData(),
@@ -3671,7 +3701,9 @@
         refreshPowerInfrastructure();
       } catch (e) {
         console.error(e);
-        document.getElementById("status").textContent = "Unable to load local telemetry files. Serve viz/ over HTTP and confirm the generated artifacts are present.";
+        showTelemetryLoadFailure();
+      } finally {
+        tickInProgress = false;
       }
     }
 

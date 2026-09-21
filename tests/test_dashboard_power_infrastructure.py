@@ -48,7 +48,7 @@ class DashboardPowerInfrastructureTest(unittest.TestCase):
         html = INDEX_HTML.read_text()
 
         self.assertIn('const APS_POWER_CONTEXT_URL = "./aps_power_context.json";', html)
-        self.assertIn('fetch(APS_POWER_CONTEXT_URL, { cache: "no-store" })', html)
+        self.assertIn('fetchLocalResource(APS_POWER_CONTEXT_URL, { cache: "no-store" })', html)
         self.assertIn("Power Infrastructure", html)
         self.assertIn('id="powerInfrastructureCard"', html)
         self.assertIn('id="powerInfrastructureScope"', html)
