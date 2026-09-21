@@ -5,9 +5,12 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import statistics
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import storage
@@ -17,6 +20,11 @@ PING_COUNT = 10
 TRACEROUTE_EVERY_MIN = 15
 SPEEDTEST_EVERY_MIN = 30
 MAX_HOPS = 20
+PING_TIMEOUT_SECONDS = 8
+TRACEROUTE_TIMEOUT_SECONDS = 30
+SPEEDTEST_TIMEOUT_SECONDS = 45
+STORAGE_RETRY_ATTEMPTS = 5
+STORAGE_RETRY_DELAY_SECONDS = 1
 
 BASE = Path(__file__).resolve().parents[1]
 OUTDIR = BASE / "data"
@@ -83,9 +91,16 @@ def ping_target(host: str, count: int):
 
     # Hard cap in Python so it never blocks the whole run.
     # Give a little cushion: ~4s expected + parsing overhead
-    r = run(args, timeout=8)
-
-    times = parse_ping_times_ms(r.stdout)
+    try:
+        r = run(args, timeout=PING_TIMEOUT_SECONDS)
+        output = r.stdout
+    except subprocess.TimeoutExpired as exc:
+        # A stalled target must not discard measurements from the other targets.
+        print(f"Warning: ping unavailable for {host}: timed out after {PING_TIMEOUT_SECONDS} seconds", file=sys.stderr)
+        output = exc.stdout or ""
+    if isinstance(output, bytes):
+        output = output.decode(errors="replace")
+    times = parse_ping_times_ms(output)
 
     sent = count
     received = len(times)
@@ -109,7 +124,14 @@ def ping_target(host: str, count: int):
     }
 
 def traceroute_snip(host: str):
-    r = run(["/usr/sbin/traceroute", "-n", "-m", str(MAX_HOPS), host], timeout=90)
+    try:
+        r = run(["/usr/sbin/traceroute", "-n", "-m", str(MAX_HOPS), host], timeout=TRACEROUTE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        print(f"Warning: traceroute unavailable for {host}: timed out after {TRACEROUTE_TIMEOUT_SECONDS} seconds", file=sys.stderr)
+        return ""
+    except OSError as exc:
+        print(f"Warning: traceroute unavailable for {host}: {exc}", file=sys.stderr)
+        return ""
     lines = r.stdout.splitlines()
     # Keep it compact and CSV-safe (no embedded newlines)
     return " | ".join(lines[:12]).strip()
@@ -121,7 +143,11 @@ def run_ookla_speedtest():
     if not have_ookla_speedtest():
         return None
 
-    r = run(["speedtest", "--accept-license", "--accept-gdpr", "-f", "json"], timeout=180)
+    try:
+        r = run(["speedtest", "--accept-license", "--accept-gdpr", "-f", "json"], timeout=SPEEDTEST_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"Warning: speedtest unavailable: {exc}", file=sys.stderr)
+        return None
     if r.returncode != 0:
         return None
 
@@ -198,6 +224,36 @@ def reconcile_csv_export(path: Path):
         if connection is not None:
             connection.close()
 
+
+def commit_rows(rows, dayfile: Path):
+    """Retry transient SQLite contention without discarding a collected batch."""
+    for attempt in range(1, STORAGE_RETRY_ATTEMPTS + 1):
+        connection = None
+        try:
+            with storage.exclusive_storage_lock(storage.DEFAULT_DATABASE):
+                connection = storage.connect(storage.DEFAULT_DATABASE)
+                storage.ingest_rows(
+                    connection,
+                    rows,
+                    source_file=storage.source_name(dayfile),
+                    source_kind="collector_shadow",
+                )
+            return
+        except (sqlite3.OperationalError, storage.StorageBusy) as exc:
+            transient = isinstance(exc, storage.StorageBusy) or any(
+                word in str(exc).lower() for word in ("locked", "busy")
+            )
+            if not transient or attempt == STORAGE_RETRY_ATTEMPTS:
+                raise
+            print(
+                f"Warning: SQLite busy; retrying collected batch ({attempt}/{STORAGE_RETRY_ATTEMPTS})",
+                file=sys.stderr,
+            )
+        finally:
+            if connection is not None:
+                connection.close()
+        time.sleep(STORAGE_RETRY_DELAY_SECONDS)
+
 def main():
     phase = read_phase()
     now = dt.datetime.now().astimezone()
@@ -211,6 +267,12 @@ def main():
 
     st = run_ookla_speedtest() if do_st else None
 
+    traceroutes = {}
+    if do_tr:
+        # A slow route to one target must not delay every other route in turn.
+        with ThreadPoolExecutor(max_workers=len(TARGETS)) as executor:
+            traceroutes = dict(zip(TARGETS, executor.map(traceroute_snip, TARGETS)))
+
     rows = []
     for host in TARGETS:
         meta = target_metadata(host)
@@ -220,7 +282,7 @@ def main():
             "host": host,
             "target_label": meta["target_label"],
             "target_class": meta["target_class"],
-            "traceroute_snip": traceroute_snip(host) if do_tr else "",
+            "traceroute_snip": traceroutes.get(host, ""),
             "speedtest_down_mbps": st["down_mbps"] if st else "",
             "speedtest_up_mbps": st["up_mbps"] if st else "",
             "speedtest_ping_ms": st["ping_ms"] if st else "",
@@ -232,23 +294,9 @@ def main():
     # SQLite is authoritative: a collection cycle succeeds only after this
     # transaction commits. The retained source_kind string is a schema-v1
     # compatibility value; it no longer describes the authority relationship.
-    connection = None
-    try:
-        with storage.exclusive_storage_lock(storage.DEFAULT_DATABASE):
-            connection = storage.connect(storage.DEFAULT_DATABASE)
-            storage.ingest_rows(
-                connection,
-                rows,
-                source_file=storage.source_name(dayfile),
-                source_kind="collector_shadow",
-            )
-    except Exception:
-        # Do not report collection success when authoritative evidence was not
-        # durably accepted. The caller/LaunchAgent sees a non-zero exit.
-        raise
-    finally:
-        if connection is not None:
-            connection.close()
+    # Do not report collection success or export CSV until authoritative SQLite
+    # has durably accepted the batch. Unrecoverable errors still fail the job.
+    commit_rows(rows, dayfile)
 
     try:
         export_rows_to_csv(dayfile, rows)
