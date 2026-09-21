@@ -656,6 +656,13 @@ Investigation, or Operator Assistant inputs.
 
 ## Running The Dashboard
 
+On the configured multi-user Mac, Prime Observer's core collector, transform,
+loopback HTTP server, and local backup can be managed as unprivileged
+system-domain services. See `docs/macos-runtime.md` for lifecycle boundaries,
+installation, status, rollback, and manual Fast User Switching/logout
+validation. Optional provider and Operator Assistant jobs remain per-user
+LaunchAgents and degrade without stopping core telemetry.
+
 Quick start:
 
 ```bash

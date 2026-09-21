@@ -189,6 +189,28 @@ Typical validation scope:
   from `history_evidence`. Browser smoke must cover Mesh markers, marker
   tooltips, selected-interval Mesh context, and the explicit non-causal label.
 
+### macOS runtime changes
+
+Changes under `launchd/`, `bin/prime_runtime.sh`, or
+`docs/macos-runtime.md` require:
+
+```bash
+for plist in launchd/system/*.plist launchd/rotation/*.plist; do plutil -lint "$plist"; done
+zsh -n bin/prime_runtime.sh launchd/rotation/rotate_logs.sh
+python3 -m unittest tests.test_macos_runtime tests.test_log_rotation
+bin/prime_runtime.sh status
+git diff --check
+```
+
+After an authorized system installation, also verify system-domain ownership,
+run-count/timestamp progression, SQLite `quick_check`, transform freshness,
+loopback HTTP reachability, one port-8000 listener, and local backup dry-run
+restore readiness. Fast User Switching, logout, and reboot checks remain manual
+and must not be initiated without operator approval.
+For rotation changes, check `newsyslog -n -v -f` against the installed Prime
+configuration before a policy-based live cycle; verify archive compression,
+ownership, modes, fresh HTTP descriptors, and continued service health.
+
 ## Environmental Context Provider Validation
 
 The repository's current Environmental Context examples are:
