@@ -1,7 +1,9 @@
 # Application Experience Probes
 
 `bin/fetch_application_experience.py` performs local synthetic application-level
-checks and writes `viz/application_experience.json`.
+checks, durably appends the exact result to
+`data/application_experience_YYYYMMDD.jsonl`, and then writes the unchanged
+latest-state contract at `viz/application_experience.json`.
 
 The collector is separate from `bin/transform_latest.py`. The transform reads the
 artifact when present but never performs DNS, TCP, TLS, HTTPS, OpenRouter, or
@@ -36,6 +38,16 @@ Supported variables:
 
 The collector records only safe endpoint metadata. Query strings, credentials,
 and API keys are not written to the artifact.
+
+## Durable history
+
+Each successful probe run appends one compact JSON record to a UTC-dated JSONL
+file under `data/` and calls `fsync` before replacing the latest-state artifact.
+The history file is mode `0600`, refuses a symlink target, and contains the same
+safe payload exposed by `viz/application_experience.json`. This is evidence
+preservation only: there is no historical analysis, correlation, migration, or
+retention behavior, and current consumers continue to read only the latest-state
+artifact.
 
 ## Impact Use
 

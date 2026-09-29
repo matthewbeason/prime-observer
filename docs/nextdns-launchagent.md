@@ -41,7 +41,8 @@ launchctl kickstart -k gui/$(id -u)/com.mbeason.prime-observer.nextdns-refresh
 1. `bin/fetch_nextdns_summary.py`
 2. `bin/fetch_cloudflare_radar.py`
 3. `bin/fetch_aps_power_context.py`
-4. `bin/build_operator_assistant_input.py`
+4. `bin/fetch_application_experience.py`
+5. `bin/build_operator_assistant_input.py`
 
 The provider scripts load local configuration from the repo root if present:
 

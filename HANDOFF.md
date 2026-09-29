@@ -21,8 +21,9 @@ Prime Observer currently ships:
 - observation-backed attribution and episode semantics
 - automatic current-event investigation generation with incident lifecycle,
   phases, and deterministic replay
-- immutable completed-event investigation history with similarity and
-  operational learning projections
+- immutable completed-event investigation history; scored similarity and
+  operational-learning claim production are disabled by default for the
+  pre-soak period while their implementations remain available
 - operator-first Investigation rendering with deterministic fallback assessment
 - OpenRouter-backed Operator Assistant interpretation as the primary
   operator-facing narrative when output is valid for the evidence package
@@ -106,8 +107,9 @@ Current artifact flow:
 - centralized raw source routing for every semantic branch; the browser remains
   database-unaware
 - `bin/transform_latest.py` generates dashboard, observation, baseline,
-  interval, similarity, learning, time-context, mutable current investigation,
-  write-once completed snapshot, and investigation catalog artifacts
+  interval, time-context, mutable current investigation, write-once completed
+  snapshot, and investigation catalog artifacts. It currently writes explicit
+  disabled placeholders for similarity and operational learning.
 - `bin/build_investigation.py` generates manual requested-window evidence
   artifacts
 - optional fetchers generate DNS, Internet Conditions, and APS Power
@@ -118,10 +120,10 @@ Current artifact flow:
   the current investigation incident
 - `bin/interval_summary.py` builds one deterministic selected-interval summary
   during automatic transform
-- `bin/incident_similarity.py` compares the current investigation with completed
-  snapshots using deterministic weighted scoring
-- `bin/operational_learnings.py` accumulates deterministic operational learning
-  from repeated completed incidents and durable baseline history
+- `bin/incident_similarity.py` retains the deterministic weighted comparison
+  implementation, but normal runtime generation is disabled by default
+- `bin/operational_learnings.py` retains the deterministic learning
+  implementation, but normal runtime generation is disabled by default
 - `bin/time_context.py` emits the default selected-time context for the dashboard
   workspace
 - `bin/mesh_context.py` validates the optional normalized Mesh Signal artifact,
@@ -143,11 +145,10 @@ Current projection state:
   window over the newest two telemetry source files
 - `viz/interval_summary.json` is the generated deterministic summary for one
   selected interval, rendered only when route start/end match the artifact
-- `viz/incident_similarity.json` is the generated current-incident similarity
-  projection over completed snapshots, with Python-owned scores and explanations
-- `viz/operational_learnings.json` is the generated operational learning artifact
-  over repeated completed incidents and durable baselines, with Python-owned
-  confidence and retirement handling
+- `viz/incident_similarity.json` is currently an explicit disabled placeholder
+  with no current incident, matches, scores, or explanations
+- `viz/operational_learnings.json` is currently an explicit disabled placeholder
+  with no learning claims or insights
 - `viz/time_context.json` is the generated default time context used by the
   dashboard when no heatmap interval is selected
 - `viz/mesh_context.json` is the generated, uncommitted Mesh evidence projection.

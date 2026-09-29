@@ -762,9 +762,12 @@ The next planned history capability after hardening is Needs Matthew Review.
 Direct links/bookmarks for current, selected-interval, and historical
 investigation entry points are implemented
 (`?view=current`, `?view=interval&start=<ISO>&end=<ISO>`, and
-`?view=incident&event=<event-id>`). Deterministic current-incident similarity
-and operational learning over completed incidents are implemented
-(`viz/incident_similarity.json`, `viz/operational_learnings.json`).
+`?view=incident&event=<event-id>`). The current-incident similarity and
+operational-learning implementations remain in the repository, but runtime
+claim production is disabled by default for the pre-soak period. The transform
+publishes explicit disabled placeholders at `viz/incident_similarity.json` and
+`viz/operational_learnings.json`, so the renderers hide those sections instead
+of presenting scored matches or learning claims.
 
 The investigation workflow also maintains an optional generated Investigation
 Index at `viz/investigation_index.json`. The index is a local catalog of

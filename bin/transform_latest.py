@@ -87,6 +87,8 @@ WINDOW_HOURS = 24  # align with dashboard
 WINDOW = dt.timedelta(hours=WINDOW_HOURS)
 RAW_OBSERVATION_DATABASE = storage.DEFAULT_DATABASE
 RAW_READ_POLICY_ENVIRONMENT = "PRIME_OBSERVER_RAW_READ_POLICY"
+INCIDENT_SIMILARITY_ENABLED_ENVIRONMENT = "PRIME_OBSERVER_ENABLE_INCIDENT_SIMILARITY"
+OPERATIONAL_LEARNINGS_ENABLED_ENVIRONMENT = "PRIME_OBSERVER_ENABLE_OPERATIONAL_LEARNINGS"
 
 # Keep the historical bakeoff_*.csv naming for compatibility, but treat these
 # files as Prime Observer telemetry history now that the provider bakeoff phase
@@ -132,6 +134,34 @@ def _raw_source_policy():
     if RAW_OBSERVATION_DATABASE.parent.resolve() != DATA_DIR.resolve():
         return CSV_ONLY
     return SQLITE_ONLY
+
+
+def optional_claim_output_enabled(environment_name):
+    return os.environ.get(environment_name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def disabled_incident_similarity(generated_at):
+    return {
+        "schema_version": 1,
+        "model_version": "prime_observer.incident_similarity.v1",
+        "generated_at": generated_at.isoformat(),
+        "status": "disabled",
+        "reason": "pre_soak_stabilization",
+        "current_incident": None,
+        "matches": [],
+    }
+
+
+def disabled_operational_learnings(generated_at):
+    return {
+        "schema_version": 1,
+        "model_version": "prime_observer.operational_learnings.v1",
+        "generated_at": generated_at.isoformat(),
+        "status": "disabled",
+        "reason": "pre_soak_stabilization",
+        "learning_version": "operational_learning.phase_1",
+        "insights": [],
+    }
 
 
 def _read_source_rows(path, *, start="1970-01-01T00:00:00+00:00", end="2100-01-01T00:00:00+00:00"):
@@ -1610,17 +1640,23 @@ def main():
         current_investigation=investigation,
     )
     completed_snapshots = history_write["canonical_snapshots"]
-    incident_similarity = build_incident_similarity(
-        current_investigation=investigation,
-        completed_snapshots=completed_snapshots,
-        generated_at=now,
-    )
+    if optional_claim_output_enabled(INCIDENT_SIMILARITY_ENABLED_ENVIRONMENT):
+        incident_similarity = build_incident_similarity(
+            current_investigation=investigation,
+            completed_snapshots=completed_snapshots,
+            generated_at=now,
+        )
+    else:
+        incident_similarity = disabled_incident_similarity(now)
     write_json_atomic(INCIDENT_SIMILARITY_OUT, incident_similarity)
-    operational_learnings = build_operational_learnings(
-        completed_snapshots=completed_snapshots,
-        baseline_history=baseline_history,
-        generated_at=now,
-    )
+    if optional_claim_output_enabled(OPERATIONAL_LEARNINGS_ENABLED_ENVIRONMENT):
+        operational_learnings = build_operational_learnings(
+            completed_snapshots=completed_snapshots,
+            baseline_history=baseline_history,
+            generated_at=now,
+        )
+    else:
+        operational_learnings = disabled_operational_learnings(now)
     write_json_atomic(OPERATIONAL_LEARNINGS_OUT, operational_learnings)
     if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
         assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
@@ -1644,8 +1680,8 @@ def main():
     print(f"Wrote baseline history artifact to {BASELINE_HISTORY_OUT}")
     print(f"Wrote interval summary artifact to {INTERVAL_SUMMARY_OUT}")
     print(f"Wrote time context artifact to {TIME_CONTEXT_OUT}")
-    print(f"Wrote incident similarity artifact to {INCIDENT_SIMILARITY_OUT}")
-    print(f"Wrote operational learnings artifact to {OPERATIONAL_LEARNINGS_OUT}")
+    print(f"Wrote incident similarity artifact to {INCIDENT_SIMILARITY_OUT} ({incident_similarity.get('status', 'enabled')})")
+    print(f"Wrote operational learnings artifact to {OPERATIONAL_LEARNINGS_OUT} ({operational_learnings.get('status', 'enabled')})")
     print(f"Wrote observations projection to {OBSERVATIONS_OUT}")
     print(
         "Wrote Mesh Signal current and historical evidence projection to "

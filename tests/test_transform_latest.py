@@ -57,7 +57,13 @@ class TransformLatestTest(unittest.TestCase):
 
     def run_main_capturing_output(self):
         stream = io.StringIO()
-        with mock.patch("sys.stdout", new=stream):
+        with mock.patch.dict(
+            self.module.os.environ,
+            {
+                self.module.INCIDENT_SIMILARITY_ENABLED_ENVIRONMENT: "",
+                self.module.OPERATIONAL_LEARNINGS_ENABLED_ENVIRONMENT: "",
+            },
+        ), mock.patch("sys.stdout", new=stream):
             self.module.main()
         output = stream.getvalue()
         self.assertIn("Wrote", output)
@@ -270,12 +276,14 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("metrics", interval_summary)
         self.assertEqual(incident_similarity["schema_version"], 1)
         self.assertEqual(incident_similarity["model_version"], "prime_observer.incident_similarity.v1")
-        self.assertIn("current_incident", incident_similarity)
-        self.assertIn("matches", incident_similarity)
+        self.assertEqual(incident_similarity["status"], "disabled")
+        self.assertIsNone(incident_similarity["current_incident"])
+        self.assertEqual(incident_similarity["matches"], [])
         self.assertEqual(operational_learnings["schema_version"], 1)
         self.assertEqual(operational_learnings["model_version"], "prime_observer.operational_learnings.v1")
         self.assertEqual(operational_learnings["learning_version"], "operational_learning.phase_1")
-        self.assertIn("insights", operational_learnings)
+        self.assertEqual(operational_learnings["status"], "disabled")
+        self.assertEqual(operational_learnings["insights"], [])
         self.assertEqual(time_context["schema_version"], 2)
         self.assertEqual(time_context["model_version"], "prime_observer.time_context.v2")
         self.assertEqual(time_context["mode"], "current")

@@ -70,7 +70,7 @@ Production raw-reader inventory after Phase 5:
 
 | Reader | Classification | Phase 5 source |
 | --- | --- | --- |
-| `bin/transform_latest.py` chart, health, attribution, observation, interval, incident, similarity, and learning input | Semantic-critical | Authoritative SQLite boundary |
+| `bin/transform_latest.py` chart, health, attribution, observation, interval, and incident input | Semantic-critical | Authoritative SQLite boundary |
 | `bin/transform_latest.py` hourly and durable baseline history | Semantic-critical and file-aware | SQLite with stored source provenance |
 | `bin/build_investigation.py` requested-window history | Semantic-critical investigation evidence | SQLite with stored source provenance |
 

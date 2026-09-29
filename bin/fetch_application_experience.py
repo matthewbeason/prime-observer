@@ -17,6 +17,7 @@ import urllib.parse
 BASE = Path(__file__).resolve().parents[1]
 VIZ_DIR = BASE / "viz"
 OUT = VIZ_DIR / "application_experience.json"
+HISTORY_DIR = BASE / "data"
 ENV_FILE = BASE / ".env.application_experience"
 
 SCHEMA_VERSION = 1
@@ -412,6 +413,30 @@ def write_json_atomic(payload: dict[str, object]) -> None:
     tmp.replace(OUT)
 
 
+def append_history(payload: dict[str, object]) -> Path:
+    """Durably append the exact latest-state payload to a UTC daily JSONL file."""
+    generated_at = dt.datetime.fromisoformat(str(payload["generated_at"]).replace("Z", "+00:00"))
+    day = generated_at.astimezone(dt.timezone.utc).strftime("%Y%m%d")
+    path = HISTORY_DIR / f"application_experience_{day}.jsonl"
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise OSError(f"Refusing symlink application-experience history: {path}")
+    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        view = memoryview(encoded)
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError(f"Could not append application-experience history: {path}")
+            view = view[written:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    return path
+
+
 def main() -> None:
     config = load_config()
     print(
@@ -423,7 +448,9 @@ def main() -> None:
         f"timeout: {config['timeout_seconds']}s"
     )
     payload = build_payload(config)
+    history_path = append_history(payload)
     write_json_atomic(payload)
+    print(f"Appended application experience history to {history_path}.")
     print(f"Wrote application experience artifact to {OUT} with status {payload['status']}.")
 
 

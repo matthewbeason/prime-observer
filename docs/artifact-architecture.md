@@ -341,6 +341,12 @@ Stage ownership:
 - Generated: yes
 - Should be committed: no
 
+The application-experience producer first appends the exact payload to the
+mode-`0600` UTC-daily `data/application_experience_YYYYMMDD.jsonl` evidence
+history and fsyncs it. That history has no runtime consumer; it preserves
+existing DNS/HTTPS result records without changing the latest-state artifact
+contract or introducing historical interpretation.
+
 ### `viz/operator_impact_feedback.json`
 
 - Producer: `bin/record_operator_impact.py`
@@ -473,41 +479,30 @@ its `start` and `end` exactly match the requested interval route. It does not
 infer interval health, issue type, affected scope, overlap, or narrative in
 JavaScript.
 
-Incident Intelligence Phase E adds generated `viz/incident_similarity.json` for
-deterministic current-incident similarity. It contains schema/model versions,
-generated time, `current_incident`, and scored `matches` against canonical
-completed incidents. Each canonical identity appears at most once. Each match includes incident id, score, deterministic pattern
-label, summary, per-dimension weighted breakdown, matching and different
-dimensions, previous duration, recovery, user impact, operator feedback, evidence
-references, and confidence. Python owns all scoring and pattern labeling; the
-browser only renders the artifact and hides it when it does not match the current
-incident.
+The Incident Intelligence Phase E implementation remains in
+`bin/incident_similarity.py`, but normal runtime claim production is disabled by
+default for the pre-soak period. `viz/incident_similarity.json` is currently an
+explicit `status: disabled` placeholder with `current_incident: null` and no
+matches, scores, or explanations. The browser therefore hides the section.
 
-Operational Learning Phase 1 adds generated `viz/operational_learnings.json` for
-deterministic operational knowledge accumulated from canonical completed incidents
-and durable baseline history. It contains schema/model versions, generated time,
-`learning_version`, and `insights`. Each insight includes id, category, title,
-summary, confidence, supporting incidents, supporting intervals, supporting
-baselines, first/last seen timestamps, observation count, stability, and evidence
-references. Python owns all insight creation, confidence, conflict reduction, and
-retirement. The browser only renders active artifact-provided insights and does
-not summarize, score, infer recurrence, or call an LLM.
+The Operational Learning Phase 1 implementation remains in
+`bin/operational_learnings.py`, but normal runtime claim production is disabled
+by default for the pre-soak period. `viz/operational_learnings.json` is currently
+an explicit `status: disabled` placeholder with no insights, so neither renderer
+presents recurrence, recovery-without-intervention, or other learning claims.
 
 ### `viz/operational_learnings.json`
 
 - Producer: `bin/transform_latest.py` via `bin/operational_learnings.py`
 - Consumers: `viz/index.html`; `viz/investigate.html`
-- Purpose: compact deterministic operational lessons from repeated completed
-  incident evidence and durable baselines
-- Required fields: `schema_version`, `model_version`, `generated_at`,
-  `learning_version`, `insights`; each insight includes `id`, `category`,
-  `title`, `summary`, `confidence`, `supporting_incidents`,
-  `supporting_intervals`, `supporting_baselines`, `first_seen`, `last_seen`,
-  `times_observed`, `stability`, and `evidence_refs`
+- Purpose: currently an explicit disabled placeholder; the retained producer
+  implementation can build deterministic lessons when explicitly re-enabled
+- Required disabled fields: `schema_version`, `model_version`, `generated_at`,
+  `status`, `reason`, `learning_version`, and an empty `insights` list
 - Optional fields: no optional Phase 1 fields beyond empty support arrays
 - Unavailable behavior: dashboard and Investigation hide the learning card/section
   if the artifact is missing, malformed, or contains no active insights
-- Authoritative: yes, for generated operational learning
+- Authoritative: no current learning claims are produced
 - Generated: yes
 - Should be committed: no
 

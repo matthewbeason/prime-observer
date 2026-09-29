@@ -1,5 +1,6 @@
 import datetime as dt
 import importlib.util
+import json
 import os
 import tempfile
 import unittest
@@ -27,6 +28,7 @@ class FetchApplicationExperienceTest(unittest.TestCase):
         self.module.BASE = self.base
         self.module.VIZ_DIR = self.viz_dir
         self.module.OUT = self.viz_dir / "application_experience.json"
+        self.module.HISTORY_DIR = self.base / "data"
         self.module.ENV_FILE = self.base / ".env.application_experience"
         self.now = dt.datetime(2026, 7, 27, 12, 0, tzinfo=dt.timezone.utc)
 
@@ -202,6 +204,34 @@ class FetchApplicationExperienceTest(unittest.TestCase):
 
     def test_no_openrouter_reference(self):
         self.assertNotIn("openrouter", MODULE_PATH.read_text().lower())
+
+    def test_history_appends_exact_payloads_to_utc_daily_jsonl(self):
+        first = self.build_payload()
+        second = self.module.build_payload(
+            self.config(),
+            now=self.now + dt.timedelta(minutes=30),
+            dns_checker=self.dns_ok,
+            system_dns_checker=self.system_ok,
+            https_checker=self.https_ok,
+        )
+
+        path = self.module.append_history(first)
+        self.module.append_history(second)
+
+        self.assertEqual(path.name, "application_experience_20260727.jsonl")
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual(records, [first, second])
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_history_refuses_symlink_target(self):
+        self.module.HISTORY_DIR.mkdir(parents=True)
+        target = self.module.HISTORY_DIR / "real.jsonl"
+        target.write_text("")
+        history = self.module.HISTORY_DIR / "application_experience_20260727.jsonl"
+        history.symlink_to(target)
+
+        with self.assertRaisesRegex(OSError, "Refusing symlink"):
+            self.module.append_history(self.build_payload())
 
 
 if __name__ == "__main__":

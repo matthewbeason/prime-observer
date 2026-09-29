@@ -99,38 +99,13 @@ If the artifact is missing, malformed, or for another interval, the page keeps
 the safe selected-interval request state and still does not show the current
 incident as a substitute.
 
-Incident Intelligence Phase E adds `viz/incident_similarity.json`, a
-Python-generated deterministic comparison between the current investigation and
-canonical completed incidents. Legacy reconstructions of one completed identity
-are projected once, so similarity cannot return multiple aliases of the same
-event. The model uses explainable weighted dimensions
-from generated investigation artifacts: affected services, target class,
-resolver members, gateway involvement, adaptive baseline state, likely issue,
-technical condition, user impact, application experience, dependency state,
-recovery behavior, duration bucket, external context, and guardrail profile.
-It does not use embeddings, LLM similarity, or browser inference. Missing legacy
-snapshot fields simply reduce confidence, and no match is emitted below the
-deterministic threshold or without a matching core cause dimension.
-
-The Investigation renderer shows a compact `Seen before` section for the current
-incident when `viz/incident_similarity.json` matches the current incident id. It
-renders best matches, why they match, important differences, previous duration,
-recovery, user impact, operator feedback, and a collapsed technical breakdown.
-Completed incident views do not render current-incident similarity as historical
-truth.
-
-Operational Learning Phase 1 adds `viz/operational_learnings.json`, a
-Python-generated deterministic learning artifact over canonical completed incidents
-and durable baseline history. Supporting incident IDs and observation counts use
-canonical completed identities, not physical alias files. It emits only repeated operational lessons; a single
-incident is insufficient. Current rules can describe repeated resolver behavior,
-recovery behavior, recurring deterministic patterns, baseline-supported resolver
-latency without observed user impact, and external context that coincided with
-multiple completed incidents. Newer contradictory evidence reduces confidence or
-retires an insight instead of silently replacing it. The Investigation renderer
-shows up to three active insights in `What we've learned`, and the dashboard can
-show one compact `Operational learning` card. Neither renderer creates insight
-text, scores confidence, infers recurrence, or uses LLM summarization.
+The Incident Intelligence Phase E and Operational Learning Phase 1
+implementations remain in the repository, but normal runtime claim production
+is disabled by default for the pre-soak period. The transform replaces prior
+claim-bearing artifacts with explicit disabled placeholders containing no
+similarity matches, scores, or operational insights. Both renderers hide their
+corresponding sections. Health, attribution, lifecycle, completed history, and
+raw telemetry generation do not consume either output.
 
 `viz/investigation.json` remains the mutable current investigation only. Active
 and recovering events retain their start-based identity. At completion, Python
