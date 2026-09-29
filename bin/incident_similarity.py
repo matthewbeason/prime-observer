@@ -5,6 +5,8 @@ from pathlib import Path
 import datetime as dt
 import json
 
+from completed_history import build_completed_history_projection
+
 
 SCHEMA_VERSION = 1
 MODEL_VERSION = "prime_observer.incident_similarity.v1"
@@ -301,18 +303,15 @@ def evidence_refs(path, match_id):
 
 
 def load_completed_snapshots(investigations_dir):
-    snapshots = []
-    path = Path(investigations_dir)
-    if not path.exists():
-        return snapshots
-    for item in sorted(path.glob("*.json")):
-        try:
-            payload = json.loads(item.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(payload, dict):
-            snapshots.append((f"investigations/{item.name}", payload))
-    return snapshots
+    return build_completed_history_projection(investigations_dir)["canonical_snapshots"]
+
+
+def completed_snapshot_parts(item):
+    if not isinstance(item, (list, tuple)) or len(item) < 2:
+        return None, None, None
+    path, snapshot = item[:2]
+    canonical_id = item[2] if len(item) > 2 else None
+    return path, snapshot, canonical_id
 
 
 def build_incident_similarity(*, current_investigation, completed_snapshots, generated_at):
@@ -329,11 +328,18 @@ def build_incident_similarity(*, current_investigation, completed_snapshots, gen
         }
     current_pattern = pattern_label(current_features)
     matches = []
-    for path, snapshot in completed_snapshots or []:
+    seen_canonical_ids = set()
+    for item in completed_snapshots or []:
+        path, snapshot, canonical_id = completed_snapshot_parts(item)
+        if not isinstance(snapshot, dict):
+            continue
         previous_features = incident_features(snapshot or {})
-        previous_id = previous_features.get("incident_id")
+        previous_id = canonical_id or previous_features.get("incident_id")
         if not previous_id or previous_id == current_id:
             continue
+        if previous_id in seen_canonical_ids:
+            continue
+        seen_canonical_ids.add(previous_id)
         score, breakdown, matching, different, confidence = score_match(current_features, previous_features)
         if score < MIN_MATCH_SCORE or not has_core_cause_match(breakdown):
             continue

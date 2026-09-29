@@ -831,6 +831,48 @@ globalThis.fetch = async (url) => {{
             self.assertIn("Completed incident", rendered["status"])
             self.assertEqual(rendered["mode"], "Completed incident")
 
+    def test_canonical_and_legacy_alias_routes_load_intended_evidence(self):
+        historical = self.investigation_payload()
+        catalog = {
+            "artifact_type": "investigation_catalog",
+            "schema_version": 2,
+            "canonical_events": [{
+                "event_id": "completed-v1-resolver-2026-07-20t00-15-00z",
+                "canonical_event_id": "completed-v1-resolver-2026-07-20t00-15-00z",
+                "legacy_event_id": "event-representative",
+                "snapshot_path": "investigations/event-representative.json",
+            }],
+            "legacy_aliases": [{
+                "legacy_event_id": "event-alias",
+                "canonical_event_id": "completed-v1-resolver-2026-07-20t00-15-00z",
+                "snapshot_path": "investigations/event-alias.json",
+                "representative_snapshot_path": "investigations/event-representative.json",
+            }],
+            "invalid_snapshots": [],
+        }
+        routes = {
+            "completed-v1-resolver-2026-07-20t00-15-00z": "./investigations/event-representative.json",
+            "event-representative": "./investigations/event-representative.json",
+            "event-alias": "./investigations/event-alias.json",
+        }
+        for event_id, expected_path in routes.items():
+            body = f"""
+window.location.search = "?view=incident&event={event_id}";
+const fetched = [];
+globalThis.fetch = async (url) => {{
+  fetched.push(url);
+  if (url === INVESTIGATION_CATALOG_URL) return {{ok: true, json: async () => ({json.dumps(catalog)})}};
+  if (url === "./investigations/event-representative.json" || url === "./investigations/event-alias.json") return {{ok: true, json: async () => ({json.dumps(historical)})}};
+  return {{ok: false, status: 404, json: async () => ({{}})}};
+}};
+(async () => {{
+  await main();
+  console.log(JSON.stringify({{fetched}}));
+}})().catch(err => {{ console.error(err); process.exit(1); }});
+"""
+            rendered = json.loads(self.run_node(body))
+            self.assertIn(expected_path, rendered["fetched"])
+
     def test_back_forward_route_handler_preserves_view_state(self):
         self.assertIn("popstate", self.script)
         self.assertIn("applyRoute(catalog)", self.script)
@@ -847,7 +889,25 @@ console.log(JSON.stringify({empty, mixed: document.getElementById("historyList")
 
         self.assertIn("No completed event snapshots", rendered["empty"])
         self.assertIn("Resolver probes", rendered["mixed"])
-        self.assertIn("invalid snapshot", rendered["mixed"])
+        self.assertIn("invalid or identity-incomplete snapshot", rendered["mixed"])
+
+    def test_schema_two_history_buttons_use_canonical_ids(self):
+        body = """
+renderHistory({
+  artifact_type: "investigation_catalog",
+  schema_version: 2,
+  canonical_events: [{event_id: "completed-v1-resolver-2026-07-20t00-15-00z", legacy_event_id: "event-old", snapshot_path: "investigations/event-old.json", target_class: "resolver_probe", severity: "low", first_anomalous_at: "2026-07-20T00:00:00Z", recovered_at: "2026-07-20T00:15:00Z", duration: 15, lifecycle: "complete", affected_targets: ["45.90.30.134"]}],
+  legacy_aliases: [],
+  invalid_snapshots: [],
+  identity_incomplete_snapshots: [],
+  identity_conflicts: []
+});
+console.log(JSON.stringify({html: document.getElementById("historyList").innerHTML}));
+"""
+        rendered = json.loads(self.run_node(body))
+
+        self.assertIn('data-event-id="completed-v1-resolver-2026-07-20t00-15-00z"', rendered["html"])
+        self.assertNotIn('data-event-id="event-old"', rendered["html"])
 
     def test_failed_historical_fetch_preserves_current_view(self):
         current = self.investigation_payload()

@@ -50,7 +50,7 @@ from build_operator_assistant_input import build_from_path as build_assistant_in
 from build_operator_assistant_input import pending_generation_state
 from build_operator_assistant_input import write_json as write_assistant_input_json
 from interval_summary import build_interval_summary, latest_bucket_interval
-from incident_similarity import build_incident_similarity, load_completed_snapshots
+from incident_similarity import build_incident_similarity
 from operational_learnings import build_operational_learnings
 from time_context import build_time_context
 from mesh_context import refresh_mesh_context
@@ -1609,7 +1609,7 @@ def main():
         catalog_path=VIZ_DIR / "investigation_catalog.json",
         current_investigation=investigation,
     )
-    completed_snapshots = load_completed_snapshots(VIZ_DIR / "investigations")
+    completed_snapshots = history_write["canonical_snapshots"]
     incident_similarity = build_incident_similarity(
         current_investigation=investigation,
         completed_snapshots=completed_snapshots,

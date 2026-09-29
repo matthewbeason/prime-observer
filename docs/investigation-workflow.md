@@ -101,7 +101,9 @@ incident as a substitute.
 
 Incident Intelligence Phase E adds `viz/incident_similarity.json`, a
 Python-generated deterministic comparison between the current investigation and
-completed incident snapshots. The model uses explainable weighted dimensions
+canonical completed incidents. Legacy reconstructions of one completed identity
+are projected once, so similarity cannot return multiple aliases of the same
+event. The model uses explainable weighted dimensions
 from generated investigation artifacts: affected services, target class,
 resolver members, gateway involvement, adaptive baseline state, likely issue,
 technical condition, user impact, application experience, dependency state,
@@ -118,8 +120,9 @@ Completed incident views do not render current-incident similarity as historical
 truth.
 
 Operational Learning Phase 1 adds `viz/operational_learnings.json`, a
-Python-generated deterministic learning artifact over completed incident snapshots
-and durable baseline history. It emits only repeated operational lessons; a single
+Python-generated deterministic learning artifact over canonical completed incidents
+and durable baseline history. Supporting incident IDs and observation counts use
+canonical completed identities, not physical alias files. It emits only repeated operational lessons; a single
 incident is insufficient. Current rules can describe repeated resolver behavior,
 recovery behavior, recurring deterministic patterns, baseline-supported resolver
 latency without observed user impact, and external context that coincided with
@@ -129,13 +132,14 @@ shows up to three active insights in `What we've learned`, and the dashboard can
 show one compact `Operational learning` card. Neither renderer creates insight
 text, scores confidence, infers recurrence, or uses LLM summarization.
 
-`viz/investigation.json` remains the mutable current investigation only. When an
-event first reaches `complete`, the Python producer writes a separate historical
-payload to `viz/investigations/<event-id>.json`. Existing snapshot paths are
-never rewritten, and active or recovering events never create snapshots. The
-catalog is rebuilt from the immutable files already present on disk, so a
-completed event remains available after its telemetry leaves the current
-transform window.
+`viz/investigation.json` remains the mutable current investigation only. Active
+and recovering events retain their start-based identity. At completion, Python
+normalizes `recovered_at` to exact UTC and derives a versioned identity from
+`(target_class, recovered_at UTC)`. If valid historical evidence already represents
+that identity, publication is a no-op. Otherwise the producer writes one separate
+historical payload under `viz/investigations/`. Existing snapshot paths are never
+rewritten, renamed, merged, or deleted. The catalog is rebuilt from the immutable
+files already present on disk, so completed history survives telemetry aging out.
 
 Completed snapshots are atomically published write-once artifacts. The producer
 serializes the complete deterministic JSON payload first, writes and fsyncs a
@@ -146,11 +150,17 @@ deleted or overwritten automatically; they are preserved on disk, excluded from
 valid history, and reported in the generated catalog's `invalid_snapshots`
 collection.
 
-`viz/investigation_catalog.json` lists completed events newest first by recovery
-time. Each row contains `event_id`, `lifecycle`, `first_anomalous_at`,
-`recovered_at`, `severity`, `confidence`, `target_class`, `affected_targets`,
-duration in minutes, and the browser-relative `snapshot_path`. The catalog is a
-generated projection over local snapshot files, not canonical evidence itself.
+`viz/investigation_catalog.json` schema 2 lists canonical completed events newest
+first by recovery time. Exact `(target_class, recovered_at UTC)` is the versioned
+identity; affected members and reconstructed starts are evidence, not identity.
+For overlapping reconstructions, the representative is selected by earliest valid
+`snapshot_written_at`, then `generated_at`, then deterministic path order. The
+catalog separately preserves `legacy_aliases`, invalid and identity-incomplete
+records, `identity_conflicts`, reconstruction start ranges, and physical,
+canonical-event, and duplicate-alias counts. Disjoint degradation intervals with
+one proposed identity fail closed as `identity_conflict`. A representative is one
+original snapshot, not a union of its aliases. The catalog is a compatibility
+projection over local immutable evidence, not a migration of that evidence.
 
 The automatic schema is `schema_version: 2` and uses:
 
@@ -433,11 +443,12 @@ Explicit Investigation entry points are:
   interval safety view. It displays the exact requested interval, states that
   exact interval evidence is not currently generated, and does not render the
   current incident as a substitute.
-- `investigate.html?view=incident&event=<event-id>` opens the immutable completed
-  snapshot listed in `viz/investigation_catalog.json` and labels it `Completed
-  incident`.
-- Legacy `?event=<event-id>` links continue to resolve to completed snapshots
-  when the event is present in the catalog.
+- `investigate.html?view=incident&event=<canonical-event-id>` opens the canonical
+  representative listed in `viz/investigation_catalog.json` and labels it
+  `Completed incident`.
+- Legacy `?event=<legacy-event-id>` links resolve through the catalog alias mapping
+  to the exact original immutable snapshot identified by that old ID, including
+  non-representative aliases.
 
 Event comparison, replay, recurrence, and similarity detection remain future
 work.

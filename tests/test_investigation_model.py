@@ -762,6 +762,62 @@ class InvestigationModelTest(unittest.TestCase):
             self.assertTrue(snapshot["artifact_state"]["is_historical"])
             self.assertEqual(snapshot["selected_event"]["lifecycle_state"], "complete")
 
+    def test_reconstructed_start_change_does_not_republish_completed_identity(self):
+        full_rows = [
+            self.row(0, p95=180, raw=True),
+            self.row(1, p95=181, raw=True, sustained=True),
+            self.row(2),
+            self.row(3),
+            self.row(17),
+        ]
+        truncated_rows = full_rows[1:]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = self.module.write_completed_investigation_history(
+                **self.history_args(full_rows),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+            snapshot_path = root / "investigations" / f"{first['snapshots_written'][0]}.json"
+            original = snapshot_path.read_bytes()
+            second = self.module.write_completed_investigation_history(
+                **self.history_args(truncated_rows, generated_minute=90),
+                investigations_dir=root / "investigations",
+                catalog_path=root / "investigation_catalog.json",
+            )
+
+            self.assertEqual(second["snapshots_written"], [])
+            self.assertEqual(second["canonical_event_count"], 1)
+            self.assertEqual(len(list((root / "investigations").glob("*.json"))), 1)
+            self.assertEqual(snapshot_path.read_bytes(), original)
+
+    def test_publication_fails_closed_without_valid_completion_identity(self):
+        for recovered_at in (None, "not-a-time"):
+            current = {
+                "events": [{
+                    "id": "event-untrusted",
+                    "lifecycle_state": "complete",
+                    "details": {
+                        "target_class": "resolver_probe",
+                        "recovered_at": recovered_at,
+                    },
+                }],
+            }
+            with self.subTest(recovered_at=recovered_at), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                result = self.module.write_completed_investigation_history(
+                    rows_out=[],
+                    generated_at=self.base,
+                    investigations_dir=root / "investigations",
+                    catalog_path=root / "investigation_catalog.json",
+                    current_investigation=current,
+                )
+
+                self.assertEqual(result["snapshots_written"], [])
+                self.assertEqual(result["identity_errors"][0]["error_type"], "identity_incomplete")
+                self.assertEqual(list((root / "investigations").glob("*.json")), [])
+
     def test_snapshot_publication_leaves_complete_json_and_no_temp_files(self):
         rows = [self.row(0, p95=180, raw=True), self.row(1, p95=181, raw=True, sustained=True)]
         rows.extend(self.row(minute) for minute in (2, 3, 17))
@@ -824,10 +880,11 @@ class InvestigationModelTest(unittest.TestCase):
             self.assertEqual(snapshot_path.read_text(), "{not valid json")
 
         self.assertEqual(result["snapshots_written"], [])
-        self.assertEqual(result["snapshot_count"], 0)
+        self.assertEqual(result["snapshot_count"], 1)
+        self.assertEqual(result["canonical_event_count"], 0)
         self.assertEqual(result["invalid_snapshots"][0]["event_id"], event_id)
         self.assertEqual(result["invalid_snapshots"][0]["error_type"], "malformed_json")
-        self.assertEqual(result["catalog"]["events"], [])
+        self.assertEqual(result["catalog"]["canonical_events"], [])
         self.assertEqual(result["catalog"]["invalid_snapshots"][0]["event_id"], event_id)
 
     def test_valid_snapshots_still_catalog_when_malformed_snapshots_coexist(self):
@@ -845,8 +902,8 @@ class InvestigationModelTest(unittest.TestCase):
             (investigations / "event-bad.json").write_text("[]")
             catalog = self.module.build_investigation_catalog(investigations, self.base)
 
-        self.assertEqual(len(catalog["events"]), 1)
-        self.assertEqual(catalog["events"][0]["event_id"], first["snapshots_written"][0])
+        self.assertEqual(len(catalog["canonical_events"]), 1)
+        self.assertEqual(catalog["canonical_events"][0]["event_id"], first["snapshots_written"][0])
         self.assertEqual(catalog["invalid_snapshots"][0]["event_id"], "event-bad")
         self.assertEqual(catalog["invalid_snapshots"][0]["error_type"], "structurally_invalid")
 
@@ -864,27 +921,24 @@ class InvestigationModelTest(unittest.TestCase):
                 catalog_path=root / "investigation_catalog.json",
             )
 
-        events = result["catalog"]["events"]
+        events = result["catalog"]["canonical_events"]
         self.assertEqual(result["catalog"]["artifact_type"], "investigation_catalog")
         self.assertEqual(result["catalog"]["generator"], self.module.INVESTIGATION_GENERATOR)
         self.assertEqual(result["catalog"]["invalid_snapshots"], [])
         self.assertEqual(len(events), 2)
         self.assertGreater(events[0]["recovered_at"], events[1]["recovered_at"])
-        self.assertEqual(
-            set(events[0]),
-            {
-                "event_id", "lifecycle", "first_anomalous_at", "recovered_at", "severity",
-                "confidence", "target_class", "affected_targets", "duration", "snapshot_path",
-            },
-        )
+        self.assertEqual(events[0]["event_id"], events[0]["canonical_event_id"])
+        self.assertEqual(events[0]["identity_version"], "completed-incident.v1")
+        self.assertEqual(events[0]["physical_snapshot_count"], 1)
 
     def test_catalog_handles_missing_snapshot_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             catalog = self.module.build_investigation_catalog(Path(tmp) / "missing", self.base)
 
         self.assertEqual(catalog["artifact_type"], "investigation_catalog")
-        self.assertEqual(catalog["schema_version"], 1)
-        self.assertEqual(catalog["events"], [])
+        self.assertEqual(catalog["schema_version"], 2)
+        self.assertEqual(catalog["canonical_events"], [])
+        self.assertEqual(catalog["legacy_aliases"], [])
         self.assertEqual(catalog["invalid_snapshots"], [])
 
     def test_snapshot_metadata_does_not_change_event_semantic_hash(self):
@@ -943,7 +997,7 @@ class InvestigationModelTest(unittest.TestCase):
             current_after = self.build(active_rows)
 
             self.assertEqual(snapshot_path.read_bytes(), original)
-            self.assertEqual(len(result["catalog"]["events"]), 1)
+            self.assertEqual(len(result["catalog"]["canonical_events"]), 1)
             self.assertEqual(current_before, current_after)
             self.assertEqual(current_after["selected_event"]["lifecycle_state"], "active")
 
@@ -965,7 +1019,7 @@ class InvestigationModelTest(unittest.TestCase):
                 catalog_path=root / "investigation_catalog.json",
             )
 
-        self.assertEqual(second["catalog"]["events"], first["catalog"]["events"])
+        self.assertEqual(second["catalog"]["canonical_events"], first["catalog"]["canonical_events"])
 
 
 if __name__ == "__main__":

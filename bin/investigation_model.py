@@ -8,6 +8,12 @@ import json
 import os
 import tempfile
 
+from completed_history import (
+    build_completed_history_projection,
+    canonical_completed_event_id,
+    load_snapshot as load_completed_snapshot,
+    parse_timestamp as parse_completed_timestamp,
+)
 from health_model import (
     HEAT_BIN_MINUTES,
     RECOVERY_HEALTHY_PERSISTENCE,
@@ -2007,24 +2013,6 @@ def build_automatic_investigation(
     return payload
 
 
-def catalog_entry(snapshot, snapshot_path):
-    selected = snapshot.get("selected_event") if isinstance(snapshot.get("selected_event"), dict) else {}
-    if selected.get("lifecycle_state") != "complete" or not selected.get("id"):
-        return None
-    return {
-        "event_id": selected["id"],
-        "lifecycle": selected["lifecycle_state"],
-        "first_anomalous_at": selected.get("first_anomalous_at"),
-        "recovered_at": selected.get("recovered_at"),
-        "severity": selected.get("severity"),
-        "confidence": selected.get("confidence"),
-        "target_class": selected.get("target_class"),
-        "affected_targets": selected.get("affected_targets") or [],
-        "duration": duration_minutes(selected.get("first_anomalous_at"), selected.get("recovered_at")),
-        "snapshot_path": snapshot_path,
-    }
-
-
 def invalid_snapshot_entry(path, *, error_type, error_message, detected_at=None):
     return {
         "snapshot_path": f"investigations/{path.name}",
@@ -2036,59 +2024,15 @@ def invalid_snapshot_entry(path, *, error_type, error_message, detected_at=None)
 
 
 def load_snapshot_for_catalog(path):
-    try:
-        raw = path.read_text()
-    except OSError as exc:
-        return None, "unreadable", str(exc)
-    try:
-        snapshot = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return None, "malformed_json", str(exc)
-    if not isinstance(snapshot, dict):
-        return None, "structurally_invalid", "Snapshot JSON root is not an object."
-    selected = snapshot.get("selected_event") if isinstance(snapshot.get("selected_event"), dict) else None
-    if not selected or selected.get("lifecycle_state") != "complete" or not selected.get("id"):
-        return None, "structurally_invalid", "Snapshot does not contain a completed selected_event with an id."
-    artifact_type = snapshot.get("artifact_type")
-    if artifact_type not in {None, "completed_investigation_snapshot"}:
-        return None, "structurally_invalid", f"Unsupported artifact_type: {artifact_type}."
-    return snapshot, None, None
+    return load_completed_snapshot(path)
 
 
 def build_investigation_catalog(investigations_dir=INVESTIGATIONS_DIR, generated_at=None):
-    events = []
-    invalid_snapshots = []
-    if investigations_dir.exists():
-        for path in investigations_dir.glob("*.json"):
-            snapshot, error_type, error_message = load_snapshot_for_catalog(path)
-            if error_type:
-                invalid_snapshots.append(invalid_snapshot_entry(
-                    path,
-                    error_type=error_type,
-                    error_message=error_message,
-                    detected_at=generated_at,
-                ))
-                continue
-            entry = catalog_entry(snapshot, f"investigations/{path.name}")
-            if entry:
-                events.append(entry)
-    events.sort(
-        key=lambda item: (
-            parse_ts(item.get("recovered_at")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
-            parse_ts(item.get("first_anomalous_at")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
-            item.get("event_id") or "",
-        ),
-        reverse=True,
-    )
-    invalid_snapshots.sort(key=lambda item: item.get("snapshot_path") or "")
-    return {
-        "artifact_type": "investigation_catalog",
-        "schema_version": 1,
-        "generated_at": iso(generated_at) if generated_at is not None else None,
-        "generator": dict(INVESTIGATION_GENERATOR),
-        "events": events,
-        "invalid_snapshots": invalid_snapshots,
-    }
+    return build_completed_history_projection(
+        investigations_dir,
+        generated_at=generated_at,
+        generator=INVESTIGATION_GENERATOR,
+    )["catalog"]
 
 
 def serialize_json(payload):
@@ -2172,13 +2116,55 @@ def write_completed_investigation_history(
         for event in current.get("events") or []
         if event.get("lifecycle_state") == "complete" and event.get("id")
     ]
+    initial_projection = build_completed_history_projection(
+        investigations_dir,
+        generated_at=generated_at,
+        generator=INVESTIGATION_GENERATOR,
+    )
+    represented_identities = {
+        item["canonical_event_id"]
+        for item in initial_projection["catalog"].get("canonical_events", [])
+    } | {
+        item["canonical_event_id"]
+        for item in initial_projection["catalog"].get("identity_conflicts", [])
+    }
+    untrusted_legacy_event_ids = {
+        item.get("event_id")
+        for item in (
+            initial_projection["catalog"].get("invalid_snapshots", [])
+            + initial_projection["catalog"].get("identity_incomplete_snapshots", [])
+        )
+        if item.get("event_id")
+    }
     written = []
     invalid = []
+    identity_errors = []
     for completed_event in completed_events:
         completed_event_id = completed_event["id"]
-        snapshot_path = investigations_dir / f"{completed_event_id}.json"
+        details = completed_event.get("details") if isinstance(completed_event.get("details"), dict) else {}
+        recovered_at = parse_completed_timestamp(details.get("recovered_at"))
+        canonical_id = canonical_completed_event_id(details.get("target_class"), recovered_at)
+        if canonical_id is None:
+            identity_errors.append({
+                "event_id": completed_event_id,
+                "error_type": "identity_incomplete",
+                "error_message": "Completed event is missing a valid target_class or recovered_at timestamp.",
+            })
+            continue
+        if completed_event_id in untrusted_legacy_event_ids:
+            identity_errors.append({
+                "event_id": completed_event_id,
+                "canonical_event_id": canonical_id,
+                "error_type": "untrusted_existing_evidence",
+                "error_message": "An invalid or identity-incomplete historical file already uses this legacy event id.",
+            })
+            continue
+        if canonical_id in represented_identities:
+            continue
+        snapshot_path = investigations_dir / f"{canonical_id}.json"
         existing = existing_snapshot_state(snapshot_path)
         if existing["state"] == "valid":
+            represented_identities.add(canonical_id)
             continue
         if existing["state"] == "invalid":
             invalid.append(invalid_snapshot_entry(
@@ -2188,7 +2174,6 @@ def write_completed_investigation_history(
                 detected_at=generated_at,
             ))
             continue
-        recovered_at = parse_ts((completed_event.get("details") or {}).get("recovered_at"))
         snapshot_rows = [
             row for row in rows_out
             if recovered_at is None or (parse_ts(row.get("ts")) or recovered_at) <= recovered_at
@@ -2211,7 +2196,8 @@ def write_completed_investigation_history(
         )
         write_result = write_json_once(snapshot_path, snapshot)
         if write_result["written"]:
-            written.append(completed_event_id)
+            written.append(canonical_id)
+            represented_identities.add(canonical_id)
         elif write_result.get("state") == "invalid_existing":
             invalid.append(invalid_snapshot_entry(
                 snapshot_path,
@@ -2220,13 +2206,22 @@ def write_completed_investigation_history(
                 detected_at=generated_at,
             ))
 
-    catalog = build_investigation_catalog(investigations_dir, generated_at)
+    final_projection = build_completed_history_projection(
+        investigations_dir,
+        generated_at=generated_at,
+        generator=INVESTIGATION_GENERATOR,
+    )
+    catalog = final_projection["catalog"]
     write_json_atomic(catalog_path, catalog)
     return {
         "snapshots_written": written,
         "invalid_snapshots": invalid or catalog.get("invalid_snapshots", []),
-        "snapshot_count": len(catalog["events"]),
+        "identity_errors": identity_errors,
+        "identity_conflicts": catalog.get("identity_conflicts", []),
+        "snapshot_count": catalog.get("physical_snapshot_count", 0),
+        "canonical_event_count": catalog.get("canonical_event_count", 0),
         "catalog": catalog,
+        "canonical_snapshots": final_projection["canonical_snapshots"],
     }
 
 

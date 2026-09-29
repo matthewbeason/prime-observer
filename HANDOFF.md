@@ -165,8 +165,9 @@ Current projection state:
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten
-- `viz/investigation_catalog.json` is a generated projection over valid
-  snapshots and any preserved invalid snapshot metadata
+- `viz/investigation_catalog.json` schema 2 is the generated canonical completed
+  history projection, with exact legacy aliases to original paths and separately
+  preserved invalid, identity-incomplete, and conflicting records
 - `viz/operator_assistant_input.json` is the deterministic evidence package for
   OpenRouter interpretation
 - `viz/operator_assistant_output.json` is last valid matching Operator Assistant

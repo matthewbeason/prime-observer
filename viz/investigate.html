@@ -907,9 +907,11 @@
     }
 
     function renderHistory(catalog){
-      const validCatalog = catalog && typeof catalog === "object" && !Array.isArray(catalog) && Array.isArray(catalog.events);
-      const events = validCatalog ? catalog.events : [];
+      const validCatalog = catalog && typeof catalog === "object" && !Array.isArray(catalog) && (Array.isArray(catalog.canonical_events) || Array.isArray(catalog.events));
+      const events = validCatalog ? (catalog.canonical_events || catalog.events || []) : [];
       const invalidSnapshots = validCatalog && Array.isArray(catalog.invalid_snapshots) ? catalog.invalid_snapshots : [];
+      const identityIncomplete = validCatalog && Array.isArray(catalog.identity_incomplete_snapshots) ? catalog.identity_incomplete_snapshots : [];
+      const identityConflicts = validCatalog && Array.isArray(catalog.identity_conflicts) ? catalog.identity_conflicts : [];
       const historyList = document.getElementById("historyList");
       if (!validCatalog){
         historyList.innerHTML = '<div class="empty-note">Investigation history catalog is not available. Current investigation remains available.</div>';
@@ -922,10 +924,14 @@
             <div class="history-meta">${fmt(item.duration, " min")} · ${fmt(item.lifecycle)} · ${fmt((item.affected_targets || []).join(", "))}</div>
           </button>`).join("")
         : '<div class="empty-note">No completed event snapshots are available yet.</div>';
-      const invalidHtml = invalidSnapshots.length
-        ? `<div class="empty-note">${invalidSnapshots.length} invalid snapshot${invalidSnapshots.length === 1 ? "" : "s"} preserved on disk but excluded from history.</div>`
+      const excludedCount = invalidSnapshots.length + identityIncomplete.length;
+      const invalidHtml = excludedCount
+        ? `<div class="empty-note">${excludedCount} invalid or identity-incomplete snapshot${excludedCount === 1 ? "" : "s"} preserved on disk but excluded from canonical history.</div>`
         : "";
-      historyList.innerHTML = validEventsHtml + invalidHtml;
+      const conflictHtml = identityConflicts.length
+        ? `<div class="empty-note">${identityConflicts.length} completed identit${identityConflicts.length === 1 ? "y conflict is" : "y conflicts are"} preserved and excluded rather than collapsed.</div>`
+        : "";
+      historyList.innerHTML = validEventsHtml + invalidHtml + conflictHtml;
       const historyButtons = typeof document.querySelectorAll === "function"
         ? document.querySelectorAll(".history-button")
         : [];
@@ -2053,7 +2059,11 @@
       const view = params.get("view") || (legacyEventId ? "incident" : "current");
       if (view === "interval") return {view, params};
       if (view === "incident"){
-        const event = legacyEventId && catalog?.events?.find(item => item.event_id === legacyEventId);
+        const canonicalEvents = catalog?.canonical_events || catalog?.events || [];
+        const canonicalEvent = legacyEventId && canonicalEvents.find(item => item.event_id === legacyEventId || item.canonical_event_id === legacyEventId);
+        const representativeLegacyEvent = legacyEventId && canonicalEvents.find(item => item.legacy_event_id === legacyEventId);
+        const legacyAlias = legacyEventId && (catalog?.legacy_aliases || []).find(item => item.legacy_event_id === legacyEventId);
+        const event = canonicalEvent || representativeLegacyEvent || legacyAlias;
         return {view, eventId: legacyEventId, event};
       }
       return {view: "current"};

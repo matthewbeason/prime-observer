@@ -5,7 +5,7 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from incident_similarity import incident_features, load_completed_snapshots, pattern_label
+from incident_similarity import completed_snapshot_parts, incident_features, load_completed_snapshots, pattern_label
 
 
 SCHEMA_VERSION = 1
@@ -96,9 +96,9 @@ def recovered_without_intervention(features):
     return recovery in {"recovered", "complete", "completed", "resolved"} and "intervention" not in feedback
 
 
-def snapshot_record(path, snapshot):
+def snapshot_record(path, snapshot, canonical_id=None):
     features = incident_features(snapshot or {})
-    incident_id = features.get("incident_id")
+    incident_id = canonical_id or features.get("incident_id")
     if not incident_id:
         return None
     start, end = event_times(snapshot or {})
@@ -165,9 +165,14 @@ def baseline_records(baseline_history):
 def build_operational_learnings(*, completed_snapshots, baseline_history=None, generated_at=None):
     generated_at = generated_at or dt.datetime.now(dt.timezone.utc)
     records = []
-    for path, snapshot in completed_snapshots or []:
-        record = snapshot_record(path, snapshot)
+    seen_canonical_ids = set()
+    for item in completed_snapshots or []:
+        path, snapshot, canonical_id = completed_snapshot_parts(item)
+        record = snapshot_record(path, snapshot, canonical_id)
         if record:
+            if record["incident_id"] in seen_canonical_ids:
+                continue
+            seen_canonical_ids.add(record["incident_id"])
             records.append(record)
     insights = []
 

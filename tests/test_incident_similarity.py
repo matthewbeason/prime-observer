@@ -94,6 +94,19 @@ class IncidentSimilarityTest(unittest.TestCase):
 
         self.assertEqual([item["incident_id"] for item in result["matches"][:2]], ["b-better", "a-weaker"])
 
+    def test_duplicate_alias_inputs_cannot_return_duplicate_canonical_ids(self):
+        previous = self.incident("legacy-one")
+        result = self.module.build_incident_similarity(
+            current_investigation=self.incident(),
+            completed_snapshots=[
+                ("investigations/one.json", previous, "completed-v1-resolver-one"),
+                ("investigations/two.json", self.incident("legacy-two"), "completed-v1-resolver-one"),
+            ],
+            generated_at=self.generated_at,
+        )
+
+        self.assertEqual([item["incident_id"] for item in result["matches"]], ["completed-v1-resolver-one"])
+
     def test_no_matches_and_missing_fields_are_safe(self):
         current = self.incident()
         result = self.build(current, [{"selected_event": {"id": "legacy"}}])

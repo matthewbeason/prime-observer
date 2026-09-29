@@ -475,8 +475,8 @@ JavaScript.
 
 Incident Intelligence Phase E adds generated `viz/incident_similarity.json` for
 deterministic current-incident similarity. It contains schema/model versions,
-generated time, `current_incident`, and scored `matches` against completed
-incident snapshots. Each match includes incident id, score, deterministic pattern
+generated time, `current_incident`, and scored `matches` against canonical
+completed incidents. Each canonical identity appears at most once. Each match includes incident id, score, deterministic pattern
 label, summary, per-dimension weighted breakdown, matching and different
 dimensions, previous duration, recovery, user impact, operator feedback, evidence
 references, and confidence. Python owns all scoring and pattern labeling; the
@@ -484,7 +484,7 @@ browser only renders the artifact and hides it when it does not match the curren
 incident.
 
 Operational Learning Phase 1 adds generated `viz/operational_learnings.json` for
-deterministic operational knowledge accumulated from completed incident snapshots
+deterministic operational knowledge accumulated from canonical completed incidents
 and durable baseline history. It contains schema/model versions, generated time,
 `learning_version`, and `insights`. Each insight includes id, category, title,
 summary, confidence, supporting incidents, supporting intervals, supporting
@@ -542,9 +542,9 @@ Investigation URL semantics are explicit. `?view=current` loads the mutable
 current artifact. `?view=interval&start=<ISO>&end=<ISO>` displays a matching
 `viz/interval_summary.json` when available; otherwise it displays a safe selected
 interval request and does not load `viz/investigation.json` as a substitute.
-`?view=incident&event=<event-id>` loads an immutable snapshot through the
-catalog. Legacy `?event=<event-id>` links remain supported when the catalog
-contains the event.
+`?view=incident&event=<canonical-event-id>` loads the first-published
+representative through the catalog. Legacy `?event=<legacy-event-id>` links remain
+supported and load the exact original snapshot path recorded for that legacy ID.
 
 Automatic timeline rows include `phase_summary` so the renderer can show
 representative p95, sustained-bad samples and buckets, phase duration, sample
@@ -565,9 +565,11 @@ phase.
 - Optional fields: the same additive fields as `viz/investigation.json`
 - Unavailable behavior: active and recovering events intentionally have no
   snapshot; an existing valid snapshot is preserved byte-for-byte without
-  rewriting. Snapshot publication is atomic and write-once. Malformed or
-  structurally invalid existing snapshot files are preserved on disk, excluded
-  from valid history, and reported in `viz/investigation_catalog.json`.
+  rewriting. At completion, publication uses versioned exact `(target_class,
+  recovered_at UTC)` identity and is idempotent. Snapshot publication is atomic
+  and write-once. Malformed, structurally invalid, identity-incomplete, or
+  conflicting existing files are preserved on disk and reported in
+  `viz/investigation_catalog.json`.
 - Authoritative: yes, for the completed event evidence recorded at first write
 - Generated: yes
 - Should be committed: no
@@ -576,17 +578,22 @@ phase.
 
 - Producer: `bin/transform_latest.py` via `bin/investigation_model.py`
 - Consumers: `viz/investigate.html`
-- Purpose: newest-first catalog of immutable completed-event snapshots
+- Purpose: newest-first canonical compatibility projection over immutable
+  completed-event snapshots
 - Required fields: top-level `artifact_type: "investigation_catalog"`,
-  `schema_version`, `generated_at`, `generator`, `events`, and
-  `invalid_snapshots`; each valid event includes `event_id`, `lifecycle`,
-  `first_anomalous_at`, `recovered_at`, `severity`, `confidence`,
-  `target_class`, `affected_targets`, `duration`, and `snapshot_path`
-- Optional fields: additive fields inside future event or invalid-snapshot rows
+  `schema_version: 2`, `generated_at`, `generator`, `identity_version`, `counts`,
+  `canonical_events`, `legacy_aliases`, `identity_conflicts`,
+  `identity_incomplete_snapshots`, and `invalid_snapshots`; each canonical event
+  includes its canonical ID, representative legacy ID/path, exact recovery,
+  target class, reconstruction range/count, and display metadata
+- Optional fields: additive fields inside future canonical, alias, conflict, or
+  invalid-snapshot rows
 - Unavailable behavior: the renderer shows a calm History panel when the catalog
-  is missing, malformed, or contains no completed events. Invalid snapshot rows
-  do not prevent valid snapshots from appearing.
-- Authoritative: yes, for locally available automatic investigation snapshots
+  is missing, malformed, or contains no canonical completed events. Invalid,
+  incomplete, or conflicting rows do not prevent unrelated valid snapshots from
+  appearing. Conflicting records are never silently collapsed.
+- Authoritative: no; it is a compatibility projection over immutable local
+  snapshot evidence, and representatives do not merge alias evidence
 - Generated: yes
 - Should be committed: no
 

@@ -83,6 +83,21 @@ class OperationalLearningsTest(unittest.TestCase):
         self.assertEqual(insight["times_observed"], 2)
         self.assertEqual(insight["supporting_incidents"], ["event-1", "event-2"])
 
+    def test_support_counts_and_ids_are_canonical(self):
+        payload = self.module.build_operational_learnings(
+            completed_snapshots=[
+                ("investigations/one.json", self.incident("legacy-one"), "completed-v1-one"),
+                ("investigations/alias.json", self.incident("legacy-alias"), "completed-v1-one"),
+                ("investigations/two.json", self.incident("legacy-two"), "completed-v1-two"),
+            ],
+            baseline_history=None,
+            generated_at=self.generated_at,
+        )
+        insight = self.find(payload, "resolver-path-recovers-without-intervention")
+
+        self.assertEqual(insight["times_observed"], 2)
+        self.assertEqual(insight["supporting_incidents"], ["completed-v1-one", "completed-v1-two"])
+
     def test_confidence_increases_with_more_support(self):
         payload = self.build([self.incident(f"event-{idx}") for idx in range(1, 5)])
         insight = self.find(payload, "resolver-path-recovers-without-intervention")
