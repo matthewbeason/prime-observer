@@ -46,9 +46,6 @@ from investigation_model import (
     write_completed_investigation_history,
     write_if_changed as write_investigation_if_changed,
 )
-from build_operator_assistant_input import build_from_path as build_assistant_input_from_path
-from build_operator_assistant_input import pending_generation_state
-from build_operator_assistant_input import write_json as write_assistant_input_json
 from interval_summary import build_interval_summary, latest_bucket_interval
 from incident_similarity import build_incident_similarity
 from operational_learnings import build_operational_learnings
@@ -75,8 +72,6 @@ INCIDENT_SIMILARITY_OUT = VIZ_DIR / "incident_similarity.json"
 OPERATIONAL_LEARNINGS_OUT = VIZ_DIR / "operational_learnings.json"
 TIME_CONTEXT_OUT = VIZ_DIR / "time_context.json"
 INVESTIGATION_OUT = VIZ_DIR / "investigation.json"
-OPERATOR_ASSISTANT_INPUT_OUT = VIZ_DIR / "operator_assistant_input.json"
-OPERATOR_ASSISTANT_GENERATION_STATE_OUT = VIZ_DIR / "operator_assistant_generation_state.json"
 DIAGNOSTIC_EVIDENCE_IN = VIZ_DIR / "diagnostic_evidence.json"
 APPLICATION_EXPERIENCE_IN = VIZ_DIR / "application_experience.json"
 OPERATOR_IMPACT_FEEDBACK_IN = VIZ_DIR / "operator_impact_feedback.json"
@@ -1626,7 +1621,6 @@ def main():
     )
     investigation_write = write_investigation_if_changed(INVESTIGATION_OUT, investigation)
     investigation_changed = investigation_write["artifact_written"]
-    assistant_semantic_changed = investigation_write["assistant_semantic_changed"]
     history_write = write_completed_investigation_history(
         rows_out=rows_out,
         generated_at=now,
@@ -1658,19 +1652,6 @@ def main():
     else:
         operational_learnings = disabled_operational_learnings(now)
     write_json_atomic(OPERATIONAL_LEARNINGS_OUT, operational_learnings)
-    if assistant_semantic_changed or not OPERATOR_ASSISTANT_INPUT_OUT.exists():
-        assistant_input = build_assistant_input_from_path(INVESTIGATION_OUT)
-        write_assistant_input_json(OPERATOR_ASSISTANT_INPUT_OUT, assistant_input)
-        write_json_atomic(
-            OPERATOR_ASSISTANT_GENERATION_STATE_OUT,
-            pending_generation_state(
-                assistant_input.get("input_hash"),
-                "bin/transform_latest.py",
-                "semantic evidence changed" if assistant_semantic_changed else "assistant input missing",
-                requested_at=now.isoformat(),
-            ),
-        )
-
     print(
         f"Wrote {len(chart_rows)} rows to {OUT} from telemetry source {src.name} "
         f"using {chart_read_diagnostics.source_used}"
@@ -1692,7 +1673,6 @@ def main():
         f"Investigation history contains {history_write['snapshot_count']} immutable snapshots; "
         f"wrote {len(history_write['snapshots_written'])} new snapshots"
     )
-    print(f"Operator Assistant input {'updated' if assistant_semantic_changed else 'unchanged'} at {OPERATOR_ASSISTANT_INPUT_OUT}")
     print(f"WAN baseline files used: {', '.join(baseline_sources) if baseline_sources else 'none'}")
     print(f"WAN baseline hours available: {sorted(baseline_by_hour.keys())}")
 

@@ -310,7 +310,7 @@ try:
 except Exception as exc:
     print(f"Web: unreachable ({exc})")
 
-for name in ("nextdns_summary.json", "internet_conditions.json", "aps_power_context.json", "application_experience.json", "operator_assistant_generation_state.json"):
+for name in ("nextdns_summary.json", "internet_conditions.json", "aps_power_context.json", "application_experience.json"):
     path = base / "viz" / name
     if not path.exists():
         print(f"Optional {name}: missing")

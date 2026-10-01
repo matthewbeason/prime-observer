@@ -79,17 +79,7 @@ class RefreshOptionalContextTest(unittest.TestCase):
                 'print("application ok")\n'
             ),
         )
-        self.write_python_script(
-            "build_operator_assistant_input.py",
-            (
-                "#!/usr/bin/env python3\n"
-                f"from pathlib import Path\n"
-                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
-                'print("assistant input ok")\n'
-            ),
-        )
-
-    def test_wrapper_runs_providers_application_then_operator_assistant_input_only(self):
+    def test_wrapper_runs_optional_context_providers_only(self):
         order_file = self.base / "order.txt"
         self.write_success_scripts(order_file)
 
@@ -98,15 +88,14 @@ class RefreshOptionalContextTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             order_file.read_text().splitlines(),
-            ["nextdns", "cloudflare", "aps", "application", "assistant-input"],
+            ["nextdns", "cloudflare", "aps", "application"],
         )
         self.assertIn("Starting NextDNS summary refresh.", result.stdout)
         self.assertIn("Starting Internet Conditions refresh.", result.stdout)
         self.assertIn("Starting APS power context refresh.", result.stdout)
         self.assertIn("Starting Application Experience refresh.", result.stdout)
-        self.assertIn("Starting Operator assistant input refresh.", result.stdout)
-        self.assertNotIn("Operator assistant output", result.stdout)
-        self.assertNotIn("OpenRouter", result.stdout)
+        self.assertNotIn("assistant", result.stdout.lower())
+        self.assertNotIn("model", result.stdout.lower())
         self.assertIn("Optional context refresh finished.", result.stdout)
 
     def test_wrapper_keeps_later_steps_after_nextdns_failure(self):
@@ -147,21 +136,12 @@ class RefreshOptionalContextTest(unittest.TestCase):
                 'print("application ok")\n'
             ),
         )
-        self.write_python_script(
-            "build_operator_assistant_input.py",
-            (
-                "#!/usr/bin/env python3\n"
-                f"from pathlib import Path\n"
-                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
-                'print("assistant input ok")\n'
-            ),
-        )
         result = self.run_wrapper()
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             order_file.read_text().splitlines(),
-            ["nextdns", "cloudflare", "aps", "application", "assistant-input"],
+            ["nextdns", "cloudflare", "aps", "application"],
         )
         self.assertIn("non-fatal exit code 2", result.stdout)
 
@@ -203,25 +183,16 @@ class RefreshOptionalContextTest(unittest.TestCase):
                 'print("application ok")\n'
             ),
         )
-        self.write_python_script(
-            "build_operator_assistant_input.py",
-            (
-                "#!/usr/bin/env python3\n"
-                f"from pathlib import Path\n"
-                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
-                'print("assistant input ok")\n'
-            ),
-        )
         result = self.run_wrapper()
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             order_file.read_text().splitlines(),
-            ["nextdns", "cloudflare", "aps", "application", "assistant-input"],
+            ["nextdns", "cloudflare", "aps", "application"],
         )
         self.assertIn("non-fatal exit code 3", result.stdout)
 
-    def test_wrapper_keeps_operator_input_after_application_failure(self):
+    def test_wrapper_remains_non_fatal_after_application_failure(self):
         order_file = self.base / "order.txt"
         self.write_success_scripts(
             order_file,
@@ -238,42 +209,9 @@ class RefreshOptionalContextTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             order_file.read_text().splitlines(),
-            ["nextdns", "cloudflare", "aps", "application", "assistant-input"],
+            ["nextdns", "cloudflare", "aps", "application"],
         )
         self.assertIn("Application Experience refresh completed with non-fatal exit code 5.", result.stdout)
-
-    def test_wrapper_remains_non_fatal_after_operator_input_failure(self):
-        order_file = self.base / "order.txt"
-        self.write_python_script(
-            "fetch_nextdns_summary.py",
-            "#!/usr/bin/env python3\nprint('nextdns ok')\n",
-        )
-        self.write_python_script(
-            "fetch_cloudflare_radar.py",
-            "#!/usr/bin/env python3\nprint('cloudflare ok')\n",
-        )
-        self.write_python_script(
-            "fetch_aps_power_context.py",
-            "#!/usr/bin/env python3\nprint('aps ok')\n",
-        )
-        self.write_python_script(
-            "fetch_application_experience.py",
-            "#!/usr/bin/env python3\nprint('application ok')\n",
-        )
-        self.write_python_script(
-            "build_operator_assistant_input.py",
-            (
-                "#!/usr/bin/env python3\n"
-                f"from pathlib import Path\n"
-                f'Path(r"{order_file}").open("a").write("assistant-input\\n")\n'
-                "raise SystemExit(4)\n"
-            ),
-        )
-        result = self.run_wrapper()
-
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(order_file.read_text().splitlines(), ["assistant-input"])
-        self.assertIn("non-fatal exit code 4", result.stdout)
 
     def test_launchagent_uses_refresh_wrapper(self):
         body = PLIST_PATH.read_text()
@@ -294,8 +232,8 @@ class RefreshOptionalContextTest(unittest.TestCase):
         self.assertIn("viz/internet_conditions.json", body)
         self.assertIn("viz/aps_power_context.json", body)
         self.assertIn("bin/fetch_application_experience.py", SCRIPT_PATH.read_text())
-        self.assertIn("bin/build_operator_assistant_input.py", body)
-        self.assertNotIn("bin/build_operator_assistant_output.py", SCRIPT_PATH.read_text())
+        self.assertNotIn("operator_assistant", body)
+        self.assertNotIn("operator_assistant", SCRIPT_PATH.read_text())
         self.assertIn("bin/fetch_aps_power_context.py", body)
         self.assertIn("No token values are printed.", body)
 

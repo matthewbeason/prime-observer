@@ -64,8 +64,6 @@ def configure_outputs(directory: Path) -> None:
         "OPERATIONAL_LEARNINGS_OUT": "operational_learnings.json",
         "TIME_CONTEXT_OUT": "time_context.json",
         "INVESTIGATION_OUT": "investigation.json",
-        "OPERATOR_ASSISTANT_INPUT_OUT": "operator_assistant_input.json",
-        "OPERATOR_ASSISTANT_GENERATION_STATE_OUT": "operator_assistant_generation_state.json",
     }
     transform_latest.VIZ_DIR = directory
     for attribute, name in mapping.items():

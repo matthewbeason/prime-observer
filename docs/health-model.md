@@ -3,9 +3,8 @@
 Prime Observer's canonical health model is factual telemetry evidence about
 network experience. It defines sample classification, WAN target groups, LAN
 evidence, bad moments, attribution inputs, noticeability inputs, investigation
-windows, scope facts, lifecycle facts, and deterministic fallback guidance. The
-LLM interpretation layer may explain likely meaning and operator actions from
-those facts, but it does not replace them.
+windows, scope facts, lifecycle facts, and deterministic operator guidance.
+Prime Observer has no external-model interpretation layer.
 
 ## Model Scope
 

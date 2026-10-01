@@ -58,8 +58,8 @@ Prime Observer is more opinionated:
 - Optional integrations fail safely.
 - Evidence remains the source of truth for measured facts.
 - Observation projection is the source of truth for deterministic interpretation that Prime Observer owns.
-- OpenRouter-backed Operator Assistant output is the primary operator-facing interpretation when it is valid for the current evidence package.
-- A deterministic Operator Assessment remains available when a safe current LLM result is unavailable.
+- Operator-facing assessment is generated deterministically from local evidence.
+- Normal Prime operation has no external-model dependency or model-provider request path.
 
 No cloud backend or heavy observability stack is required. The live database
 and authoritative recovery backups stay local; iCloud is optional best-effort
@@ -72,7 +72,7 @@ Prime Observer now separates five concerns:
 - Evidence: measured telemetry rows, generated factual summaries, and source-file references.
 - Observation: deterministic Prime Observer conclusions derived from Evidence, such as current attribution and episode state.
 - Investigation: historical evidence packages that organize Evidence and overlapping Observations for a requested window.
-- Interpretation: an OpenRouter-backed operator narrative that explains likely meaning, uncertainty, and safe next actions from deterministic evidence.
+- Interpretation: deterministic local summaries that explain bounded meaning, uncertainty, and safe next actions from emitted evidence.
 - Projection: local JSON artifacts consumed by the dashboard and investigation viewer.
 
 This keeps Prime Observer evidence-first and prevents browser-side reasoning
@@ -154,9 +154,8 @@ longer automatically overrides WAN evidence.
 
 Prime Observer also records factual target classes so summaries can distinguish
 general internet probes, resolver probes, and the local gateway. These classes
-are evidence labels only. The Operator Assistant may interpret their likely
-meaning when its output is generated from a matching evidence package, but it
-must not contradict deterministic attribution, scope, or lifecycle fields.
+are evidence labels only. Deterministic local summaries may explain their
+bounded meaning but must not contradict attribution, scope, or lifecycle fields.
 
 ### Sustained Bad Moments
 
@@ -352,7 +351,7 @@ This is local infrastructure evidence, not Environmental Context. Prime Observer
 validates and minimizes the normalized artifact and reads the history database
 through a SQLite read-only connection without importing Mesh Signal or contacting
 the router. The projection is safe to be missing and does not affect health,
-attribution, Observations, investigations, Operator Assistant input, or the
+attribution, Observations, investigations, deterministic summaries, or the
 investigation renderer. Schema 0.3 `local`/`full`
 artifacts can be matched to the machine running Prime by intersecting private
 local interface addresses in Python. Those addresses, client IDs, MACs, and the
@@ -375,18 +374,6 @@ viz/investigation.json
         |
         v
 viz/investigate.html
-```
-
-Operator Assistant evidence package:
-
-```text
-viz/investigation.json
-        |
-        v
-bin/build_operator_assistant_input.py
-        |
-        v
-viz/operator_assistant_input.json
 ```
 
 Operator impact feedback:
@@ -420,36 +407,14 @@ Feedback is local-only, bounded, and incident-associated. It affects only
 `observed_user_impact`; it does not lower technical severity, change
 attribution, or overwrite telemetry facts.
 
-Operator Assistant interpretation:
-
-```text
-viz/operator_assistant_input.json
-        |
-        +--> viz/operator_assistant_generation_state.json: pending
-        |
-        v
-bin/run_operator_assistant_worker.py
-        |
-        v
-bin/build_operator_assistant_output.py
-        |
-        v
-viz/operator_assistant_output.json
-        +--> viz/operator_assistant_generation_state.json: complete/retry_wait/failed
-        |
-        v
-viz/investigate.html
-```
-
 Projection roles:
 
 - `viz/latest.csv` remains the dashboard telemetry window and factual chart input.
 - `viz/network_attribution.json` remains the backward-compatible legacy export.
 - `viz/observations.json` is the authoritative Observation projection for deterministic attribution and episode semantics owned by Prime Observer.
 - `viz/investigation.json` organizes factual evidence, Python-owned operator fallback fields, scope, timeline metrics, evidence arguments, and additive Observation references.
-- `viz/operator_assistant_input.json` is a compact deterministic evidence package derived from `viz/investigation.json` for assistant interpretation.
-- `viz/operator_assistant_output.json` is the last valid OpenRouter-backed operator interpretation for a matching evidence package.
-- `viz/operator_assistant_generation_state.json` tracks pending, current, failed, and retry provenance without replacing valid interpretation output.
+- `viz/index.html` and `viz/investigate.html` render only deterministic local
+  assessment fields; retained legacy model artifacts are not loaded.
 
 ### Key Files
 
@@ -538,35 +503,8 @@ Projection roles:
 - `viz/investigation_index.json`
   Generated local investigation catalog. Entries summarize available investigations with an ID, title, creation time, event count, status, and output path.
 
-- `bin/build_operator_assistant_input.py`
-  Builds a compact deterministic evidence package from `viz/investigation.json` for operator-assistant interpretation. The output includes event identity, lifecycle, scope, unaffected comparison groups, thresholds, counts, representative and maximum phase metrics, attribution, confidence, external context, contradictory and missing evidence, claim boundaries, safe diagnostic categories, and prohibited claims.
-
-- `viz/operator_assistant_input.json`
-  Generated local operator-assistant evidence package. Its `input_hash` is computed over normalized semantic evidence so freshness-only rebuilds do not churn provider requests.
-
-- `bin/run_operator_assistant_worker.py`
-  Consumes pending semantic input asynchronously. It exits calmly when no work is due, respects cross-run retry timing and terminal failure, suppresses duplicate provider requests with the generation lock, and delegates OpenRouter requests, validation, and output publication to the existing output producer.
-
-- `bin/build_operator_assistant_output.py`
-  Builds a local OpenRouter-backed interpretation artifact from `viz/operator_assistant_input.json`. It composes the Operator Charter, evidence package, and response schema into the model prompt. A matching valid output is reused by default; `--force` requests an explicit refresh. Provider/configuration/validation failures update `viz/operator_assistant_generation_state.json` and never overwrite a valid prior output.
-
-- `launchd/com.mbeason.prime-observer.operator-assistant.plist`
-  Runs the worker at load and every 60 seconds without `KeepAlive`. It uses explicit local paths, writes to the ignored `logs/` directory, and contains no secrets.
-
-- `docs/operator-assistant-worker.md`
-  Documents worker state transitions, retries, duplicate suppression, configuration, troubleshooting, and proposed LaunchAgent installation commands.
-
-- `docs/operator-charter.md`
-  Defines the model-independent communication contract for Operator Assistant interpretation. Prime Observer determines evidence; the charter keeps evidence-first language, uncertainty, and engineering tone consistent when models change.
-
-- `viz/operator_assistant_output.json`
-  Generated local operator-assistant interpretation artifact. It includes `headline`, assessment narrative, affected and healthy scope, likely fault domain, confidence, uncertainty, supporting and limiting evidence, prioritized next steps, monitoring guidance, and provenance. It is published only after structure validation and input-hash match.
-
-- `viz/operator_assistant_generation_state.json`
-  Generated local provenance for pending/current/failed generation, including input hash, requested model, attempts, last error category, next retry time, and output validation result. Provider failure details live here, not as the main operator experience.
-
 - `viz/investigate.html`
-  Static operator investigation tool for current and immutable historical events. It renders a primary Operator Assessment from matching LLM output when available, otherwise from deterministic `operator_brief`, followed by recommended actions, scope, timeline, recovery, structured evidence, condensed buckets, forensic details, URL-addressable history, and secondary provenance. It never calls OpenRouter.
+  Static operator investigation tool for current and immutable historical events. It renders the deterministic `operator_brief`, followed by recommended actions, scope, timeline, recovery, structured evidence, condensed buckets, forensic details, URL-addressable history, and local provenance.
 
 - `viz/index.html`
   Static D3 dashboard. Loads local CSV and JSON files with `cache: "no-store"` and renders the observability UI.
@@ -652,7 +590,7 @@ router-and-satellite diagram. Raw relative signal and apparent link
 rate are displayed only for the uniquely matched probe host and retain those
 qualified labels; Prime does not classify them. Time adjacency never becomes a
 causal claim, and Mesh evidence does not change Attribution, Observations,
-Investigation, or Operator Assistant inputs.
+Investigation, or deterministic summary inputs.
 
 ## Running The Dashboard
 
@@ -660,8 +598,8 @@ On the configured multi-user Mac, Prime Observer's core collector, transform,
 loopback HTTP server, and local backup can be managed as unprivileged
 system-domain services. See `docs/macos-runtime.md` for lifecycle boundaries,
 installation, status, rollback, and manual Fast User Switching/logout
-validation. Optional provider and Operator Assistant jobs remain per-user
-LaunchAgents and degrade without stopping core telemetry.
+validation. Optional provider refresh remains a per-user LaunchAgent and
+degrades without stopping core telemetry.
 
 Quick start:
 
@@ -691,8 +629,6 @@ This refreshes:
 - mutable current `viz/investigation.json`
 - write-once completed snapshots under `viz/investigations/`
 - generated `viz/investigation_catalog.json`
-- `viz/operator_assistant_input.json` when deterministic investigation semantics change
-- `viz/operator_assistant_generation_state.json` when assistant generation is pending
 
 If using NextDNS, generate the optional DNS summary:
 
@@ -714,23 +650,6 @@ python3 bin/fetch_aps_power_context.py
 
 For automated macOS refresh of the scheduled optional context artifacts, use the LaunchAgent documented in `docs/nextdns-launchagent.md`. It runs `bin/refresh_optional_context.sh`, which refreshes NextDNS summary context, Cloudflare Radar Internet Conditions, and APS Power Infrastructure context without storing tokens in the plist.
 
-To refresh the local Operator Assistant artifacts manually for the current `viz/investigation.json`:
-
-```bash
-python3 bin/build_operator_assistant_input.py
-python3 bin/run_operator_assistant_worker.py
-```
-
-The tracked LaunchAgent can run the worker automatically at load and every 60 seconds; installation is documented in `docs/operator-assistant-worker.md` and is not performed by repository setup. The worker only acts on pending or due retry state. A matching completed input hash is not regenerated, and freshness-only input rebuilds do not create work.
-
-`bin/build_operator_assistant_output.py` remains available for direct troubleshooting. It can read `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` from the process environment or a repo-local `.env.openrouter` file. If no model is configured, it defaults to the explicit model `google/gemini-3.5-flash`; provider auto-routing identifiers are rejected. A matching valid output is reused by default to avoid duplicate provider calls; pass `--force` to request a fresh interpretation for the same evidence hash. Provider/configuration/validation failures are recorded in `viz/operator_assistant_generation_state.json` and do not replace a valid prior output.
-
-Every new request composes `docs/operator-charter.md` + the deterministic
-evidence package + the response schema. Prime Observer owns the facts and
-deterministic observations; the charter governs how a selected model
-communicates its primary operator-facing interpretation. Models may change without
-changing that operator communication standard.
-
 Generate a historical investigation:
 
 ```bash
@@ -747,7 +666,9 @@ Open the investigation view through the local server, not directly from disk.
 Direct `file://` access can prevent the browser from loading
 `investigation.json`.
 
-When present, the investigation page loads `viz/operator_assistant_input.json` and `viz/operator_assistant_output.json` and renders matching valid OpenRouter interpretation as the primary Operator Assessment. If no safe current LLM output exists, it renders the deterministic `operator_brief` fallback instead. Prime Observer evidence remains authoritative. The browser does not hash or reconstruct evidence, does not call OpenRouter, and does not expose provider failure as the main product experience.
+The investigation page renders the deterministic `operator_brief` and related
+local evidence directly. It does not load retained legacy model artifacts or
+call any model provider.
 
 See `docs/investigation-workflow.md` for details.
 
@@ -898,8 +819,8 @@ PRIME_OBSERVER_INTERNET_PROVIDER_LABEL=Cox
 
 Usage notes:
 
-- `.env.example` contains placeholder values only. Copy the relevant lines into `.env.cloudflare` and `.env.openrouter` for local use.
-- Do not commit `.env.cloudflare` or `.env.openrouter`.
+- `.env.example` contains placeholder values only. Copy the relevant lines into `.env.cloudflare` for local use.
+- Do not commit `.env.cloudflare`.
 - Do not put Cloudflare tokens in browser code or generated artifacts.
 - `PRIME_OBSERVER_INTERNET_ASN` and `PRIME_OBSERVER_INTERNET_PROVIDER_LABEL` are optional. Prime Observer does not require them.
 - If both optional ASN settings are omitted, Internet Conditions stays in the current US-scoped mode.
@@ -1101,15 +1022,14 @@ The `v0.8.0` release intentionally did not migrate or expand:
 - device-level DNS analytics
 - alerts and notifications
 - weather, power, or ISP status correlation
-- LLM explanations
+- external-model explanations
 - major dashboard refactors
 
 Some of those boundaries later moved in v0.9.0 and v0.10.0: optional APS Power
-Infrastructure context now exists as an Environmental Context provider,
-OpenRouter-backed Operator Assistant interpretation is the primary
-operator-facing narrative when valid, and the dashboard and Investigation pages
-have been refactored. The boundaries that remain are captured in `ROADMAP.md`
-under Deferred Or Explicitly Avoided Areas.
+Infrastructure context now exists as an Environmental Context provider, and the
+dashboard and Investigation pages have been refactored. External-model
+interpretation was subsequently retired. The boundaries that remain are
+captured in `ROADMAP.md` under Deferred Or Explicitly Avoided Areas.
 
 ## License
 

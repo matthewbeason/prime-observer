@@ -1,5 +1,9 @@
 # Pre-soak stabilization record — 2026-09-29
 
+Historical note: the external-model worker described below was disabled and
+removed from current Prime Observer runtime on 2026-09-30. This file preserves
+the pre-incident runtime record and is not an installation guide.
+
 This record covers only the bounded stabilization checks immediately before the
 planned one-week soak.
 

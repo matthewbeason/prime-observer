@@ -157,14 +157,12 @@ semantic hashing, safety constraints, and fallback guidance. The browser renders
 generated artifacts and maps emitted fields to presentation; it must not own
 health, attribution, baseline, incident, or next-action semantics.
 
-### AI Interprets Evidence, It Does Not Own It
+### Operator Interpretation Is Deterministic And Local
 
-Valid/current OpenRouter-backed Operator Assistant output is the primary
-operator-facing interpretation when it is valid for the current evidence
-package, and a deterministic fallback remains available when it is not. The LLM
-may synthesize likely meaning, uncertainty, and safe next actions from
-deterministic evidence, but it must not invent facts or contradict deterministic
-evidence, and it must not replace the visualization.
+Prime Observer does not execute external language models. Operator-facing
+summaries, uncertainty, and safe next actions come from deterministic local
+artifacts. The browser renders those fields and must ignore any retained legacy
+model artifact.
 
 ### Renderer Changes Require Browser Smoke Validation
 

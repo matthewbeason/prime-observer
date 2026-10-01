@@ -4,8 +4,7 @@ Prime Observer's supported multi-user runtime is a hybrid launchd design:
 
 - four core machine services belong to the `system` bootstrap domain and run
   as the unprivileged `mbeason` account
-- optional provider refresh and Operator Assistant work remain per-user
-  LaunchAgents in `gui/501`
+- optional provider refresh remains a per-user LaunchAgent in `gui/501`
 - restore, rebuild, reconciliation, and operator-feedback commands remain
   interactive/manual
 
@@ -66,7 +65,6 @@ are not replayed; `StartCalendarInterval` is coalesced and fires after wake.
 | Cloudflare/Internet Conditions | Optional context provider | Same fail-safe refresh LaunchAgent |
 | APS/power context | Optional context provider | Same fail-safe refresh LaunchAgent |
 | Application probes | Optional context provider | Same fail-safe refresh LaunchAgent |
-| OpenRouter synthesis worker | Optional context provider | `gui/501`; a missing provider/session preserves deterministic fallback and last-known-good output |
 | iCloud backup replication | Optional context provider | Not part of the system backup job; current TCC denial remains separate from local restore readiness |
 | Restore/rebuild/ingest, explicit investigation, impact feedback | Interactive/manual | Potentially destructive or operator-directed work does not belong in unattended launchd execution |
 
@@ -98,7 +96,6 @@ Optional credentials remain in ignored repository-local files:
 
 - `.env.nextdns`: profile identifier and API key
 - `.env.cloudflare`: API token and provider scope
-- `.env.openrouter`: API key
 - `.env.application_experience`, when configured: probe configuration
 - `.env.mesh`: read-only Mesh Signal path configuration, not router credentials
 
@@ -222,7 +219,7 @@ dependency.
 The Prime rotation configuration is `launchd/rotation/newsyslog.conf`. A
 separate system launchd job runs its root-owned installed script every 15
 minutes. It covers collector, transform, HTTP, storage backup, NextDNS refresh,
-and the optional Operator Assistant worker logs. Every existing log rotates at
+and the optional context refresh log. Every existing log rotates at
 5,120 KiB or after 24 hours, retaining eight gzip-compressed files (`.0`
 through `.7`, the macOS result for newsyslog count 7) beside the active log in
 `logs/`. Active and archived files use `mbeason:staff` mode

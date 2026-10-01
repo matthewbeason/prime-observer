@@ -75,9 +75,8 @@ Stage ownership:
   replacing stable contracts casually.
 - Graceful degradation: optional providers write usable unavailable states
   instead of breaking the dashboard.
-- Failure hiding for operator interpretation: provider/configuration failures are
-  recorded in generation state, while the Investigation page renders either a
-  matching valid LLM interpretation or deterministic fallback assessment.
+- Local operator interpretation: the Investigation page renders deterministic
+  assessment fields and ignores retained legacy model artifacts.
 - Optional providers: NextDNS and Cloudflare Radar are summary-only and
   fail-safe.
 - Local application-experience probes are synthetic checks, not provider context;
@@ -219,7 +218,7 @@ Stage ownership:
 - Authoritative: yes, only for Prime's Mesh evidence projection, freshness,
   lineage boundaries, and deterministic before/during/after interval alignment;
   no, for causation, health, attribution, Observation, investigation, or
-  Operator Assistant semantics
+  deterministic summary semantics
 - Historical: `history_evidence` is a bounded read-only projection of Mesh
   history schema 0.1. It copies no canonical snapshot JSON, evidence JSON,
   source IDs, entity IDs, identity epochs, or lineage IDs and writes no history.
@@ -351,8 +350,7 @@ contract or introducing historical interpretation.
 
 - Producer: `bin/record_operator_impact.py`
 - Consumers: `bin/transform_latest.py` through `bin/health_dimensions.py`;
-  `bin/build_operator_assistant_input.py` through generated investigation
-  health dimensions
+  generated investigation health dimensions
 - Purpose: local operator-observed impact feedback for the current investigation
   incident
 - Required fields: `schema_version`, `model_version`, `incident_id`,
@@ -512,7 +510,7 @@ end, optional selected/overlapping incident ids, incident overlap, external
 context overlap, Python-aligned external events, and generated time. Python owns the generated default context.
 The dashboard can project heatmap selection into that same shape from existing
 Python-owned bucket and interval artifacts, but it does not classify interval
-health, infer incident overlap, call collectors, or invoke OpenRouter.
+health, infer incident overlap, call collectors, or invoke model providers.
 
 ### `viz/time_context.json`
 
@@ -613,94 +611,6 @@ mutable `viz/investigation.json` path. Automatic current-event generation does
 not add entries to this historical index. Manual callers that need immutable
 historical artifacts should pass a unique `--out` path.
 
-### `viz/operator_assistant_input.json`
-
-- Producer: `bin/build_operator_assistant_input.py`
-- Consumers: `bin/run_operator_assistant_worker.py`,
-  `bin/build_operator_assistant_output.py`, and `viz/investigate.html` for
-  renderer-only current-hash comparison
-- Purpose: compact deterministic evidence package derived from
-  `viz/investigation.json` for bounded operator-assistant interpretation.
-  Schema 2 inputs prefer `selected_event`, `windows`, `timeline`, `freshness`,
-  and `artifact_state`; schema 1 inputs fall back to `requested_window`,
-  `periods.during`, and existing observation references.
-- Required fields: top-level `schema_version`, `semantic_schema_version`,
-  `generated_at`, `input_hash`, `investigation`, `selected_event`,
-  `operator_brief`, `scope_impact`, `recovery_progress`, `episode_summary`,
-  `evidence_argument`, `phase_summaries`, `evidence_buckets`, `observations`,
-  `attribution`, `episode`, `evidence`, `environmental_context`,
-  `claim_boundaries`, `prohibited_claims`,
-  `recommended_safe_diagnostic_categories`, `limitations`, and `provenance`
-- Optional fields: additive provider details inside `environmental_context`
-  plus Phase 2 deterministic `health_dimensions`, `dependency_groups`,
-  `impact_assessment`, and `deterministic_operator_interpretation`
-- Unavailable behavior: if `viz/investigation.json` is missing or unreadable,
-  the producer still writes a valid minimal package with empty evidence and
-  explicit limitations
-- Authoritative: no; Prime Observer remains authoritative through the source
-  investigation and upstream artifacts
-- Generated: yes
-- Should be committed: no
-
-### `viz/operator_assistant_output.json`
-
-- Producer: `bin/build_operator_assistant_output.py`
-- Consumers: `viz/investigate.html`
-- Purpose: local operator-assistant interpretation artifact derived from
-  `viz/operator_assistant_input.json`
-- Required fields: top-level `schema_version`, `generated_at`, `status`,
-  `provider`, `input_hash`, `requested_model`, `source_file`, `headline`,
-  `assessment`, `what_is_happening`, `affected_scope`, `healthy_scope`,
-  `likely_fault_domain`, `confidence`, `uncertainty`, `evidence`,
-  `limitations`, `next_steps`, `evidence_that_would_change_assessment`,
-  `monitoring_guidance`, and `note`
-- Optional fields: `provider_model`, `reason`, `usage`, and
-  `provider_response_id`
-- Unavailable behavior: the producer does not publish an unavailable artifact
-  over a valid prior output. It records failure in
-  `viz/operator_assistant_generation_state.json`; when no valid output exists,
-  the browser renders deterministic fallback from `viz/investigation.json`.
-- Prompt contract: the producer composes `docs/operator-charter.md`, the
-  deterministic evidence package, and the unchanged response schema; model
-  selection does not redefine operator communication behavior
-- Execution behavior: a matching valid output is reused by default; `--force`
-  requests a new provider call for the same input hash.
-- Reuse behavior: safe reuse requires matching input hash, valid output shape,
-  and matching requested model. Unsafe stale output is not presented as current.
-- Authoritative: no; Prime Observer evidence and deterministic observations
-  remain authoritative
-- Generated: yes
-- Should be committed: no
-
-### `viz/operator_assistant_generation_state.json`
-
-- Producers: `bin/transform_latest.py` and
-  `bin/build_operator_assistant_input.py` for pending state;
-  `bin/run_operator_assistant_worker.py` for generating, retry-wait, complete,
-  duplicate-in-progress, and terminal failed state; the explicit output producer
-  may also write direct-run provenance
-- Consumers: `bin/run_operator_assistant_worker.py` and operator/provenance
-  tooling; not primary UI content
-- Purpose: atomic generated provenance and scheduling state for asynchronous
-  assistant generation without overwriting valid interpretation output
-- Required fields: top-level `schema_version`, `status`, `provider`,
-  `input_hash`, `requested_at`, `updated_at`, and `attempt_count`
-- Optional fields: `requested_model`, `provider_model`, `started_at`,
-  `completed_at`, `next_retry_at`, `last_error_category`, `last_error`,
-  `output_input_hash`, `output_validation_result`, `worker_id`, `requested_by`,
-  and `reason`
-- State behavior: semantic hash change resets to `pending`; due work or active
-  lock ownership uses `generating`; transient failure moves to `retry_wait`;
-  valid output moves to `complete`; exhausted or persistent failure moves to
-  `failed`
-- Concurrency behavior: an exclusive generated lock suppresses duplicate provider
-  requests and may be replaced after the existing 900-second stale timeout
-- Unavailable behavior: if missing, the Investigation page still renders from
-  `viz/investigation.json` and any valid matching assistant output
-- Authoritative: yes, for assistant generation provenance only
-- Generated: yes
-- Should be committed: no
-
 ## Relationships
 
 - `viz/latest.csv` is factual telemetry projection, not attribution.
@@ -717,7 +627,7 @@ historical artifacts should pass a unique `--out` path.
   lifecycle, and interval alignment without selecting a persistent backend.
 - `viz/mesh_context.json` is current and historical local infrastructure
   evidence, not Environmental Context, attribution, health scoring, a causal
-  conclusion, an Observation, investigation evidence, or Operator Assistant
+  conclusion, an Observation, investigation evidence, or deterministic summary
   input.
 - `viz/investigation.json` consumes telemetry plus additive Observation and
   provider context snapshots, but it does not rewrite those upstream artifacts
@@ -726,15 +636,6 @@ historical artifacts should pass a unique `--out` path.
   `viz/investigations/<event-id>.json` is immutable completed-event evidence.
 - `viz/investigation_index.json` is catalog metadata, not investigation
   evidence.
-- `viz/operator_assistant_input.json` is a compact downstream evidence package,
-  not a replacement for `viz/investigation.json`, `viz/observations.json`, or
-  any authoritative Prime Observer artifact.
-- `viz/operator_assistant_output.json` is derived interpretation, not a source of
-  telemetry truth, attribution truth, or deterministic Prime Observer semantics.
-  The browser presents it as primary operator interpretation only when its
-  `input_hash` matches the producer-generated `input_hash` in
-  `viz/operator_assistant_input.json`; otherwise it renders deterministic
-  fallback without showing provider failure as the product experience.
 - The browser consumes artifacts and renders views, but it does not create the
   primary semantic meaning Prime Observer owns.
 

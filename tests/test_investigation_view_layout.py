@@ -195,8 +195,7 @@ class InvestigationViewLayoutTest(unittest.TestCase):
 
     def test_browser_remains_local_renderer_only(self):
         self.assertIn('const INVESTIGATION_URL = "./investigation.json";', self.html)
-        self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";', self.html)
-        self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";', self.html)
+        self.assertNotIn("operator_assistant", self.html)
         self.assertNotIn("openrouter.ai/api/v1/chat/completions", self.html)
         self.assertNotIn("crypto.subtle", self.html)
 

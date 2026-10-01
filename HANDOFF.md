@@ -24,9 +24,7 @@ Prime Observer currently ships:
 - immutable completed-event investigation history; scored similarity and
   operational-learning claim production are disabled by default for the
   pre-soak period while their implementations remain available
-- operator-first Investigation rendering with deterministic fallback assessment
-- OpenRouter-backed Operator Assistant interpretation as the primary
-  operator-facing narrative when output is valid for the evidence package
+- operator-first Investigation rendering with deterministic local assessment
 - Python-owned multidimensional health evaluation with additive artifact fields
   rendered in the dashboard and Investigation UI
 - adaptive learned baselines with durable baseline memory in
@@ -34,8 +32,6 @@ Prime Observer currently ships:
   post-recovery stabilization protection
 - impact-v2 fields that preserve legacy `user_impact` while separating
   estimated user impact from observed reports
-- asynchronous pending-work consumption through a separate local worker and
-  tracked 60-second LaunchAgent
 - manual requested-window investigation generation and viewing
 - direct link/bookmark entry points for current, selected-interval, and
   completed incident views
@@ -61,8 +57,8 @@ Repository-backed recent milestones (all committed):
   including SQLite authority for Prime-owned raw observations
 - v0.10.0 event-aligned automatic investigation lifecycle and hardened
   completed-event history
-- v0.10.0 operator-first Investigation redesign with asynchronous
-  Operator Assistant generation and last-known-good publication behavior
+- v0.10.0 operator-first Investigation redesign; its original asynchronous
+  external-model generation is retired in the current working tree
 - v0.10.0 health-dimensions work: Phase 1 calibration document, Phase 2
   deterministic evaluator with additive artifact output, and Phase 3 browser
   rendering for emitted multidimensional fields
@@ -71,6 +67,7 @@ Repository-backed recent milestones (all committed):
 - v0.10.0 Operator Assistant model selection pinned to
   `google/gemini-3.5-flash` by default, provider auto-routing rejected, and
   additive impact-v2 fields distinguish estimated and observed user impact
+  (the external-model path is retired in the current post-release working tree)
 - v0.10.0 separate local application-experience collector feeding
   estimated impact only
 - v0.10.0 `bin/record_operator_impact.py` and local operator impact
@@ -162,22 +159,16 @@ Current projection state:
   chart. `history_evidence` supplies neutral timeline markers and selected-time
   context without copying identifiers or source evidence values, altering chart
   scale, claiming causation, or changing health, attribution, Observation,
-  Investigation, or Operator Assistant semantics.
+  Investigation, or deterministic summary semantics.
 - `viz/investigation.json` is the mutable current investigation artifact
 - `viz/investigations/<event-id>.json` contains immutable completed-event
   snapshots published atomically and never overwritten
 - `viz/investigation_catalog.json` schema 2 is the generated canonical completed
   history projection, with exact legacy aliases to original paths and separately
   preserved invalid, identity-incomplete, and conflicting records
-- `viz/operator_assistant_input.json` is the deterministic evidence package for
-  OpenRouter interpretation
-- `viz/operator_assistant_output.json` is last valid matching Operator Assistant
-  interpretation and is never replaced by provider/configuration failure
-- `viz/operator_assistant_generation_state.json` tracks pending, generating,
-  retry-wait, complete, and terminal failed state separately from valid output
-- `bin/run_operator_assistant_worker.py` consumes pending/due work without
-  blocking collection or deterministic transform; the tracked LaunchAgent is
-  implemented but not installed automatically
+- the current post-release working tree removes the external-model worker,
+  provider client, prompt package, generation state, and renderer consumption;
+  dashboard and Investigation summaries use deterministic local artifacts only
 
 ## Active Watch Period
 
@@ -195,7 +186,7 @@ safe request state otherwise. Current investigation can show deterministic
 `Seen before` similarity from `viz/incident_similarity.json`; completed incident
 views remain immutable evidence views. Operational Learning Phase 1 can show
 repeated deterministic lessons from completed incidents and durable baselines; it
-does not use LLM summarization or browser inference. Legacy
+does not use external-model summarization or browser inference. Legacy
 `?event=<event-id>` links remain supported. Multiple stored interval summaries
 remain future work.
 

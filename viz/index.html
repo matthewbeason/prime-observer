@@ -993,8 +993,6 @@
     const OBSERVATIONS_URL = "./observations.json";
     const NETWORK_ATTRIBUTION_URL = "./network_attribution.json";
     const INTERVAL_SUMMARY_URL = "./interval_summary.json";
-    const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
-    const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
     const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";
     const OPERATIONAL_LEARNINGS_URL = "./operational_learnings.json";
     const TIME_CONTEXT_URL = "./time_context.json";
@@ -2361,17 +2359,6 @@
       return normalized.replace(/\s+/g, " ").trim();
     }
 
-    function isAssistantInputHash(value){
-      return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-    }
-
-    function matchingAssistantReview(review, assistantInput){
-      const currentInputHash = assistantInput && typeof assistantInput === "object" && !Array.isArray(assistantInput) ? assistantInput.input_hash : null;
-      const reviewHash = review && typeof review === "object" && !Array.isArray(review) ? review.input_hash : null;
-      const hasOperatorText = typeof review?.headline === "string" && review.headline.trim() && typeof review?.assessment === "string" && review.assessment.trim();
-      return review && review.status === "ok" && hasOperatorText && isAssistantInputHash(currentInputHash) && reviewHash === currentInputHash ? review : null;
-    }
-
     function firstText(items){
       if (!Array.isArray(items)) return null;
       const found = items.find(item => typeof item === "string" && item.trim());
@@ -2543,7 +2530,7 @@
       setPillText("operationalLearningPill", healthLabel(insight.confidence || "medium"), insight.confidence === "high" ? "ok" : "watch");
     }
 
-    function renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload, assistantInputPayload, assistantReviewPayload){
+    function renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload){
       const dimensions = dashboardHealth?.healthDimensions || null;
       const operator = dimensions?.deterministic_operator_interpretation || null;
       const dependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
@@ -2552,19 +2539,18 @@
       const currentCondition = dimensions?.current_condition || dimensions?.technical_condition || null;
       const rollingCondition = dimensions?.rolling_condition || dimensions?.technical_condition || null;
       const feedback = dimensions?.operator_impact_feedback || null;
-      const matchedReview = matchingAssistantReview(assistantReviewPayload, assistantInputPayload);
       const hasDimensions = Boolean(dimensions);
 
-      const scope = cleanOperatorText(matchedReview?.affected_scope || affectedScopeFromDimensions(dimensions, dependency));
-      const healthyScope = cleanOperatorText(matchedReview?.healthy_scope || healthyScopeFromDimensions(dimensions, dependency));
+      const scope = cleanOperatorText(affectedScopeFromDimensions(dimensions, dependency));
+      const healthyScope = cleanOperatorText(healthyScopeFromDimensions(dimensions, dependency));
       const estimatedImpact = dimensions?.estimated_user_impact || dimensions?.user_impact || null;
       const observedImpact = dimensions?.observed_user_impact || null;
       const estimatedState = estimatedImpact?.state;
       const attributionSubstantive = isSubstantiveAttribution(refined);
-      const faultDomain = cleanOperatorText(matchedReview?.likely_fault_domain || (attributionSubstantive ? healthLabel(refined?.domain) : "Likely issue is not yet localized"));
+      const faultDomain = cleanOperatorText(attributionSubstantive ? healthLabel(refined?.domain) : "Likely issue is not yet localized");
 
-      document.getElementById("operatorAssessmentHeadline").textContent = matchedReview?.headline ? cleanOperatorText(matchedReview.headline) : (hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Semantic health artifacts are unavailable; raw measurements remain visible.");
-      document.getElementById("operatorAssessmentProvenance").textContent = matchedReview ? "local synthesis" : (hasDimensions ? "local evidence" : "semantic evidence unavailable");
+      document.getElementById("operatorAssessmentHeadline").textContent = hasDimensions ? plainFallbackHeadline(dimensions, dependency, refined) : "Semantic health artifacts are unavailable; raw measurements remain visible.";
+      document.getElementById("operatorAssessmentProvenance").textContent = hasDimensions ? "local evidence" : "semantic evidence unavailable";
 
       // Scope and condition folded into Current Summary metric rows
       const scopeEl = document.getElementById("timeContextScope");
@@ -3615,13 +3601,11 @@
       if (tickInProgress) return;
       tickInProgress = true;
       try {
-        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, assistantInputPayload, assistantReviewPayload, incidentSimilarityPayload, operationalLearningsPayload, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, meshContextPayload] = await Promise.all([
+        const [raw, dashboardHealthPayload, observationsPayload, networkAttributionPayload, incidentSimilarityPayload, operationalLearningsPayload, timeContextPayload, intervalSummaryPayload, internetConditionsPayload, powerContextPayload, meshContextPayload] = await Promise.all([
           loadData(),
           loadDashboardHealthPayload(),
           loadObservationsPayload(),
           loadNetworkAttributionPayload(),
-          loadOptionalJson(OPERATOR_ASSISTANT_INPUT_URL),
-          loadOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL),
           loadOptionalJson(INCIDENT_SIMILARITY_URL),
           loadOptionalJson(OPERATIONAL_LEARNINGS_URL),
           loadOptionalJson(TIME_CONTEXT_URL),
@@ -3675,7 +3659,7 @@
         const currentDependency = (dashboardHealth?.dependencyGroups || [])[0] || null;
         const currentRefined = networkAttributionPayload?.refined_attribution || currentDimensions?.attribution || null;
 
-        renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload, assistantInputPayload, assistantReviewPayload);
+        renderDashboardHealthDimensions(dashboardHealth, networkAttributionPayload);
         syncDashboardTimeContext({
           selectedBucket,
           selectedEvidence,

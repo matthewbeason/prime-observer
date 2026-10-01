@@ -48,7 +48,6 @@ __pycache__/
 build_hourly_baseline.py
 .env.nextdns
 .env.cloudflare
-.env.openrouter
 .env.application_experience
 .env.mesh
 viz/nextdns_summary.json
@@ -69,9 +68,5 @@ viz/investigation.json
 viz/investigation_index.json
 viz/investigation_catalog.json
 viz/investigations/
-viz/operator_assistant_input.json
-viz/operator_assistant_output.json
-viz/operator_assistant_generation_state.json
-viz/.operator_assistant_generation.lock
 viz/*.json.tmp
 viz/*.csv.tmp

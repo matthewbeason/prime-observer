@@ -110,7 +110,6 @@ class DashboardMeshContextTests(unittest.TestCase):
         self.assertNotIn("renderMeshTopology", self.html)
         self.assertNotIn("mesh_context.json", (ROOT / "viz" / "investigate.html").read_text(encoding="utf-8"))
         self.assertNotIn("mesh_context", (ROOT / "bin" / "build_investigation.py").read_text(encoding="utf-8"))
-        self.assertNotIn("mesh_context", (ROOT / "bin" / "build_operator_assistant_input.py").read_text(encoding="utf-8"))
         self.assertNotIn("mesh_context", (ROOT / "bin" / "health_dimensions.py").read_text(encoding="utf-8"))
 
 

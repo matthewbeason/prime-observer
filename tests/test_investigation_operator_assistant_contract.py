@@ -234,7 +234,7 @@ globalThis.fetch = async () => ({{ok: false, status: 404, json: async () => ({{}
 
     def test_deterministic_fallback_is_visible_without_failure_message(self):
         body = f"""
-renderAssistantReview(null, null, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{
   visible: document.getElementById("assistantReviewSection").classList.contains("visible"),
   headline: document.getElementById("assistantReviewHeadline").textContent,
@@ -251,23 +251,9 @@ console.log(JSON.stringify({{
         self.assertNotIn("failed", rendered["assessment"].lower())
         self.assertIn("local evidence", rendered["pills"])
 
-    def test_matching_llm_assessment_is_primary(self):
-        review = {
-            "status": "ok",
-            "input_hash": "a" * 64,
-            "headline": "LLM headline",
-            "assessment": "LLM operator assessment",
-            "likely_fault_domain": "Most consistent with resolver path.",
-            "affected_scope": "Resolver probes",
-            "healthy_scope": "Gateway",
-            "confidence": "medium",
-            "uncertainty": "Cause not proven.",
-            "next_steps": [],
-            "limitations": [],
-            "requested_model": "google/gemini-3.5-flash",
-        }
+    def test_legacy_model_assessment_is_not_loaded(self):
         body = f"""
-renderAssistantReview({json.dumps(review)}, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{
   headline: document.getElementById("assistantReviewHeadline").textContent,
   assessment: document.getElementById("assistantReviewAssessment").textContent,
@@ -276,14 +262,13 @@ console.log(JSON.stringify({{
 """
         rendered = json.loads(self.run_node(body))
 
-        self.assertEqual(rendered["headline"], "LLM headline")
+        self.assertIn("Resolver probe", rendered["headline"])
         self.assertEqual(rendered["assessment"], "")
-        self.assertIn("current synthesis", rendered["pills"])
+        self.assertIn("local evidence", rendered["pills"])
 
-    def test_stale_llm_output_falls_back_without_exposing_stale_error(self):
-        review = {"status": "ok", "input_hash": "a" * 64, "headline": "Old", "assessment": "Old analysis"}
+    def test_legacy_output_is_not_part_of_deterministic_rendering(self):
         body = f"""
-renderAssistantReview({json.dumps(review)}, {{input_hash: "{'b' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{assessment: document.getElementById("assistantReviewAssessment").textContent, pills: document.getElementById("assistantReviewPills").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -292,10 +277,9 @@ console.log(JSON.stringify({{assessment: document.getElementById("assistantRevie
         self.assertNotIn("does not match", rendered["assessment"])
         self.assertIn("local evidence", rendered["pills"])
 
-    def test_malformed_matching_llm_output_falls_back_to_deterministic(self):
-        review = {"status": "ok", "input_hash": "a" * 64, "headline": "", "assessment": ""}
+    def test_deterministic_rendering_uses_local_evidence(self):
         body = f"""
-renderAssistantReview({json.dumps(review)}, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{headline: document.getElementById("assistantReviewHeadline").textContent, pills: document.getElementById("assistantReviewPills").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -305,7 +289,7 @@ console.log(JSON.stringify({{headline: document.getElementById("assistantReviewH
 
     def test_pending_generation_keeps_safe_deterministic_content_visible(self):
         body = f"""
-renderAssistantReview(null, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{assessment: document.getElementById("assistantReviewAssessment").textContent, nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -316,16 +300,8 @@ console.log(JSON.stringify({{assessment: document.getElementById("assistantRevie
         self.assertNotIn("pending", rendered["assessment"].lower())
 
     def test_next_step_ids_are_not_rendered_to_operator(self):
-        review = {
-            "status": "ok",
-            "input_hash": "a" * 64,
-            "headline": "LLM headline",
-            "assessment": "LLM operator assessment",
-            "confidence": "medium",
-            "next_steps": [{"id": "COMPARE_RESOLVER_AND_INTERNET", "label": "Compare resolver and internet", "reason": "Confirm scope.", "expected_observation": "Resolver improves.", "assessment_change": "Broaden if internet degrades."}],
-        }
         body = f"""
-renderAssistantReview({json.dumps(review)}, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -334,16 +310,12 @@ console.log(JSON.stringify({{nextSteps: document.getElementById("assistantReview
         self.assertNotIn("COMPARE_RESOLVER_AND_INTERNET", rendered["nextSteps"])
 
     def test_concrete_intervention_is_rendered_when_required(self):
-        review = {
-            "status": "ok",
-            "input_hash": "a" * 64,
-            "headline": "Router needs attention",
-            "assessment": "Operator assessment",
-            "confidence": "medium",
-            "next_steps": [{"label": "Restart the router", "reason": "Router check is supported."}],
-        }
+        payload = self.investigation_payload()
+        payload["operator_brief"]["recommended_actions"] = [
+            {"action": "Restart the router", "reason": "Router check is supported."}
+        ]
         body = f"""
-renderAssistantReview({json.dumps(review)}, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(payload)});
 console.log(JSON.stringify({{display: document.getElementById("recommendedActionsSection").style.display || "visible", nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -353,7 +325,7 @@ console.log(JSON.stringify({{display: document.getElementById("recommendedAction
 
     def test_no_intervention_section_for_prime_observer_work(self):
         body = f"""
-renderAssistantReview(null, null, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(self.investigation_payload())});
 console.log(JSON.stringify({{display: document.getElementById("recommendedActionsSection").style.display, nextSteps: document.getElementById("assistantReviewNextSteps").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -522,17 +494,10 @@ globalThis.fetch = async (url) => {{
         self.assertIn("Resolver anomaly detected", rendered["historicalReplay"])
 
     def test_material_limitations_are_secondary_disclosures(self):
-        review = {
-            "status": "ok",
-            "input_hash": "a" * 64,
-            "headline": "LLM headline",
-            "assessment": "LLM operator assessment",
-            "confidence": "medium",
-            "limitations": ["No after-window telemetry samples were available."],
-            "next_steps": [],
-        }
+        payload = self.investigation_payload()
+        payload["operator_brief"]["limiting_evidence"] = ["No after-window telemetry samples were available."]
         body = f"""
-renderAssistantReview({json.dumps(review)}, {{input_hash: "{'a' * 64}"}}, {json.dumps(self.investigation_payload())});
+renderAssistantReview({json.dumps(payload)});
 console.log(JSON.stringify({{main: document.getElementById("assistantReviewAssessment").textContent, limitations: document.getElementById("assistantReviewLimitations").innerHTML}}));
 """
         rendered = json.loads(self.run_node(body))
@@ -934,8 +899,7 @@ globalThis.fetch = async (url) => {{
         self.assertNotIn("stableStringify", self.script)
 
     def test_browser_fetches_local_artifacts_only(self):
-        self.assertIn('const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json"', self.script)
-        self.assertIn('const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json"', self.script)
+        self.assertNotIn("operator_assistant", self.script)
         self.assertIn('const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json"', self.script)
         self.assertNotIn("openrouter.ai", self.script)
         self.assertNotIn("crypto.subtle", self.script)

@@ -6,8 +6,8 @@ checks, durably appends the exact result to
 latest-state contract at `viz/application_experience.json`.
 
 The collector is separate from `bin/transform_latest.py`. The transform reads the
-artifact when present but never performs DNS, TCP, TLS, HTTPS, OpenRouter, or
-provider API calls.
+artifact when present but never performs DNS, TCP, TLS, HTTPS, model-provider,
+or provider API calls.
 
 ## Checks
 

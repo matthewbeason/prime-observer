@@ -45,7 +45,6 @@ class TransformLatestTest(unittest.TestCase):
         self.module.OPERATIONAL_LEARNINGS_OUT = self.viz_dir / "operational_learnings.json"
         self.module.TIME_CONTEXT_OUT = self.viz_dir / "time_context.json"
         self.module.INVESTIGATION_OUT = self.viz_dir / "investigation.json"
-        self.module.OPERATOR_ASSISTANT_INPUT_OUT = self.viz_dir / "operator_assistant_input.json"
         self.module.DIAGNOSTIC_EVIDENCE_IN = self.viz_dir / "diagnostic_evidence.json"
         self.module.APPLICATION_EXPERIENCE_IN = self.viz_dir / "application_experience.json"
         self.module.OPERATOR_IMPACT_FEEDBACK_IN = self.viz_dir / "operator_impact_feedback.json"
@@ -301,7 +300,7 @@ class TransformLatestTest(unittest.TestCase):
         self.assertEqual(investigation_catalog["canonical_events"], [])
         self.assertEqual(investigation_catalog["legacy_aliases"], [])
         self.assertEqual(investigation_catalog["invalid_snapshots"], [])
-        self.assertTrue(self.module.OPERATOR_ASSISTANT_INPUT_OUT.exists())
+        self.assertFalse((self.viz_dir / "operator_assistant_input.json").exists())
         self.assertEqual(len(observations["observations"]), 2)
         self.assertEqual({item["type"] for item in observations["observations"]}, {"attribution"})
         by_view = {item["scope"]["view"]: item for item in observations["observations"]}
@@ -826,11 +825,9 @@ class TransformLatestTest(unittest.TestCase):
         self.assertNotIn("internet_conditions.json", investigation_html)
         self.assertNotIn("aps_power_context.json", investigation_html)
 
-    def test_transform_module_does_not_call_openrouter_or_output_producer(self):
+    def test_transform_module_has_no_external_model_path(self):
         source = MODULE_PATH.read_text()
-        self.assertIn("OPERATOR_ASSISTANT_GENERATION_STATE_OUT", source)
-        self.assertIn("pending_generation_state", source)
-        self.assertNotIn("build_operator_assistant_output", source)
+        self.assertNotIn("operator_assistant", source)
         self.assertNotIn("openrouter", source.lower())
 
     def test_transform_reads_application_experience_artifact_without_network_calls(self):
@@ -877,8 +874,8 @@ class TransformLatestTest(unittest.TestCase):
         self.assertIn("mobileLikelyCauseValue", dashboard_html)
         self.assertIn("mobileHistoricalPatternsCard", dashboard_html)
         self.assertNotIn("mobileCurrentActionValue", dashboard_html)
-        self.assertIn("matchingAssistantReview", dashboard_html)
-        self.assertIn("matchedReview?.headline", dashboard_html)
+        self.assertNotIn("matchingAssistantReview", dashboard_html)
+        self.assertNotIn("matchedReview?.headline", dashboard_html)
         self.assertIn("plainFallbackHeadline(dimensions, dependency, refined)", dashboard_html)
         self.assertIn("Cloudflare Radar", dashboard_html)
         self.assertIn("Power Infrastructure", dashboard_html)

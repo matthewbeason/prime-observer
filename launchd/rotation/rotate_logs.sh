@@ -15,7 +15,6 @@ OTHER_LOGS=(
   /Users/mbeason/Projects/prime-observer/logs/transform.err
   /Users/mbeason/Projects/prime-observer/logs/storage-backup.log
   /Users/mbeason/Projects/prime-observer/logs/nextdns-refresh.log
-  /Users/mbeason/Projects/prime-observer/logs/operator-assistant-worker.log
 )
 
 [[ "$(id -u)" == 0 ]] || { print -u2 'Prime log rotation requires root'; exit 77; }

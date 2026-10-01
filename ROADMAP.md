@@ -32,11 +32,11 @@ The v0.10.0 release includes:
 - event-aligned automatic investigation lifecycle and immutable completed-event
   history
 - operator-first Investigation redesign as an Incident Record with deterministic
-  fallback assessment and asynchronous Operator Assistant generation
+  assessment; its original external-model generation path is retired in the
+  current post-release working tree
 - multidimensional health evaluator (Phase 1 calibration document, Phase 2
   deterministic evaluator, Phase 3 browser rendering of emitted fields)
-- Operator Assistant model pinned to `google/gemini-3.5-flash` by default with
-  impact-v2 estimated/observed impact separation
+- impact-v2 estimated/observed impact separation
 - application-experience probes and local operator impact feedback
 - Incident Intelligence Phases 1-3: explicit entry points, `incident_record`,
   `incident_phases`, and deterministic replay
@@ -114,8 +114,8 @@ These principles are settled repository direction and should guide new work.
 4. Avoid decorative visualization. Pie charts are not part of the Prime
    Observer visual vocabulary.
 
-5. AI should interpret visualized/deterministic evidence, not replace the
-   visualization.
+5. Deterministic local summaries may interpret emitted evidence, but they do not
+   replace the visualization.
 
 6. New features should first ask: "Can this be communicated visually?"
 
@@ -186,8 +186,8 @@ Potential experience:
 - baseline vs observed behavior
 - visual markers explaining why an interval qualified as an incident
 - supporting evidence appears contextually for the selected interval
-- AI explains why the deterministic system classified the selected slice the
-  way it did
+- deterministic evidence explains why the system classified the selected slice
+  the way it did
 - ability eventually to compare visually similar incidents
 
 Inspiration:
@@ -201,8 +201,8 @@ Longer-term possibility: a deterministic visualization grammar where incident
 characteristics determine which approved visual representations receive
 emphasis.
 
-Python continues to own semantic facts. The visualization layer presents those
-facts. The LLM explains them.
+Python continues to own semantic facts and bounded local explanations. The
+visualization layer presents those facts.
 
 ### Priority 3 — Deployment/Productization (Someday)
 
@@ -216,7 +216,7 @@ Future possibilities:
 - bootstrap/setup script
 - dependency checks
 - scheduler installation
-- secrets/provider configuration
+- optional-provider configuration
 - clean initialization without another installation's learned runtime data
 - INSTALL documentation
 - logo / visual identity / favicon
@@ -231,7 +231,7 @@ The repository explicitly says not to expand into these areas yet:
 - domain lists as a product expansion
 - device-level DNS analytics
 - alerts or notifications
-- unbounded or browser-side LLM explanations
+- external-LLM or browser-side model explanations
 - weather correlation
 - ISP status correlation
 - major `viz/index.html` refactor (beyond approved micro-visualization work)

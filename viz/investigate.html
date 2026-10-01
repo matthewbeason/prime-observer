@@ -457,7 +457,7 @@
         </div>
       </details>
       <details class="disclosure" style="margin-top:14px;">
-        <summary>Source <span class="small">Evidence package and model details</span></summary>
+        <summary>Source <span class="small">Deterministic evidence details</span></summary>
         <div class="disclosure-body">
           <div id="assistantReviewProvenance" class="chip-row"></div>
           <div id="assistantReviewLimitations" class="assistant-list"></div>
@@ -541,12 +541,8 @@
     const INCIDENT_SIMILARITY_URL = "./incident_similarity.json";
     const OPERATIONAL_LEARNINGS_URL = "./operational_learnings.json";
     const INVESTIGATION_CATALOG_URL = "./investigation_catalog.json";
-    const OPERATOR_ASSISTANT_INPUT_URL = "./operator_assistant_input.json";
-    const OPERATOR_ASSISTANT_OUTPUT_URL = "./operator_assistant_output.json";
     const LOCAL_SERVER_COMMAND = "python3 -m http.server 8000 --directory viz";
     const LOCAL_INVESTIGATION_URL = "http://localhost:8000/investigate.html";
-    let assistantInputArtifact = null;
-    let assistantReviewArtifact = null;
     let incidentSimilarityArtifact = null;
     let operationalLearningsArtifact = null;
 
@@ -1870,10 +1866,6 @@
       }
     }
 
-    function isAssistantInputHash(value){
-      return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-    }
-
     function isMaterialLimitation(value){
       const text = String(value || "").toLowerCase();
       return text.includes("no after-window") ||
@@ -1900,13 +1892,6 @@
         expectedObservation: String(step?.expected_observation || "").trim(),
         assessmentChange: String(step?.assessment_change || "").trim(),
       };
-    }
-
-    function matchingAssistantReview(review, assistantInput){
-      const currentInputHash = assistantInput && typeof assistantInput === "object" && !Array.isArray(assistantInput) ? assistantInput.input_hash : null;
-      const reviewHash = review && typeof review === "object" && !Array.isArray(review) ? review.input_hash : null;
-      const hasOperatorText = typeof review?.headline === "string" && review.headline.trim() && typeof review?.assessment === "string" && review.assessment.trim();
-      return review && review.status === "ok" && hasOperatorText && isAssistantInputHash(currentInputHash) && reviewHash === currentInputHash ? review : null;
     }
 
     function deterministicAssessment(data){
@@ -1943,20 +1928,16 @@
       };
     }
 
-    function renderAssistantReview(review, assistantInput, data){
+    function renderAssistantReview(data){
       const section = document.getElementById("assistantReviewSection");
       section.classList.add("visible");
-      const matched = matchingAssistantReview(review, assistantInput);
-      const assessment = matched || deterministicAssessment(data || {});
+      const assessment = deterministicAssessment(data || {});
       document.getElementById("assistantReviewHeadline").textContent = cleanOperatorText(assessment.headline || "Investigation summary");
       document.getElementById("assistantReviewAssessment").textContent = "";
       const pills = [];
-      pills.push(renderChip("Source", matched ? "current synthesis" : "local evidence", matched ? "tone-accent" : "tone-ok"));
+      pills.push(renderChip("Source", "local evidence", "tone-ok"));
       document.getElementById("assistantReviewPills").innerHTML = pills.join("");
-      const provenance = [renderChip("Source", matched ? "Current local synthesis" : "Local evidence", matched ? "tone-accent" : "tone-ok")];
-      if (matched?.requested_model){
-        provenance.push(renderChip("Model", fmt(matched.requested_model), "tone-accent"));
-      }
+      const provenance = [renderChip("Source", "Local deterministic evidence", "tone-ok")];
       document.getElementById("assistantReviewProvenance").innerHTML = provenance.join("");
       const limitationItems = [];
       if (assessment.note){
@@ -2024,7 +2005,7 @@
         document.getElementById("environmentalContextSection").style.display = "none";
       }
       renderSources(data);
-      renderAssistantReview(isCurrent ? assistantReviewArtifact : null, isCurrent ? assistantInputArtifact : null, data);
+      renderAssistantReview(data);
       if (heading && typeof heading.focus === "function") heading.focus({preventScroll: true});
     }
 
@@ -2088,14 +2069,10 @@
 
     async function main(){
       renderDeepLink();
-      const [catalog, assistantInput, assistantReview, operationalLearnings] = await Promise.all([
+      const [catalog, operationalLearnings] = await Promise.all([
         fetchOptionalJson(INVESTIGATION_CATALOG_URL),
-        fetchOptionalJson(OPERATOR_ASSISTANT_INPUT_URL),
-        fetchOptionalJson(OPERATOR_ASSISTANT_OUTPUT_URL),
         fetchOptionalJson(OPERATIONAL_LEARNINGS_URL),
       ]);
-      assistantInputArtifact = assistantInput;
-      assistantReviewArtifact = assistantReview;
       operationalLearningsArtifact = operationalLearnings;
       renderHistory(catalog);
       const currentButton = document.getElementById("currentInvestigationButton");
